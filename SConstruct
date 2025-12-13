@@ -168,6 +168,9 @@ elif platform == "macos":
             sys.exit("Static build failed")
             
 elif platform == "android":
+    ndk_root = os.environ.get("ANDROID_NDK_ROOT")
+    if not ndk_root:
+      sys.exit("ERROR: ANDROID_NDK_ROOT must be set for Android builds.")
 
     # 根据 arch 映射 ABI
     abi_map = {
@@ -179,16 +182,12 @@ elif platform == "android":
     android_abi = abi_map.get(arch)
     if not android_abi:
         sys.exit(f"Unsupported Android arch: {arch}")
-    if "arm" in android_abi:
-        ndk_root = os.environ.get("ANDROID_NDK_ROOT")
-        if not ndk_root:
-            sys.exit("ERROR: ANDROID_NDK_ROOT must be set for Android builds.")
-        cmake_base_args += [f"-DCMAKE_TOOLCHAIN_FILE={ndk_root}/build/cmake/android.toolchain.cmake"]
 
     cmake_base_args += [
         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
-        "-DUSE_MBEDTLS=ON",
+        # "-DUSE_MBEDTLS=ON",
         "-B", static_build_dir,
+        f"-DCMAKE_TOOLCHAIN_FILE={ndk_root}/build/cmake/android.toolchain.cmake",
         f"-DANDROID_ABI={android_abi}",
         "-DANDROID_PLATFORM=24",  # 最低 API，根据需要调整
         "-DANDROID_STL=c++_shared"
