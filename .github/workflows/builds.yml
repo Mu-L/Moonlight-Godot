@@ -87,7 +87,7 @@ jobs:
           platform: ${{ matrix.target.platform }}
           em-version: 3.1.62 # 保持原样
       - name: Setup godot-cpp (Toolchain/SDKs) for Android Arm
-        if : ${{ matrix.target.platform == 'android' }}
+        if : ${{ matrix.target.platform == 'android' && matrix.target.arch == 'arm64' }}
         uses: ./.github/actions/setup-godot-cpp-arm
         with:
           platform: ${{ matrix.target.platform }}

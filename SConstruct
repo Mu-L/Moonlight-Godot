@@ -2,11 +2,59 @@
 import os
 import sys
 import subprocess
+import shutil
+import zipfile
+import urllib.request
 from pathlib import Path
 from SCons.Script import * # 确保添加了这行以使用 SCons 内部函数
 
 def print_error(msg):
     print(f"\033[91mERROR: {msg}\033[0m", file=sys.stderr)
+
+# === 辅助函数：下载并提取 Android OpenSSL ===
+def setup_android_openssl(target_dir):
+    target_path = Path(target_dir)
+    if target_path.exists():
+        print(f"[Info] Android OpenSSL found at: {target_path}")
+        return
+
+    print("[Info] Downloading prebuilt OpenSSL for Android ARM64...")
+    
+    # 使用 master 分支的 zip
+    url = "https://github.com/moonlight-stream/moonlight-android/archive/refs/heads/master.zip"
+    zip_path = "moonlight-android-master.zip"
+    
+    # 路径前缀（zip 中的文件夹结构）
+    prefix = "moonlight-android-master/app/src/main/jni/moonlight-core/openssl"
+    
+    try:
+        # 下载
+        urllib.request.urlretrieve(url, zip_path)
+        
+        # 解压特定文件夹
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            for member in zf.namelist():
+                if member.startswith(prefix):
+                    # 移除前缀，只保留 openssl 内部结构
+                    relative_path = member[len(prefix):].strip("/")
+                    if not relative_path: continue # 跳过根目录本身
+                    
+                    dest_file = target_path / relative_path
+                    
+                    if member.endswith('/'):
+                        dest_file.mkdir(parents=True, exist_ok=True)
+                    else:
+                        dest_file.parent.mkdir(parents=True, exist_ok=True)
+                        with open(dest_file, "wb") as f:
+                            f.write(zf.read(member))
+                            
+        print("[Info] OpenSSL extracted successfully.")
+    except Exception as e:
+        print_error(f"Failed to setup Android OpenSSL: {e}")
+        sys.exit(1)
+    finally:
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
 
 # === 插件配置 ===
 libname = "Moonlight-Godot"
@@ -53,6 +101,9 @@ build_type = "Debug" if is_debug else "Release"
 if platform == "windows":
     # Windows: 尊重用户选择，但默认使用 OpenSSL（即 use_mbedtls=false）
     use_mbedtls = ARGUMENTS.get("use_mbedtls", "false").lower() in ("1", "true")
+elif platform == "android" and arch == "arm64":
+    # Android ARM64: 强制使用 OpenSSL (因为我们要下载预编译库)
+    use_mbedtls = False
 else:
     # 其他平台：强制使用 mbedTLS，忽略用户输入
     use_mbedtls = True
@@ -185,13 +236,31 @@ elif platform == "android":
 
     cmake_base_args += [
         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
-        # "-DUSE_MBEDTLS=ON",
         "-B", static_build_dir,
         f"-DCMAKE_TOOLCHAIN_FILE={ndk_root}/build/cmake/android.toolchain.cmake",
         f"-DANDROID_ABI={android_abi}",
         "-DANDROID_PLATFORM=24",  # 最低 API，根据需要调整
         "-DANDROID_STL=c++_shared"
     ]
+
+    # === Android ARM64 强制下载并配置 OpenSSL ===
+    if arch == "arm64":
+        openssl_dir = Path(build_root) / "openssl-android-arm64"
+        setup_android_openssl(openssl_dir)
+        
+        # 传递给 CMake
+        # 注意：moonlight-common-c 的 CMakeLists.txt 可能需要 OPENSSL_ROOT_DIR
+        # 同时强制禁用 mbedTLS
+        cmake_base_args += [
+            "-DUSE_MBEDTLS=OFF",
+            f"-DOPENSSL_ROOT_DIR={openssl_dir.resolve()}",
+            f"-DOPENSSL_INCLUDE_DIR={openssl_dir.resolve()}/include",
+            f"-DOPENSSL_CRYPTO_LIBRARY={openssl_dir.resolve()}/arm64-v8a/libcrypto.a",
+            f"-DOPENSSL_SSL_LIBRARY={openssl_dir.resolve()}/arm64-v8a/libssl.a"
+        ]
+    else:
+        # 其他架构默认使用 mbedTLS
+        cmake_base_args += ["-DUSE_MBEDTLS=ON"]
 
     ret = subprocess.run(cmake_base_args, env=os.environ)
     if ret.returncode != 0:
@@ -255,7 +324,15 @@ elif platform == 'android':
     elif arch == 'arm64':
         FFMPEG_ARCH_KEY = 'linuxarm64'
     # Android 平台依赖：log (Android日志), z (zlib), m (数学库)
-    FFMPEG_EXTRA_LIBS = ['z', 'log', 'm'] 
+    FFMPEG_EXTRA_LIBS = ['z', 'log', 'm']
+    
+    # 针对 Android ARM64，添加 OpenSSL 链接
+    if arch == "arm64":
+        # 已经在 setup_android_openssl 中下载
+        openssl_dir = Path(build_root) / "openssl-android-arm64"
+        env.Append(LIBPATH=[str(openssl_dir / "arm64-v8a")])
+        # 注意：必须按顺序链接，crypto 通常被 ssl 依赖，但这里是静态库
+        FFMPEG_EXTRA_LIBS.extend(['ssl', 'crypto'])
 
 # --- iOS 支持 ---
 elif platform == 'ios':
@@ -337,7 +414,7 @@ elif platform == "linux":
 elif platform == "android":
     # 原有 LIBS: ["moonlight-common-c"]
     libs = ["moonlight-common-c"]
-    libs.extend(FFMPEG_LIBS) # 包含 z, log, m, avcodec, ...
+    libs.extend(FFMPEG_LIBS) # 包含 z, log, m, avcodec, ..., (arm64时还包含 ssl, crypto)
     env.Append(LIBPATH=[static_lib_dir], LIBS=libs)
 
 elif platform == "macos":
@@ -425,7 +502,7 @@ def copy_ffmpeg_dlls(to_bin = False):
     if dll_sources:
         # # 确保目标部署路径存在
         # env.Execute(Mkdir(str(FFMPEG_DLL_DST_DIR))) 
-        FFMPEG_DLL_DST_DIR = f"{projectdir}/addons/{libname}/bin/{platform}" if not to_bin else f"/bin"
+        FFMPEG_DLL_DST_DIR = f"{projectdir}/addons/{libname}/bin/{platform}" if not to_bin else f"bin/{platform}"
         print(f"[INFO]Copying FFmpeg DLLs to: {FFMPEG_DLL_DST_DIR}")
         
         # env.Install() 负责将文件拷贝到指定目录，并确保其依赖于构建目标
