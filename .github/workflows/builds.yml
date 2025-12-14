@@ -167,36 +167,36 @@ jobs:
           path: downloaded-artifacts
           pattern: moonlight-gdext-*
           # 关键：此选项确保每个产物被下载到以其名称命名的子文件夹中
-          merge-multiple: true 
+          # merge-multiple: true 
 
-      # 9.2 重新组织文件结构以符合要求：<final_name>/<artifact_name>/<content>
-      - name: Restructure Artifacts
-        shell: bash
-        run: |
-          FINAL_PACKAGE_DIR="final-merged-package"
-          mkdir -p "$FINAL_PACKAGE_DIR"
+      # # 9.2 重新组织文件结构以符合要求：<final_name>/<artifact_name>/<content>
+      # - name: Restructure Artifacts
+      #   shell: bash
+      #   run: |
+      #     FINAL_PACKAGE_DIR="final-merged-package"
+      #     mkdir -p "$FINAL_PACKAGE_DIR"
           
-          # 遍历所有下载的工件子目录（名称即为工件名）
-          for artifact_dir in downloaded-artifacts/*; do
-            if [ -d "$artifact_dir" ]; then
-              ARTIFACT_NAME=$(basename "$artifact_dir")
-              TARGET_SUBDIR="$FINAL_PACKAGE_DIR/$ARTIFACT_NAME"
+      #     # 遍历所有下载的工件子目录（名称即为工件名）
+      #     for artifact_dir in downloaded-artifacts/*; do
+      #       if [ -d "$artifact_dir" ]; then
+      #         ARTIFACT_NAME=$(basename "$artifact_dir")
+      #         TARGET_SUBDIR="$FINAL_PACKAGE_DIR/$ARTIFACT_NAME"
               
-              # 创建目标子目录，即结构中的 --<产物名字>
-              mkdir -p "$TARGET_SUBDIR"
+      #         # 创建目标子目录，即结构中的 --<产物名字>
+      #         mkdir -p "$TARGET_SUBDIR"
               
-              # 将工件内容移动到目标子目录。
-              # 原始文件结构：downloaded-artifacts/<artifact_name>/<bin/...>
-              # 目标文件结构：final-merged-package/<artifact_name>/<bin/...>
-              mv "$artifact_dir"/* "$TARGET_SUBDIR"
-              echo "Moved $ARTIFACT_NAME contents to $TARGET_SUBDIR"
-            fi
-          done
+      #         # 将工件内容移动到目标子目录。
+      #         # 原始文件结构：downloaded-artifacts/<artifact_name>/<bin/...>
+      #         # 目标文件结构：final-merged-package/<artifact_name>/<bin/...>
+      #         mv "$artifact_dir"/* "$TARGET_SUBDIR"
+      #         echo "Moved $ARTIFACT_NAME contents to $TARGET_SUBDIR"
+      #       fi
+      #     done
 
       # 9.3 上传最终合并的产物
       - name: Upload Final Merged Artifact
         uses: actions/upload-artifact@v4
         with:
           name: moonlight-gdextension-all # 最终产物名称
-          path: final-merged-package/    # 包含所需结构 (moonlight-gdext-*-*/bin/...) 的目录
+          path: downloaded-artifacts/    # 包含所需结构 (moonlight-gdext-*-*/bin/...) 的目录
           # 原始分离的产物不会被删除，因为我们使用的是 actions/upload-artifact@v4，而非 merge action
