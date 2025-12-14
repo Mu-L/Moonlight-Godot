@@ -106,7 +106,12 @@ jobs:
               echo "Error: FFmpeg libraries not found in expected path: $TARGET_DIR"
               exit 1
           fi
-
+# 8. Cache Restore (.scons_cache)
+      - name: Restore SCons Cache
+        uses: ./src/lib/godot-cpp/.github/actions/godot-cache-restore
+        with:
+          scons-cache: ${{ github.workspace }}/.scons-cache/
+          cache-name: ${{ matrix.target.platform }}_${{ matrix.target.arch }}_${{ matrix.float-precision }}_${{ matrix.target-type }}
       # --- Build with SCons (统一构建步骤) ---
       - name: Build GDExtension
         shell: sh
@@ -133,6 +138,12 @@ jobs:
                 use_mbedtls=${{ matrix.use_mbedtls }}
 
           fi
+          # 10. Cache Save (.scons_cache)
+      - name: Save SCons Cache
+        uses: ./src/lib/godot-cpp/.github/actions/godot-cache-save
+        with:
+          scons-cache: ${{ github.workspace }}/.scons-cache/
+          cache-name: ${{ matrix.target.platform }}_${{ matrix.target.arch }}_${{ matrix.float-precision }}_${{ matrix.target-type }}
       # --- Upload artifact ---
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
