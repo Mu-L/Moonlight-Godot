@@ -18,7 +18,7 @@ def setup_android_openssl(target_dir):
         print(f"[Info] Android OpenSSL found at: {target_path}")
         return
 
-    print("[Info] Downloading prebuilt OpenSSL for Android ARM64...")
+    print("[Info] Downloading prebuilt OpenSSL for Android")
     
     # 使用 master 分支的 zip
     url = "https://github.com/moonlight-stream/moonlight-android/archive/refs/heads/master.zip"
@@ -153,71 +153,6 @@ if platform == "windows":
     if ret.returncode != 0:
         sys.exit(f"Static build failed ({ret.returncode})")
 
-elif platform == "ios":
-    cmake_base_args += [
-        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
-        "-DUSE_MBEDTLS=ON",  # 强制
-        "-B", static_build_dir
-    ]
-    
-    cmake_base_args += ["-DCMAKE_SYSTEM_NAME=iOS"]
-
-    ret = subprocess.run(cmake_base_args, env=os.environ)
-    if ret.returncode != 0:
-        sys.exit("CMake configure failed")
-    ret = subprocess.run(["cmake", "--build", static_build_dir, "--config", build_type], env=os.environ)
-    if ret.returncode != 0:
-        sys.exit("Static build failed")
-        
-        
-elif platform == "macos":
-    if arch == "universal":
-        # 分别构建 x86_64 和 arm64
-        build_dirs = []
-        for subarch in ["x86_64", "arm64"]:
-            subdir = f"{build_root}/moonlight-static-macos-{subarch}-{build_type}"
-            Path(subdir).mkdir(parents=True, exist_ok=True)
-            cmake_args = [
-                "cmake",
-                "-S", str(moonlight_src),
-                "-B", subdir,
-                f"-DCMAKE_BUILD_TYPE={build_type}",
-                "-DBUILD_SHARED_LIBS=OFF",
-                "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
-                # "-DUSE_MBEDTLS=ON",
-                "-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl"
-                f"-DCMAKE_OSX_ARCHITECTURES={subarch}",
-            ]
-            ret = subprocess.run(cmake_args, env=os.environ)
-            if ret.returncode != 0:
-                sys.exit(f"CMake configure failed for {subarch}")
-            ret = subprocess.run(["cmake", "--build", subdir, "--config", build_type], env=os.environ)
-            if ret.returncode != 0:
-                sys.exit(f"Build failed for {subarch}")
-            build_dirs.append(subdir)
-
-        # 合并成 universal 库
-        lib_x86 = os.path.join(build_dirs[0], "libmoonlight-common-c.a")
-        lib_arm = os.path.join(build_dirs[1], "libmoonlight-common-c.a")
-        final_lib = os.path.join(static_build_dir, "libmoonlight-common-c.a")
-        ret = subprocess.run(["lipo", "-create", "-output", final_lib, lib_x86, lib_arm])
-        if ret.returncode != 0:
-            sys.exit("Failed to create universal library with lipo")
-    else:
-        # 单架构
-        cmake_base_args += [
-            "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
-            "-DUSE_MBEDTLS=ON",
-            f"-DCMAKE_OSX_ARCHITECTURES={arch}",
-            "-B", static_build_dir
-        ]
-        ret = subprocess.run(cmake_base_args, env=os.environ)
-        if ret.returncode != 0:
-            sys.exit("CMake configure failed")
-        ret = subprocess.run(["cmake", "--build", static_build_dir, "--config", build_type], env=os.environ)
-        if ret.returncode != 0:
-            sys.exit("Static build failed")
-            
 elif platform == "android":
     ndk_root = os.environ.get("ANDROID_NDK_ROOT")
     if not ndk_root:
@@ -257,6 +192,20 @@ elif platform == "android":
             f"-DOPENSSL_INCLUDE_DIR={openssl_dir.resolve()}/include",
             f"-DOPENSSL_CRYPTO_LIBRARY={openssl_dir.resolve()}/arm64-v8a/libcrypto.a",
             f"-DOPENSSL_SSL_LIBRARY={openssl_dir.resolve()}/arm64-v8a/libssl.a"
+        ]
+    elif arch == "x86_64":
+        openssl_dir = Path(build_root) / "openssl-android-x86_64"
+        setup_android_openssl(openssl_dir)
+        
+        # 传递给 CMake
+        # 注意：moonlight-common-c 的 CMakeLists.txt 可能需要 OPENSSL_ROOT_DIR
+        # 同时强制禁用 mbedTLS
+        cmake_base_args += [
+            "-DUSE_MBEDTLS=OFF",
+            f"-DOPENSSL_ROOT_DIR={openssl_dir.resolve()}",
+            f"-DOPENSSL_INCLUDE_DIR={openssl_dir.resolve()}/include",
+            f"-DOPENSSL_CRYPTO_LIBRARY={openssl_dir.resolve()}/x86_64/libcrypto.a",
+            f"-DOPENSSL_SSL_LIBRARY={openssl_dir.resolve()}/x86_64/libssl.a"
         ]
     else:
         # 其他架构默认使用 mbedTLS

@@ -21,7 +21,7 @@ jobs:
           # - { platform: macos, arch: arm64, os: macos-latest, ffmpeg_arch: linuxarm64 }
           # --- 移动平台 ---
           # Android 构建通常在 ubuntu-22.04 上进行交叉编译
-          - { platform: android, arch: arm64, os: ubuntu-24.04-arm, ffmpeg_arch: linuxarm64 }
+          - { platform: android, arch: arm64, os: ubuntu-24.04, ffmpeg_arch: linuxarm64 }
           - { platform: android, arch: x86_64, os: ubuntu-22.04, ffmpeg_arch: linux64 }
           # iOS 构建必须在 macos-latest 上进行
           # - { platform: ios, arch: arm64, os: macos-latest, ffmpeg_arch: linuxarm64 } 
@@ -81,17 +81,17 @@ jobs:
           # --- Setup godot-cpp (prebuilt lib) ---
       # 此步骤由用户提供，用于安装工具链和 godot-cpp 预编译库
       - name: Setup godot-cpp (Toolchain/SDKs)
-        if : ${{ matrix.target.platform != 'android' }}
+        # if : ${{ matrix.target.platform != 'android' || matrix.target.platform == 'android' && matrix.target.arch == 'x86_64' }}
         uses: ./src/lib/godot-cpp/.github/actions/setup-godot-cpp
         with:
           platform: ${{ matrix.target.platform }}
           em-version: 3.1.62 # 保持原样
-      - name: Setup godot-cpp (Toolchain/SDKs) for Android Arm
-        if : ${{ matrix.target.platform == 'android' && matrix.target.arch == 'arm64' }}
-        uses: ./.github/actions/setup-godot-cpp-arm
-        with:
-          platform: ${{ matrix.target.platform }}
-          em-version: 3.1.62 # 保持原样
+      # - name: Setup godot-cpp (Toolchain/SDKs) for Android Arm
+      #   if : ${{ matrix.target.platform == 'android' && matrix.target.arch == 'arm64' }} 
+      #   uses: ./.github/actions/setup-godot-cpp-arm
+      #   with:
+      #     platform: ${{ matrix.target.platform }}
+      #     em-version: 3.1.62 # 保持原样
 
       # --- 使用 ffmpeg-down.py 下载和安装 FFmpeg ---
       - name: Download and Install FFmpeg Static Libs
