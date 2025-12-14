@@ -1,0 +1,141 @@
+name: Setup godot-cpp
+description: Setup build dependencies for godot-cpp.
+
+inputs:
+  platform:
+    required: true
+    description: Target platform.
+  em-version:
+    default: 4.0.11
+    description: Emscripten version.
+  windows-compiler:
+    required: true
+    description: The compiler toolchain to use on Windows ('mingw' or 'msvc').
+    type: choice
+    options:
+      - mingw
+      - msvc
+    default: mingw
+  mingw-version:
+    default: 12.2.0
+    description: MinGW version.
+  ndk-version:
+    default: r28c
+    description: Android NDK version.
+  buildtool:
+    default: scons
+    description: scons or cmake
+  scons-version:
+    default: 4.4.0
+    description: SCons version.
+
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python (for SCons)
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.x
+
+    - name: Setup Android NDK (Custom Download and Extract)
+      if: inputs.platform == 'android'
+      shell: bash
+      run: |
+        # NDK 版本来自输入
+        NDK_VER=${{ inputs.ndk-version }}
+        
+        # 目标运行器是 Linux AArch64 (ubuntu-22.04-arm)，因此需要 Linux AArch64 的 NDK 包。
+        NDK_FILENAME="android-ndk-${NDK_VER}-aarch64-linux-musl.tar.xz"
+        DOWNLOAD_URL="https://github.com/HomuHomu833/android-ndk-custom/releases/download/r28/${NDK_FILENAME}"
+        
+        # 核心安装目录：用于解压
+        NDK_INSTALL_DIR="$HOME/ndk-custom"
+        
+        # 模拟 Android SDK 的 NDK 链接路径
+        ANDROID_SDK_ROOT="$HOME/android-sdk"
+        NDK_LINK_TARGET="$ANDROID_SDK_ROOT/ndk/${NDK_VER}"
+        
+        echo "Downloading custom NDK: ${NDK_FILENAME} from ${DOWNLOAD_URL}..."
+        mkdir -p "${NDK_INSTALL_DIR}"
+        
+        # 1. 下载 NDK 包
+        curl -L "${DOWNLOAD_URL}" -o "${NDK_INSTALL_DIR}/${NDK_FILENAME}"
+        
+        # 2. 解压
+        echo "Extracting NDK..."
+        tar -xf "${NDK_INSTALL_DIR}/${NDK_FILENAME}" -C "${NDK_INSTALL_DIR}"
+        
+        # 3. 确定 NDK 根目录
+        NDK_ROOT_DIR=$(find "${NDK_INSTALL_DIR}" -maxdepth 1 -type d -name "android-ndk-r*" -print -quit)
+
+        if [ -d "$NDK_ROOT_DIR" ]; then
+            echo "Successfully extracted NDK root: $NDK_ROOT_DIR"
+            
+            # 4. **新增：设置 SDK 和 NDK 链接**
+            echo "Setting up NDK symlink at SDK location: ${NDK_LINK_TARGET}"
+            mkdir -p "$(dirname "${NDK_LINK_TARGET}")"
+            # 创建符号链接，模拟 NDK 在 SDK 结构中的位置
+            ln -s "${NDK_ROOT_DIR}" "${NDK_LINK_TARGET}"
+            
+            # 5. 设置环境变量
+            # 必须设置 ANDROID_SDK_ROOT/ANDROID_HOME
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+            echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+            
+            # 设置 ANDROID_NDK_ROOT/HOME 供 SCons/构建工具使用
+            echo "ANDROID_NDK_ROOT=${NDK_ROOT_DIR}" >> $GITHUB_ENV
+            echo "ANDROID_NDK_HOME=${NDK_ROOT_DIR}" >> $GITHUB_ENV
+            
+            # 将 NDK 工具链路径添加到 PATH
+            # 默认使用 linux-x86_64 host toolchain (兼容绝大多数 NDK 构建)
+            # 尽管 runner 是 arm64，但 NDK 内置的 prebuilt host toolchain 很多仍是 x86_64
+            TOOLCHAIN_HOST_ARCH="linux-x86_64"
+            TOOLCHAIN_BIN="${NDK_ROOT_DIR}/toolchains/llvm/prebuilt/${TOOLCHAIN_HOST_ARCH}/bin"
+            
+            if [ ! -d "$TOOLCHAIN_BIN" ]; then
+                # 如果没有标准的 linux-x86_64，尝试 linux-aarch64
+                TOOLCHAIN_HOST_ARCH="linux-arm64"
+                TOOLCHAIN_BIN="${NDK_ROOT_DIR}/toolchains/llvm/prebuilt/${TOOLCHAIN_HOST_ARCH}/bin"
+                echo "Warning: linux-x86_64 toolchain not found, trying linux-aarch64 host toolchain."
+            fi
+            
+            if [ -d "$TOOLCHAIN_BIN" ]; then
+                echo "Adding ${TOOLCHAIN_BIN} to PATH..."
+                echo "${TOOLCHAIN_BIN}" >> $GITHUB_PATH
+            else
+                echo "::warning::Could not find prebuilt toolchain bin directory. PATH may be incomplete."
+            fi
+
+        else
+            echo "::error::NDK root directory (android-ndk-r*) not found in ${NDK_INSTALL_DIR}. Extraction failed or archive structure is unexpected."
+            exit 1
+        fi
+        
+        # 6. 清理下载的归档文件
+        rm "${NDK_INSTALL_DIR}/${NDK_FILENAME}"
+
+    - name: Setup Web dependencies
+      if: inputs.platform == 'web'
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: ${{ inputs.em-version }}
+        no-cache: true
+
+    - name: Setup MinGW for Windows/MinGW build
+      if: inputs.platform == 'windows' && inputs.windows-compiler == 'mingw'
+      uses: egor-tensin/setup-mingw@v2
+      with:
+        version: ${{ inputs.mingw-version }}
+
+    - name: Setup SCons
+      if: ${{ inputs.buildtool == 'scons' }}
+      shell: bash
+      run: |
+        python -c "import sys; print(sys.version)"
+        python -m pip install scons==${{ inputs.scons-version }}
+        scons --version
+
+    - name: Install Ninja
+      if: ${{ inputs.buildtool == 'cmake' }}
+      uses: ashutoshvarma/setup-ninja@master
