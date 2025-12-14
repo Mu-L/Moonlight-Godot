@@ -1,4 +1,4 @@
-name: Build Moonlight GDExtension
+name: Build Moonlight GDExtension (FFmpeg Static)
 
 on:
   push:
@@ -9,104 +9,122 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.target.platform }} ${{ matrix.target.arch }} ${{ matrix.target-type }}
-    runs-on: ${{ matrix.target.os }}
     strategy:
       fail-fast: false
       matrix:
+        target-type: [template_release, template_debug]
         target:
-          # Linux
+          # 桌面平台
           - { platform: linux, arch: x86_64, os: ubuntu-22.04, ffmpeg_arch: linux64 }
-          - { platform: linux, arch: arm64, os: ubuntu-22.04-arm, ffmpeg_arch: linuxarm64 }
-          # Windows
+          - { platform: linux, arch: arm64, os: ubuntu-22.04-arm, ffmpeg_arch: linuxarm64 } 
           - { platform: windows, arch: x86_64, os: windows-latest, ffmpeg_arch: win64 }
-          # Android
-          - { platform: android, arch: arm64, os: ubuntu-24.04-arm, ffmpeg_arch: linuxarm64 }
+          - { platform: android, arch: arm64, os: ubuntu-24.04, ffmpeg_arch: linuxarm64 }
           - { platform: android, arch: x86_64, os: ubuntu-22.04, ffmpeg_arch: linux64 }
-          # macOS/iOS (Reserved for completeness based on script logic)
-          # - { platform: macos, arch: universal, os: macos-latest, ffmpeg_arch: macos64 }
-        target-type: [template_debug, template_release]
-        float-precision: [single] # Assuming standard single precision
+        float-precision: [single]
         use_mbedtls: [false]
 
+    runs-on: ${{ matrix.target.os }}
     defaults:
       run:
         shell: bash
 
     steps:
-      # 1. Checkout Code
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: recursive 
 
-      # 2. Setup Python & SCons
-      - name: Setup Python
+      # --- 依赖安装 (保持原逻辑，并适配移动平台) ---
+      # ⚠️ 注意：此处的 MbedTLS 安装依赖于您的 godot-cpp/moonlight-common-c 配置。
+      # 必须确保 godot-cpp setup action 及其它步骤已正确安装 Android/iOS 工具链和依赖。
+      - name: Setup Python & Install SCons
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      
-      - name: Install SCons and Requests
-        run: pip install scons requests
+      - run: pip install scons requests
 
-      # 3. Platform Dependencies (Linux)
-      - name: Install Linux Dependencies
+      - name: Install MbedTLS&Openssl
+        if: ${{ matrix.target.platform != 'windows' }}
         run: |
           if [[ "${{ matrix.target.platform }}" == "linux" ]]; then
             sudo apt-get update && sudo apt-get install -y libmbedtls-dev libssl-dev libevent-dev libffi-dev libgcrypt20-dev
+          elif [[ "${{ matrix.target.platform }}" == "web" ]]; then
+            sudo apt-get update && sudo apt-get install -y libmbedtls-dev libssl-dev libevent-dev libffi-dev libgcrypt20-dev
           elif [[ "${{ matrix.target.platform }}" == "android" ]]; then
             sudo apt-get update && sudo apt-get install -y libmbedtls-dev libssl-dev libevent-dev libffi-dev libgcrypt20-dev
+          elif [[ "${{ matrix.target.platform }}" == "macos" ]]; then
+            brew install mbedtls
+          elif [[ "${{ matrix.target.platform }}" == "ios" ]]; then
+            brew install mbedtls
+          fi
 
-      # 4. Platform Dependencies (Windows - OpenSSL)
-      - name: Install OpenSSL (Windows)
-        if: matrix.target.platform == 'windows' && matrix.use_mbedtls == false
+      # Add linux x86_32 toolchain
+      - name: Install multilib support
+        if: ${{ matrix.target.platform == 'linux' && matrix.target.arch == 'x86_32' }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-multilib g++-multilib
+
+      - name: Install OpenSSL for Windows
+        if: ${{ matrix.target.platform == 'windows' && matrix.use_mbedtls == false }}
         shell: pwsh
         run: |
           $url = "https://slproweb.com/download/Win64OpenSSL-1_1_1w.exe"
           Invoke-WebRequest -Uri $url -OutFile openssl.exe
           Start-Process -FilePath .\openssl.exe -ArgumentList "/silent","/verysilent" -Wait
           echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
-
-
-      # 6. Setup Godot-CPP
-      - name: Setup godot-cpp
+      
+          # --- Setup godot-cpp (prebuilt lib) ---
+      # 此步骤由用户提供，用于安装工具链和 godot-cpp 预编译库
+      - name: Setup godot-cpp (Toolchain/SDKs)
+        # if : ${{ matrix.target.platform != 'android' || matrix.target.platform == 'android' && matrix.target.arch == 'x86_64' }}
         uses: ./src/lib/godot-cpp/.github/actions/setup-godot-cpp
         with:
           platform: ${{ matrix.target.platform }}
-          em-version: 3.1.62
+          em-version: 3.1.62 # 保持原样
+      # - name: Setup godot-cpp (Toolchain/SDKs) for Android Arm
+      #   if : ${{ matrix.target.platform == 'android' && matrix.target.arch == 'arm64' }} 
+      #   uses: ./.github/actions/setup-godot-cpp-arm
+      #   with:
+      #     platform: ${{ matrix.target.platform }}
+      #     em-version: 3.1.62 # 保持原样
 
-      # 7. Download FFmpeg Static Libs
-      - name: Download FFmpeg
+      # --- 使用 ffmpeg-down.py 下载和安装 FFmpeg ---
+      - name: Download and Install FFmpeg Static Libs
+        shell: sh
         run: |
           FFMPEG_ARCH=${{ matrix.target.ffmpeg_arch }}
           TARGET_DIR="src/lib/ffmpeg/$FFMPEG_ARCH"
+          set PYTHONIOENCODING=utf-8
+          echo "Downloading FFmpeg for $FFMPEG_ARCH to $TARGET_DIR"
+          # ❗️ 重要提示：对于 Android/iOS，BtbN 不提供现成的静态库。
+          # 您可能需要将此步骤替换为使用自定义脚本或 pre-built artifacts 
+          # 来放置对应平台的 FFmpeg 静态库到 $TARGET_DIR 中。
           python ffmpeg-down.py $FFMPEG_ARCH $TARGET_DIR
           
-          if [ ! -d "$TARGET_DIR/lib" ]; then
-              echo "Error: FFmpeg download failed or structure invalid."
+          ls $TARGET_DIR          # 验证下载结果
+          if [ ! -d "$TARGET_DIR/lib" ] || [ ! -d "$TARGET_DIR/include" ]; then
+              echo "Error: FFmpeg libraries not found in expected path: $TARGET_DIR"
               exit 1
           fi
 
-      # 8. Cache Restore (.scons_cache)
-      - name: Restore SCons Cache
-        uses: ./src/lib/godot-cpp/.github/actions/godot-cache-restore
-        with:
-          scons-cache: ${{ github.workspace }}/.scons-cache/
-          cache-name: ${{ matrix.target.platform }}_${{ matrix.target.arch }}_${{ matrix.float-precision }}_${{ matrix.target-type }}
-
-      # 9. Build GDExtension
-      - name: Build with SCons
-        env:
-          SCONS_CACHE: ${{ github.workspace }}/.scons-cache/
+      # --- Build with SCons (统一构建步骤) ---
+      - name: Build GDExtension
+        shell: sh
         run: |
-          # Arch Handling for Universal
+          # SCons 的 arch 参数
           ARCH=${{ matrix.target.arch }}
-          if [ "$ARCH" == "universal" ]; then ARCH="x86_64"; fi
-          
-          # OpenSSL Env for Windows
-          if [ "${{ matrix.target.platform }}" == "windows" ]; then
-             export OPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64"
+          if [ "$ARCH" == "universal" ]; then
+            ARCH="x86_64" 
           fi
+          PLATFORM=${{ matrix.target.platform }}
+          if [ "$PLATFORM" == "windows" ]; then
+          export OPENSSL_ROOT_DIR="C:\Program Files\OpenSSL"
+            OPENSSL_ROOT_DIR="C:\Program Files\OpenSSL" scons target=${{ matrix.target-type }} \
+                platform=${{ matrix.target.platform }} \
+                arch=$ARCH \
+                precision=${{ matrix.float-precision }} \
+                use_mbedtls=${{ matrix.use_mbedtls }}
+          else
 
           scons target=${{ matrix.target-type }} \
                 platform=${{ matrix.target.platform }} \
@@ -114,19 +132,14 @@ jobs:
                 precision=${{ matrix.float-precision }} \
                 use_mbedtls=${{ matrix.use_mbedtls }}
 
-      # 10. Cache Save (.scons_cache)
-      - name: Save SCons Cache
-        uses: ./src/lib/godot-cpp/.github/actions/godot-cache-save
-        with:
-          scons-cache: ${{ github.workspace }}/.scons-cache/
-          cache-name: ${{ matrix.target.platform }}_${{ matrix.target.arch }}_${{ matrix.float-precision }}_${{ matrix.target-type }}
-
-      # 11. Artifact Upload
+          fi
+      # --- Upload artifact ---
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: moonlight-gdext-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}
+          name: moonlight-gdext-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ matrix.use_mbedtls }}
           path: bin/
+
 
   merge:
     runs-on: ubuntu-22.04
