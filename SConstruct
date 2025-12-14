@@ -418,12 +418,12 @@ def copy_ffmpeg_dlls(to_bin = False):
     # 2. 定义源目录和目标目录
     FFMPEG_ROOT = Path("src/lib/ffmpeg")
     # FFmpeg DLLs 的源目录 (例如 src/lib/ffmpeg/win64/bin)
-    FFMPEG_DLL_SRC_DIR = FFMPEG_ROOT / platform_key / "bin"
     # 目标安装路径： Godot GDExtension 的部署目录，通常是 bin/
     FFMPEG_DLL_DST_DIR = Path("bin") 
 
     # 3. 确定要拷贝的文件模式
     if platform == "windows":
+        FFMPEG_DLL_SRC_DIR = FFMPEG_ROOT / platform_key / "bin"
         # 拷贝所有主要的 FFmpeg DLLs (*.dll)
         dll_patterns = [
             "avcodec-*.dll", "avdevice-*.dll", "avfilter-*.dll", 
@@ -436,13 +436,10 @@ def copy_ffmpeg_dlls(to_bin = False):
             # 使用 SCons 的 Glob 函数查找文件
             dll_sources.extend(Glob(str(FFMPEG_DLL_SRC_DIR / pattern)))
             
-    elif platform == "linux":
+    elif platform == "linux" or platform == "android":
         # 拷贝所有 lib*.so* 文件
+        FFMPEG_DLL_SRC_DIR = FFMPEG_ROOT / platform_key / "lib"
         dll_sources = Glob(str(FFMPEG_DLL_SRC_DIR / "lib*.so*"))
-        
-    elif platform == "macos":
-        # 拷贝所有 lib*.dylib 文件
-        dll_sources = Glob(str(FFMPEG_DLL_SRC_DIR / "lib*.dylib"))
         
     else:
         dll_sources = []
