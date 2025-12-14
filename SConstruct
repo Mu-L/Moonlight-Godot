@@ -283,14 +283,6 @@ elif platform == 'android':
         # 注意：必须按顺序链接，crypto 通常被 ssl 依赖，但这里是静态库
         FFMPEG_EXTRA_LIBS.extend(['ssl', 'crypto'])
 
-# --- iOS 支持 ---
-elif platform == 'ios':
-    if arch == 'arm64':
-        FFMPEG_ARCH_KEY = 'linuxarm64'
-    # iOS 平台依赖：z (zlib), bz2
-    FFMPEG_EXTRA_LIBS = ['z', 'bz2']
-    # iOS 链接所需的系统 Frameworks
-    env.Append(FRAMEWORKS=["CoreMedia", "VideoToolbox", "CoreFoundation", "Security"])
 
 
 FFMPEG_LIB_DIR = FFMPEG_ROOT / FFMPEG_ARCH_KEY
@@ -366,19 +358,6 @@ elif platform == "android":
     libs.extend(FFMPEG_LIBS) # 包含 z, log, m, avcodec, ..., (arm64时还包含 ssl, crypto)
     env.Append(LIBPATH=[static_lib_dir], LIBS=libs)
 
-elif platform == "macos":
-    # 原有 LIBS: ["moonlight-common-c"], FRAMEWORKS=["Security", "CoreFoundation"]
-    libs = ["moonlight-common-c"]
-    libs.extend(FFMPEG_LIBS) # 包含 iconv, avcodec, ...
-    env.Append(LIBPATH=[static_lib_dir], LIBS=libs, FRAMEWORKS=["Security", "CoreFoundation"])
-
-elif platform == "ios":
-    # 原有 LIBS: ["moonlight-common-c"]
-    libs = ["moonlight-common-c"]
-    libs.extend(FFMPEG_LIBS) # 包含 z, bz2, avcodec, ...
-    # FRAMEWORKS 已在上方 FFmpeg 配置段中添加
-    env.Append(LIBPATH=[static_lib_dir], LIBS=libs)
-
 # === 源码与头文件 ===
 env.Append(CPPPATH=["src/"])
 sources = Glob("src/*.cpp")
@@ -408,12 +387,9 @@ def copy_ffmpeg_dlls(to_bin = False):
     if platform == "windows":
         # 转换为 win64, linux64, linuxarm64 等
         platform_key = "win" + ("64" if arch == "x86_64" else "32")
-    elif platform == "linux":
+    elif platform == "linux" or platform == "android":
         # 转换为 linux64, linuxarm64 等
         platform_key = "linux" + ("64" if arch == "x86_64" else "arm64")
-    elif platform == "macos":
-        # macOS 统一使用 macos64 (您可以根据实际情况调整)
-        platform_key = "linuxarm64" 
         
     # 2. 定义源目录和目标目录
     FFMPEG_ROOT = Path("src/lib/ffmpeg")
@@ -439,7 +415,7 @@ def copy_ffmpeg_dlls(to_bin = False):
     elif platform == "linux" or platform == "android":
         # 拷贝所有 lib*.so* 文件
         FFMPEG_DLL_SRC_DIR = FFMPEG_ROOT / platform_key / "lib"
-        dll_sources = Glob(str(FFMPEG_DLL_SRC_DIR / "lib*.so*"))
+        dll_sources = Glob(str(FFMPEG_DLL_SRC_DIR / "lib*.so"))
         
     else:
         dll_sources = []
