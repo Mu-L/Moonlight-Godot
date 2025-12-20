@@ -2,9 +2,9 @@ name: Build Moonlight GDExtension (CMake + vcpkg)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "vcpkg" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "vcpkg" ]
   workflow_dispatch:
 
 jobs:
