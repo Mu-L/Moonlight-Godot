@@ -34,7 +34,7 @@ extern "C" {
 // 为了代码简洁和可读性，这里假设 Limelight.h 是在 include 路径下的。
 // 如果用户上传的文件名为 Limelight - 副本.h，则应调整为 #include "Limelight - 副本.h"
 extern "C" {
-#include "lib/moonlight-common-c/src/Limelight.h"
+#include <Limelight.h>
 }
 using namespace godot;
 

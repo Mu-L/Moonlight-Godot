@@ -1,4 +1,4 @@
-name: Build Moonlight GDExtension (FFmpeg Static)
+name: Build Moonlight GDExtension (CMake + vcpkg)
 
 on:
   push:
@@ -15,11 +15,14 @@ jobs:
         target-type: [template_release, template_debug]
         target:
           # 桌面平台
-          - { platform: linux, arch: x86_64, os: ubuntu-22.04, ffmpeg_arch: linux64 }
-          - { platform: linux, arch: arm64, os: ubuntu-22.04-arm, ffmpeg_arch: linuxarm64 } 
-          - { platform: windows, arch: x86_64, os: windows-latest, ffmpeg_arch: win64 }
-          - { platform: android, arch: arm64, os: ubuntu-24.04, ffmpeg_arch: linuxarm64 }
-          - { platform: android, arch: x86_64, os: ubuntu-22.04, ffmpeg_arch: linux64 }
+          - { platform: linux, arch: x86_64, os: ubuntu-22.04 }
+          - { platform: linux, arch: arm64, os: ubuntu-22.04-arm }
+          - { platform: windows, arch: x86_64, os: windows-latest }
+          - { platform: macos, arch: x86_64, os: macos-latest }
+          - { platform: macos, arch: arm64, os: macos-latest }
+          - { platform: ios, arch: arm64, os: macos-latest }
+          - { platform: android, arch: arm64, os: ubuntu-24.04 }
+          - { platform: android, arch: x86_64, os: ubuntu-22.04 }
         float-precision: [single]
         use_mbedtls: [false]
 
@@ -32,171 +35,270 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive 
+          submodules: recursive
 
-      # --- 依赖安装 (保持原逻辑，并适配移动平台) ---
-      # ⚠️ 注意：此处的 MbedTLS 安装依赖于您的 godot-cpp/moonlight-common-c 配置。
-      # 必须确保 godot-cpp setup action 及其它步骤已正确安装 Android/iOS 工具链和依赖。
-      - name: Setup Python & Install SCons
-        uses: actions/setup-python@v5
+      # --- 设置 vcpkg ---
+      - name: Setup vcpkg
+        uses: actions/checkout@v4
         with:
-          python-version: '3.x'
-      - run: pip install scons requests
+          repository: microsoft/vcpkg
+          path: vcpkg
+          ref: master
 
-      - name: Install MbedTLS&Openssl
-        if: ${{ matrix.target.platform != 'windows' }}
+      - name: Bootstrap vcpkg
         run: |
-          if [[ "${{ matrix.target.platform }}" == "linux" ]]; then
-            sudo apt-get update && sudo apt-get install -y libmbedtls-dev libssl-dev libevent-dev libffi-dev libgcrypt20-dev
-          elif [[ "${{ matrix.target.platform }}" == "android" ]]; then
-            sudo apt-get update && sudo apt-get install -y libmbedtls-dev libssl-dev libevent-dev libffi-dev libgcrypt20-dev
+          if [[ "${{ matrix.target.platform }}" == "windows" ]]; then
+            ./vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          else
+            ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           fi
 
-      # Add linux x86_32 toolchain
-      - name: Install multilib support
-        if: ${{ matrix.target.platform == 'linux' && matrix.target.arch == 'x86_32' }}
-        run: |
-          sudo apt-get update && sudo apt-get install -y gcc-multilib g++-multilib
-
-      - name: Install OpenSSL for Windows
-        if: ${{ matrix.target.platform == 'windows' && matrix.use_mbedtls == false }}
-        shell: pwsh
-        run: |
-          $url = "https://slproweb.com/download/Win64OpenSSL-1_1_1w.exe"
-          Invoke-WebRequest -Uri $url -OutFile openssl.exe
-          Start-Process -FilePath .\openssl.exe -ArgumentList "/silent","/verysilent" -Wait
-          echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
-      
-          # --- Setup godot-cpp (prebuilt lib) ---
-      # 此步骤由用户提供，用于安装工具链和 godot-cpp 预编译库
-      - name: Setup godot-cpp (Toolchain/SDKs)
-        # if : ${{ matrix.target.platform != 'android' || matrix.target.platform == 'android' && matrix.target.arch == 'x86_64' }}
-        uses: ./src/lib/godot-cpp/.github/actions/setup-godot-cpp
+      # --- 设置缓存 (必须在依赖安装之前) ---
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
         with:
-          platform: ${{ matrix.target.platform }}
-          em-version: 3.1.62 # 保持原样
-      # - name: Setup godot-cpp (Toolchain/SDKs) for Android Arm
-      #   if : ${{ matrix.target.platform == 'android' && matrix.target.arch == 'arm64' }} 
-      #   uses: ./.github/actions/setup-godot-cpp-arm
-      #   with:
-      #     platform: ${{ matrix.target.platform }}
-      #     em-version: 3.1.62 # 保持原样
+          path: |
+            vcpkg/installed
+            vcpkg/buildtrees
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
 
-      # --- 使用 ffmpeg-down.py 下载和安装 FFmpeg ---
-      - name: Download and Install FFmpeg Static Libs
-        shell: sh
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: |
+            build-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+            .cache
+          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/*.cpp', 'src/*.h') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-
+
+      # 映射平台配置到vcpkg标准triplet
+      - name: Set vcpkg triplet
+        id: set_triplet
         run: |
-          FFMPEG_ARCH=${{ matrix.target.ffmpeg_arch }}
-          TARGET_DIR="src/lib/ffmpeg/$FFMPEG_ARCH"
-          set PYTHONIOENCODING=utf-8
-          echo "Downloading FFmpeg for $FFMPEG_ARCH to $TARGET_DIR"
-          # ❗️ 重要提示：对于 Android/iOS，BtbN 不提供现成的静态库。
-          # 您可能需要将此步骤替换为使用自定义脚本或 pre-built artifacts 
-          # 来放置对应平台的 FFmpeg 静态库到 $TARGET_DIR 中。
-          python ffmpeg-down.py $FFMPEG_ARCH $TARGET_DIR
+          case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
+            "linux-x86_64")
+              echo "triplet=x64-linux" >> $GITHUB_OUTPUT
+              ;;
+            "linux-arm64")
+              echo "triplet=arm64-linux" >> $GITHUB_OUTPUT
+              ;;
+            "windows-x86_64")
+              echo "triplet=x64-windows" >> $GITHUB_OUTPUT
+              ;;
+            "macos-x86_64")
+              echo "triplet=x64-osx" >> $GITHUB_OUTPUT
+              ;;
+            "macos-arm64")
+              echo "triplet=arm64-osx" >> $GITHUB_OUTPUT
+              ;;
+            "ios-arm64")
+              echo "triplet=arm64-ios" >> $GITHUB_OUTPUT
+              ;;
+            "android-x86_64")
+              echo "triplet=x64-android" >> $GITHUB_OUTPUT
+              ;;
+            "android-arm64")
+              echo "triplet=arm64-android" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "triplet=${{ matrix.target.platform }}-${{ matrix.target.arch }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Install vcpkg dependencies
+        run: |
+          ./vcpkg/vcpkg integrate install
+          ./vcpkg/vcpkg install --triplet ${{ steps.set_triplet.outputs.triplet }}
+
+      # # --- 设置构建环境 ---
+      # - name: Setup CMake
+      #   uses: actions/setup-cmake@v4
+      #   with:
+      #     cmake-version: '3.27.0'
+
+      # # --- 设置 Android NDK (仅 Android 平台) ---
+      # - name: Setup Android NDK
+      #   if: ${{ matrix.target.platform == 'android' }}
+      #   uses: android-actions/setup-android@v3
+      #   with:
+      #     ndk-version: '25.2.9519653'
+
+      - name: Setup Android NDK (x86_64)
+        if: ${{ matrix.target.platform == 'android' && matrix.target.arch == 'x86_64' }}
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+  
+      - name: Setup Android NDK (arm64)
+        shell: bash
+        if: ${{ matrix.target.platform == 'android' || matrix.target.arch == 'arm64' }}
+        run: |
+          # NDK 版本来自输入
+          NDK_VER="r28c"
           
-          ls $TARGET_DIR          # 验证下载结果
-          if [ ! -d "$TARGET_DIR/lib" ] || [ ! -d "$TARGET_DIR/include" ]; then
-              echo "Error: FFmpeg libraries not found in expected path: $TARGET_DIR"
+          # 目标运行器是 Linux AArch64 (ubuntu-22.04-arm)，因此需要 Linux AArch64 的 NDK 包。
+          NDK_FILENAME="android-ndk-${NDK_VER}-aarch64-linux-musl.tar.xz"
+          DOWNLOAD_URL="https://github.com/HomuHomu833/android-ndk-custom/releases/download/r28/${NDK_FILENAME}"
+          
+          # 核心安装目录：用于解压
+          NDK_INSTALL_DIR="$HOME/ndk-custom"
+          
+          # 模拟 Android SDK 的 NDK 链接路径
+          ANDROID_SDK_ROOT="$HOME/android-sdk"
+          NDK_LINK_TARGET="$ANDROID_SDK_ROOT/ndk/${NDK_VER}"
+          
+          echo "Downloading custom NDK: ${NDK_FILENAME} from ${DOWNLOAD_URL}..."
+          mkdir -p "${NDK_INSTALL_DIR}"
+          
+          # 1. 下载 NDK 包
+          curl -L "${DOWNLOAD_URL}" -o "${NDK_INSTALL_DIR}/${NDK_FILENAME}"
+          
+          # 2. 解压
+          echo "Extracting NDK..."
+          tar -xf "${NDK_INSTALL_DIR}/${NDK_FILENAME}" -C "${NDK_INSTALL_DIR}"
+          
+          # 3. 确定 NDK 根目录
+          NDK_ROOT_DIR=$(find "${NDK_INSTALL_DIR}" -maxdepth 1 -type d -name "android-ndk-r*" -print -quit)
+
+          if [ -d "$NDK_ROOT_DIR" ]; then
+              echo "Successfully extracted NDK root: $NDK_ROOT_DIR"
+              
+              # 4. **新增：设置 SDK 和 NDK 链接**
+              echo "Setting up NDK symlink at SDK location: ${NDK_LINK_TARGET}"
+              mkdir -p "$(dirname "${NDK_LINK_TARGET}")"
+              # 创建符号链接，模拟 NDK 在 SDK 结构中的位置
+              ln -s "${NDK_ROOT_DIR}" "${NDK_LINK_TARGET}"
+              
+              # 5. 设置环境变量
+              # 必须设置 ANDROID_SDK_ROOT/ANDROID_HOME
+              echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+              echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+              
+              # 设置 ANDROID_NDK_ROOT/HOME 供 SCons/构建工具使用
+              echo "ANDROID_NDK_ROOT=${NDK_ROOT_DIR}" >> $GITHUB_ENV
+              echo "ANDROID_NDK_HOME=${NDK_ROOT_DIR}" >> $GITHUB_ENV
+              
+              # 将 NDK 工具链路径添加到 PATH
+              # 默认使用 linux-x86_64 host toolchain (兼容绝大多数 NDK 构建)
+              # 尽管 runner 是 arm64，但 NDK 内置的 prebuilt host toolchain 很多仍是 x86_64
+              TOOLCHAIN_HOST_ARCH="linux-x86_64"
+              TOOLCHAIN_BIN="${NDK_ROOT_DIR}/toolchains/llvm/prebuilt/${TOOLCHAIN_HOST_ARCH}/bin"
+              
+              if [ ! -d "$TOOLCHAIN_BIN" ]; then
+                  # 如果没有标准的 linux-x86_64，尝试 linux-aarch64
+                  TOOLCHAIN_HOST_ARCH="linux-arm64"
+                  TOOLCHAIN_BIN="${NDK_ROOT_DIR}/toolchains/llvm/prebuilt/${TOOLCHAIN_HOST_ARCH}/bin"
+                  echo "Warning: linux-x86_64 toolchain not found, trying linux-aarch64 host toolchain."
+              fi
+              
+              if [ -d "$TOOLCHAIN_BIN" ]; then
+                  echo "Adding ${TOOLCHAIN_BIN} to PATH..."
+                  echo "${TOOLCHAIN_BIN}" >> $GITHUB_PATH
+              else
+                  echo "::warning::Could not find prebuilt toolchain bin directory. PATH may be incomplete."
+              fi
+
+          else
+              echo "::error::NDK root directory (android-ndk-r*) not found in ${NDK_INSTALL_DIR}. Extraction failed or archive structure is unexpected."
               exit 1
           fi
-# 8. Cache Restore (.scons_cache)
-      - name: Restore SCons Cache
-        uses: ./src/lib/godot-cpp/.github/actions/godot-cache-restore
-        with:
-          scons-cache: ${{ github.workspace }}/.scons-cache/
-          cache-name: ${{ matrix.target.platform }}_${{ matrix.target.arch }}_${{ matrix.float-precision }}_${{ matrix.target-type }}
-      # --- Build with SCons (统一构建步骤) ---
-      - name: Build GDExtension
-        shell: sh
-        env:
-          SCONS_CACHE: ${{ github.workspace }}/.scons-cache/
+          
+          # 6. 清理下载的归档文件
+          rm "${NDK_INSTALL_DIR}/${NDK_FILENAME}"
+
+      # --- 配置 CMake ---
+      - name: Configure CMake
         run: |
-          # SCons 的 arch 参数
-          ARCH=${{ matrix.target.arch }}
-          if [ "$ARCH" == "universal" ]; then
-            ARCH="x86_64" 
+          BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
+          mkdir -p "$BUILD_DIR"
+          cd "$BUILD_DIR"
+
+          # 设置 CMake 参数
+          CMAKE_ARGS=(
+            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            -DVCPKG_TARGET_TRIPLET="${{ steps.set_triplet.outputs.triplet }}"
+            -DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
+          )
+
+          # 平台特定配置
+          if [[ "${{ matrix.target.platform }}" == "android" ]]; then
+            CMAKE_ARGS+=(
+              -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+              -DANDROID_ABI="${{ matrix.target.arch == 'arm64' && 'arm64-v8a' || 'x86_64' }}"
+              -DANDROID_PLATFORM=android-21
+            )
+          elif [[ "${{ matrix.target.platform }}" == "ios" ]]; then
+            CMAKE_ARGS+=(
+              -DCMAKE_SYSTEM_NAME=iOS
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.target.arch }}
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+            )
+          elif [[ "${{ matrix.target.platform }}" == "macos" ]]; then
+            CMAKE_ARGS+=(
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.target.arch }}
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+            )
           fi
-          PLATFORM=${{ matrix.target.platform }}
-          if [ "$PLATFORM" == "windows" ]; then
-          export OPENSSL_ROOT_DIR="C:\Program Files\OpenSSL"
-            OPENSSL_ROOT_DIR="C:\Program Files\OpenSSL" scons target=${{ matrix.target-type }} \
-                platform=${{ matrix.target.platform }} \
-                arch=$ARCH \
-                precision=${{ matrix.float-precision }} \
-                use_mbedtls=${{ matrix.use_mbedtls }}
+
+          # 执行 CMake 配置
+          cmake "${CMAKE_ARGS[@]}" ..
+
+      # --- 构建项目 ---
+      - name: Build with CMake
+        run: |
+          BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
+          cd "$BUILD_DIR"
+          
+          # 确定构建目标
+          if [[ "${{ matrix.target.platform }}" == "windows" ]]; then
+            cmake --build . --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }} --parallel
           else
-
-          scons target=${{ matrix.target-type }} \
-                platform=${{ matrix.target.platform }} \
-                arch=$ARCH \
-                precision=${{ matrix.float-precision }} \
-                use_mbedtls=${{ matrix.use_mbedtls }}
-
+            cmake --build . --parallel
           fi
-          # 10. Cache Save (.scons_cache)
-      - name: Save SCons Cache
-        uses: ./src/lib/godot-cpp/.github/actions/godot-cache-save
-        with:
-          scons-cache: ${{ github.workspace }}/.scons-cache/
-          cache-name: ${{ matrix.target.platform }}_${{ matrix.target.arch }}_${{ matrix.float-precision }}_${{ matrix.target-type }}
 
-                # Clean up compilation files
+      # --- 安装依赖库 ---
+      - name: Install dependencies
+        run: |
+          BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
+          cd "$BUILD_DIR"
+          
+          # 复制依赖库到输出目录
+          cmake --install . --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
+
+      # --- 清理编译文件 (Windows 特定) ---
       - name: Windows - Delete compilation files
         if: ${{ matrix.target.platform == 'windows' }}
         shell: pwsh
         run: |
           Remove-Item bin/* -Include *.exp,*.lib,*.pdb -Force
 
-      # --- Upload artifact ---
+
+      # --- 上传产物 ---
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: moonlight-gdext-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ matrix.use_mbedtls }}
           path: bin/
 
-
   merge:
     runs-on: ubuntu-22.04
     needs: build
     steps:
-      # 9.1 下载所有单独的产物
+      # 下载所有单独的产物
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
           path: downloaded-artifacts
           pattern: moonlight-gdext-*
-          # 关键：此选项确保每个产物被下载到以其名称命名的子文件夹中
-          # merge-multiple: true 
+          merge-multiple: true
 
-      # # 9.2 重新组织文件结构以符合要求：<final_name>/<artifact_name>/<content>
-      # - name: Restructure Artifacts
-      #   shell: bash
-      #   run: |
-      #     FINAL_PACKAGE_DIR="final-merged-package"
-      #     mkdir -p "$FINAL_PACKAGE_DIR"
-          
-      #     # 遍历所有下载的工件子目录（名称即为工件名）
-      #     for artifact_dir in downloaded-artifacts/*; do
-      #       if [ -d "$artifact_dir" ]; then
-      #         ARTIFACT_NAME=$(basename "$artifact_dir")
-      #         TARGET_SUBDIR="$FINAL_PACKAGE_DIR/$ARTIFACT_NAME"
-              
-      #         # 创建目标子目录，即结构中的 --<产物名字>
-      #         mkdir -p "$TARGET_SUBDIR"
-              
-      #         # 将工件内容移动到目标子目录。
-      #         # 原始文件结构：downloaded-artifacts/<artifact_name>/<bin/...>
-      #         # 目标文件结构：final-merged-package/<artifact_name>/<bin/...>
-      #         mv "$artifact_dir"/* "$TARGET_SUBDIR"
-      #         echo "Moved $ARTIFACT_NAME contents to $TARGET_SUBDIR"
-      #       fi
-      #     done
-
-      # 9.3 上传最终合并的产物
+      # 上传最终合并的产物
       - name: Upload Final Merged Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: moonlight-gdextension-all # 最终产物名称
-          path: downloaded-artifacts/    # 包含所需结构 (moonlight-gdext-*-*/bin/...) 的目录
-          # 原始分离的产物不会被删除，因为我们使用的是 actions/upload-artifact@v4，而非 merge action
+          name: moonlight-gdextension-all
+          path: downloaded-artifacts/

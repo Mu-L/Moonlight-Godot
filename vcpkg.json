@@ -1,0 +1,8 @@
+{
+  "dependencies": [
+    "ffmpeg",
+    "godot-cpp",
+    "moonlight-common-c",
+    "curl"
+  ]
+}

@@ -1,0 +1,104 @@
+cmake_minimum_required(VERSION 3.17)
+
+# 1. 项目基础设置
+set(LIBNAME "moonlight-godot" CACHE STRING "The name of the library")
+set(GODOT_PROJECT_DIR "demo" CACHE STRING "The directory of a Godot project folder")
+
+# vcpkg 工具链集成 (如果未通过命令行指定，则尝试自动检测)
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if(DEFINED ENV{VCPKG_ROOT})
+        set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+    endif()
+endif()
+
+project(${LIBNAME} LANGUAGES CXX)
+
+# 2. 平台与架构识别
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(TARGET_PLATFORM "windows")
+elseif(APPLE)
+    set(TARGET_PLATFORM "macos")
+else()
+    set(TARGET_PLATFORM "linux")
+endif()
+set(PLATFORM_ID "${TARGET_PLATFORM}.${CMAKE_SYSTEM_PROCESSOR}")
+
+# 3. 查找依赖项 (严格匹配 vcpkg 日志建议)
+
+# --- CURL ---
+find_package(CURL REQUIRED)
+
+# --- FFmpeg ---
+# 根据 vcpkg 日志提示，不使用 CONFIG 模式，使用变量方式链接
+find_package(FFMPEG REQUIRED)
+
+# --- Godot-cpp ---
+# 日志确认包名为 unofficial-godot-cpp
+find_package(unofficial-godot-cpp CONFIG REQUIRED)
+
+# --- Moonlight-common-c (自定义 Port) ---
+# 使用我们 patch 后的导出配置
+find_package(moonlight-common-c CONFIG REQUIRED)
+
+# 4. 获取 Godot-cpp 库后缀 (用于生成 .gdextension 能识别的文件名)
+get_target_property(GODOTCPP_SUFFIX unofficial::godot::cpp GODOTCPP_SUFFIX)
+
+# 5. 配置主目标
+add_library(${LIBNAME} SHARED)
+
+# 递归获取源文件
+file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "src/*.cpp" "src/*.h")
+target_sources(${LIBNAME} PRIVATE ${SOURCE_FILES})
+
+target_compile_features(${LIBNAME} PRIVATE cxx_std_17)
+
+# 包含路径
+target_include_directories(${LIBNAME} PRIVATE src)
+target_include_directories(${LIBNAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
+
+# 设置编译选项
+if(MSVC)
+    target_compile_options(${LIBNAME} PRIVATE /W4 /WX)
+else()
+    target_compile_options(${LIBNAME} PRIVATE -Wall -Wextra -Werror)
+endif()
+
+# 6. 链接依赖项
+target_link_libraries(${LIBNAME}
+    PRIVATE 
+    unofficial::godot::cpp              # Godot 接口
+    CURL::libcurl                       # CURL
+    moonlight-common-c::moonlight-common-c # Moonlight 核心
+    ${FFMPEG_LIBRARIES}                 # FFmpeg 库集合 (avcodec, avformat 等)
+)
+
+# 7. 输出设置
+set_target_properties(${LIBNAME} PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "${LIBNAME}${GODOTCPP_SUFFIX}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${PLATFORM_ID}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${PLATFORM_ID}"
+)
+
+# 8. 自动化部署到 Godot 项目
+set(INSTALL_DEMO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/addons/${LIBNAME}/bin/${PLATFORM_ID}")
+
+# 部署插件主 DLL/文件
+add_custom_command(TARGET ${LIBNAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${INSTALL_DEMO_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+        "$<TARGET_FILE:${LIBNAME}>" 
+        "${INSTALL_DEMO_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>"
+    COMMENT "Deploying plugin library to Godot project..."
+)
+
+# 在 Windows 上，自动识别并拷贝依赖的所有 vcpkg DLL (FFmpeg, CURL, OpenSSL 等)
+if(WIN32)
+    add_custom_command(TARGET ${LIBNAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_RUNTIME_DLLS:${LIBNAME}>"
+            "${INSTALL_DEMO_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+        COMMENT "Deploying runtime DLLs to Godot project..."
+    )
+endif()
