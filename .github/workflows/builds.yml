@@ -102,7 +102,7 @@ jobs:
           # 修复歧义：精确指定根目录下的 manifest 文件
           vcpkgJsonGlob: 'vcpkg.json' 
           # 排除 vcpkg 内部目录，防止扫描到不该看的文件
-          vcpkgJsonIgnores: '**/vcpkg/**'
+          # vcpkgJsonIgnores: '**/vcpkg/**'
 
       - name: Restore Project Build Cache
         id: build-cache-restore
