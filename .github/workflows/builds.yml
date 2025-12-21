@@ -93,28 +93,29 @@ jobs:
       # --- 初始化 vcpkg (不手动 checkout，让 Action 管理) ---
       - name: Run vcpkg
         uses: lukka/run-vcpkg@v11
-        env:
-          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
         with:
           # 与 vcpkg-configuration.json 的 baseline 保持一致
           # vcpkgGitCommitId: 'd2452281016c6d77b6ef199d599d9929eafe4807'
           vcpkgJsonGlob: 'vcpkg.json' # 锁定根目录文件，修复 ambiguity 报错
-          runVcpkgInstall: true
-      - name: Save vcpkg cache
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
+          #runVcpkgInstall: true
 
       # --- 使用 run-cmake 执行规范化构建 ---
       - name: Run CMake
         uses: lukka/run-cmake@v10
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
         with:
           configurePreset: '${{ matrix.target.platform }}'
           buildPreset: '${{ matrix.target.platform }}'
           # 通过额外参数处理 Release/Debug
           configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
+
+      - name: Save vcpkg cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg_cache
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
 
       # --- 产物处理 ---
       - name: Windows - Cleanup
