@@ -26,7 +26,8 @@ jobs:
     runs-on: ${{ matrix.target.os }}
     
     env:
-      VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite' # 强制 run-vcpkg 使用 GitHub Actions 缓存后端
+      # 开启 GitHub Actions 缓存后端
+      VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
 
     steps:
       - name: Checkout Repository
@@ -34,7 +35,7 @@ jobs:
         with:
           submodules: recursive
 
-      # 修正 Linux 下 CMakeLists.txt 的文件名大小写问题
+      # 修复文件名大小写
       - name: Fix CMakeLists Filename Case (Linux/Android)
         if: runner.os != 'Windows'
         run: |
@@ -42,7 +43,6 @@ jobs:
             mv CmakeLists.txt CMakeLists.txt
           fi
 
-      # 安装系统编译器依赖
       - name: Install System Dependencies
         shell: bash
         run: |
@@ -52,11 +52,9 @@ jobs:
             brew install nasm
           fi
 
-      # 使用模块获取最新版 CMake 和 Ninja
       - name: Get CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      # 设置 vcpkg Triplet 变量
       - name: Set vcpkg triplet
         id: set_triplet
         shell: bash
@@ -72,20 +70,10 @@ jobs:
             "android-arm64")  T="arm64-android" ;;
           esac
           echo "triplet=$T" >> $GITHUB_OUTPUT
+          # 设为环境变量，run-vcpkg 会自动读取
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
 
-      # 使用 lukka/run-vcpkg 处理 vcpkg 安装与二进制缓存
-      # 它会自动处理 bootstrap 和缓存同步
-      - name: Run vcpkg to install dependencies
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-          vcpkgGitCommitId: 'master' # 如果不是 submodule，指定 commit
-          runVcpkgInstall: true
-          # 传递环境变量，确保 vcpkg 知道我们要编哪个平台
-          vcpkgJsonGlob: '**/vcpkg.json'
-
-      # 设置 Android NDK (保持您的自定义下载逻辑)
+      # 设置 Android NDK
       - name: Setup Android NDK
         if: matrix.target.platform == 'android'
         shell: bash
@@ -101,11 +89,21 @@ jobs:
             NDK_PATH=$(find "${NDK_INSTALL_DIR}" -maxdepth 1 -type d -name "android-ndk-r*" -print -quit)
             echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
           else
-            # x86_64 使用标准 NDK
             echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.0.12433566" >> $GITHUB_ENV
           fi
 
-      # 针对项目本身的构建缓存 (Build Cache)
+      # --- 关键重构：使用 run-vcpkg ---
+      - name: Run vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          # 让插件自己管理 vcpkg 目录，不要手动 checkout vcpkg 仓库
+          # vcpkgGitCommitId: 'd2452281016c6d77b6ef199d599d9929eafe4807' # 建议与 vcpkg-configuration.json 一致
+          runVcpkgInstall: true
+          # 修复歧义：精确指定根目录下的 manifest 文件
+          vcpkgJsonGlob: 'vcpkg.json' 
+          # 排除 vcpkg 内部目录，防止扫描到不该看的文件
+          vcpkgJsonIgnores: '**/vcpkg/**'
+
       - name: Restore Project Build Cache
         id: build-cache-restore
         uses: actions/cache/restore@v4
@@ -113,13 +111,13 @@ jobs:
           path: build-${{ matrix.target.platform }}-${{ matrix.target.arch }}
           key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
 
-      # 配置与构建
       - name: Configure and Build Project
         shell: bash
         run: |
           BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
+          # 注意：run-vcpkg 会自动设置 VCPKG_ROOT 环境变量
           CMAKE_ARGS=(
-            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
             -DVCPKG_TARGET_TRIPLET="${{ steps.set_triplet.outputs.triplet }}"
             -DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
             -G Ninja
@@ -137,16 +135,10 @@ jobs:
             CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=${{ matrix.target.arch }})
           fi
 
-          # 1. 配置 (明确指定源码位置)
           cmake -S . -B "$BUILD_DIR" "${CMAKE_ARGS[@]}"
-          
-          # 2. 构建
           cmake --build "$BUILD_DIR" --parallel --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
-          
-          # 3. 安装
           cmake --install "$BUILD_DIR" --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
 
-      # 保存项目构建缓存 (即便失败也尝试保存)
       - name: Save Project Build Cache
         if: always()
         uses: actions/cache/save@v4
@@ -154,7 +146,6 @@ jobs:
           path: build-${{ matrix.target.platform }}-${{ matrix.target.arch }}
           key: ${{ steps.build-cache-restore.outputs.cache-primary-key }}
 
-      # 清理并上传产物
       - name: Windows - Cleanup PDBs
         if: matrix.target.platform == 'windows' && success()
         shell: pwsh
