@@ -34,11 +34,24 @@ jobs:
         with:
           submodules: recursive
 
+      # ③ 关键修复：修正 Linux 下 CMakeLists.txt 的文件名大小写问题
+      - name: Fix CMakeLists Filename Case (Linux/Android)
+        if: runner.os != 'Windows'
+        run: |
+          if [ -f "CmakeLists.txt" ]; then
+            mv CmakeLists.txt CMakeLists.txt
+            echo "Renamed CmakeLists.txt to CMakeLists.txt for case-sensitive FS"
+          fi
+
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y nasm
+      - name: Install System Dependencies (MacOS)
+        if: runner.os == 'macos'
+        run: |
+          brew install nasm
 
       # --- 1. 设置 vcpkg 环境 ---
       - name: Setup vcpkg
