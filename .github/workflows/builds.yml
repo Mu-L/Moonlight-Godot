@@ -89,7 +89,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
       # --- 初始化 vcpkg (不手动 checkout，让 Action 管理) ---
       - name: Run vcpkg
         uses: lukka/run-vcpkg@v11
@@ -113,9 +113,10 @@ jobs:
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
+        if: always()
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       # --- 产物处理 ---
       - name: Windows - Cleanup
