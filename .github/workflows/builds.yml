@@ -32,6 +32,24 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Fix CMakeLists Case (Force)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          # 使用 -iname (不区分大小写) 查找并重命名为标准的 CMakeLists.txt
+          # 这样无论它是 CmakeLists.txt 还是 cmakelists.txt 都能被修复
+          FILENAME=$(find . -maxdepth 1 -iname "cmakelists.txt" -print -quit)
+          if [ -n "$FILENAME" ] && [ "$FILENAME" != "./CMakeLists.txt" ]; then
+            echo "Renaming $FILENAME to ./CMakeLists.txt"
+            mv "$FILENAME" CMakeLists.txt
+          fi
+          
+          # 同时检查是否有 vcpkg.json 的大小写问题
+          VCPKG_JSON=$(find . -maxdepth 1 -iname "vcpkg.json" -print -quit)
+          if [ -n "$VCPKG_JSON" ] && [ "$VCPKG_JSON" != "./vcpkg.json" ]; then
+            mv "$VCPKG_JSON" vcpkg.json
+          fi
+          
       # --- 工具准备 ---
       - name: Get CMake and Ninja
         uses: lukka/get-cmake@latest
@@ -52,26 +70,19 @@ jobs:
           esac
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
 
-      # --- Android NDK 处理 ---
-      - name: Setup Android NDK
-        if: matrix.target.platform == 'android'
-        shell: bash
-        run: |
-          if [[ "${{ matrix.target.arch }}" == "arm64" ]]; then
-            # arm64 运行器需要自定义 NDK
-            curl -L "https://github.com/HomuHomu833/android-ndk-custom/releases/download/r28/android-ndk-r28c-aarch64-linux-musl.tar.xz" -o ndk.tar.xz
-            tar -xf ndk.tar.xz
-            echo "ANDROID_NDK_HOME=$(pwd)/$(ls -d android-ndk-r*)" >> $GITHUB_ENV
-          else
-            echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.0.12433566" >> $GITHUB_ENV
-          fi
+      - name: Setup Android NDK 
+        if: ${{ matrix.target.platform == 'android'}}
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
 
       # --- 初始化 vcpkg (不手动 checkout，让 Action 管理) ---
       - name: Run vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           # 与 vcpkg-configuration.json 的 baseline 保持一致
-          vcpkgGitCommitId: 'd2452281016c6d77b6ef199d599d9929eafe4807'
+          # vcpkgGitCommitId: 'd2452281016c6d77b6ef199d599d9929eafe4807'
           vcpkgJsonGlob: 'vcpkg.json' # 锁定根目录文件，修复 ambiguity 报错
 
       # --- 使用 run-cmake 执行规范化构建 ---
