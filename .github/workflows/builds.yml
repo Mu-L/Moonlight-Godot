@@ -24,9 +24,9 @@ jobs:
           - { platform: android, arch: x86_64, os: ubuntu-22.04 }
 
     runs-on: ${{ matrix.target.os }}
-    defaults:
-      run:
-        shell: bash
+    
+    env:
+      VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite' # 强制 run-vcpkg 使用 GitHub Actions 缓存后端
 
     steps:
       - name: Checkout Repository
@@ -34,154 +34,131 @@ jobs:
         with:
           submodules: recursive
 
-      # ③ 关键修复：修正 Linux 下 CMakeLists.txt 的文件名大小写问题
+      # 修正 Linux 下 CMakeLists.txt 的文件名大小写问题
       - name: Fix CMakeLists Filename Case (Linux/Android)
         if: runner.os != 'Windows'
         run: |
           if [ -f "CmakeLists.txt" ]; then
             mv CmakeLists.txt CMakeLists.txt
-            echo "Renamed CmakeLists.txt to CMakeLists.txt for case-sensitive FS"
           fi
 
-      - name: Install System Dependencies (Linux)
-        if: runner.os == 'Linux'
+      # 安装系统编译器依赖
+      - name: Install System Dependencies
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y nasm
-      - name: Install System Dependencies (MacOS)
-        if: runner.os == 'macos'
-        run: |
-          brew install nasm
-
-      # --- 1. 设置 vcpkg 环境 ---
-      - name: Setup vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
-          ref: master
-
-      - name: Bootstrap vcpkg
-        run: |
-          if [[ "${{ matrix.target.platform }}" == "windows" ]]; then
-            ./vcpkg/bootstrap-vcpkg.bat -disableMetrics
-          else
-            ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get update && sudo apt-get install -y nasm
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install nasm
           fi
 
+      # 使用模块获取最新版 CMake 和 Ninja
+      - name: Get CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      # 设置 vcpkg Triplet 变量
       - name: Set vcpkg triplet
         id: set_triplet
+        shell: bash
         run: |
           case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
-            "linux-x86_64") echo "triplet=x64-linux" >> $GITHUB_OUTPUT ;;
-            "linux-arm64") echo "triplet=arm64-linux" >> $GITHUB_OUTPUT ;;
-            "windows-x86_64") echo "triplet=x64-windows" >> $GITHUB_OUTPUT ;;
-            "macos-x86_64") echo "triplet=x64-osx" >> $GITHUB_OUTPUT ;;
-            "macos-arm64") echo "triplet=arm64-osx" >> $GITHUB_OUTPUT ;;
-            "ios-arm64") echo "triplet=arm64-ios" >> $GITHUB_OUTPUT ;;
-            "android-x86_64") echo "triplet=x64-android" >> $GITHUB_OUTPUT ;;
-            "android-arm64") echo "triplet=arm64-android" >> $GITHUB_OUTPUT ;;
-            *) echo "triplet=${{ matrix.target.platform }}-${{ matrix.target.arch }}" >> $GITHUB_OUTPUT ;;
+            "linux-x86_64")   T="x64-linux" ;;
+            "linux-arm64")    T="arm64-linux" ;;
+            "windows-x86_64") T="x64-windows" ;;
+            "macos-x86_64")   T="x64-osx" ;;
+            "macos-arm64")    T="arm64-osx" ;;
+            "ios-arm64")      T="arm64-ios" ;;
+            "android-x86_64") T="x64-android" ;;
+            "android-arm64")  T="arm64-android" ;;
           esac
+          echo "triplet=$T" >> $GITHUB_OUTPUT
+          echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
 
-      # --- 2. vcpkg 依赖缓存逻辑 ---
-      - name: Restore vcpkg Cache
-        id: vcpkg-cache-restore
-        uses: actions/cache/restore@v4
+      # 使用 lukka/run-vcpkg 处理 vcpkg 安装与二进制缓存
+      # 它会自动处理 bootstrap 和缓存同步
+      - name: Run vcpkg to install dependencies
+        uses: lukka/run-vcpkg@v11
         with:
-          path: |
-            vcpkg/installed
-            vcpkg/downloads
-          key: ${{ runner.os }}-vcpkg-${{ steps.set_triplet.outputs.triplet }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-${{ steps.set_triplet.outputs.triplet }}-
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+          vcpkgGitCommitId: 'master' # 如果不是 submodule，指定 commit
+          runVcpkgInstall: true
+          # 传递环境变量，确保 vcpkg 知道我们要编哪个平台
+          vcpkgJsonGlob: '**/vcpkg.json'
 
-      - name: Install vcpkg dependencies
-        run: ./vcpkg/vcpkg install --triplet ${{ steps.set_triplet.outputs.triplet }}
-
-      - name: Save vcpkg Cache
-        # 仅在恢复失败（缓存未命中）或 vcpkg.json 更改时保存
-        if: steps.vcpkg-cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            vcpkg/installed
-            vcpkg/downloads
-          key: ${{ steps.vcpkg-cache-restore.outputs.cache-primary-key }}
-
-      # --- 3. 设置 Android NDK (仅 Android) ---
-      - name: Setup Android NDK (x86_64)
-        if: ${{ matrix.target.platform == 'android' && matrix.target.arch == 'x86_64' }}
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r28c
-          link-to-sdk: true
-  
-      - name: Setup Android NDK (arm64)
-        if: ${{ matrix.target.platform == 'android' && matrix.target.arch == 'arm64' }}
+      # 设置 Android NDK (保持您的自定义下载逻辑)
+      - name: Setup Android NDK
+        if: matrix.target.platform == 'android'
+        shell: bash
         run: |
-          NDK_VER="r28c"
-          NDK_FILENAME="android-ndk-${NDK_VER}-aarch64-linux-musl.tar.xz"
-          DOWNLOAD_URL="https://github.com/HomuHomu833/android-ndk-custom/releases/download/r28/${NDK_FILENAME}"
-          NDK_INSTALL_DIR="$HOME/ndk-custom"
-          mkdir -p "${NDK_INSTALL_DIR}"
-          curl -L "${DOWNLOAD_URL}" -o "${NDK_INSTALL_DIR}/${NDK_FILENAME}"
-          tar -xf "${NDK_INSTALL_DIR}/${NDK_FILENAME}" -C "${NDK_INSTALL_DIR}"
-          NDK_ROOT_DIR=$(find "${NDK_INSTALL_DIR}" -maxdepth 1 -type d -name "android-ndk-r*" -print -quit)
-          echo "ANDROID_NDK_HOME=${NDK_ROOT_DIR}" >> $GITHUB_ENV
+          if [[ "${{ matrix.target.arch }}" == "arm64" ]]; then
+            NDK_VER="r28c"
+            NDK_FILENAME="android-ndk-${NDK_VER}-aarch64-linux-musl.tar.xz"
+            DOWNLOAD_URL="https://github.com/HomuHomu833/android-ndk-custom/releases/download/r28/${NDK_FILENAME}"
+            NDK_INSTALL_DIR="$HOME/ndk-custom"
+            mkdir -p "${NDK_INSTALL_DIR}"
+            curl -L "${DOWNLOAD_URL}" -o "${NDK_INSTALL_DIR}/${NDK_FILENAME}"
+            tar -xf "${NDK_INSTALL_DIR}/${NDK_FILENAME}" -C "${NDK_INSTALL_DIR}"
+            NDK_PATH=$(find "${NDK_INSTALL_DIR}" -maxdepth 1 -type d -name "android-ndk-r*" -print -quit)
+            echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
+          else
+            # x86_64 使用标准 NDK
+            echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.0.12433566" >> $GITHUB_ENV
+          fi
 
-      # --- 4. CMake 构建缓存逻辑 ---
-      - name: Restore CMake Build Cache
-        id: cmake-cache-restore
+      # 针对项目本身的构建缓存 (Build Cache)
+      - name: Restore Project Build Cache
+        id: build-cache-restore
         uses: actions/cache/restore@v4
         with:
           path: build-${{ matrix.target.platform }}-${{ matrix.target.arch }}
-          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
-          restore-keys: |
-            ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
 
-      - name: Configure CMake
+      # 配置与构建
+      - name: Configure and Build Project
+        shell: bash
         run: |
           BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
           CMAKE_ARGS=(
-            -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
             -DVCPKG_TARGET_TRIPLET="${{ steps.set_triplet.outputs.triplet }}"
             -DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
+            -G Ninja
           )
+          
           if [[ "${{ matrix.target.platform }}" == "android" ]]; then
-            CMAKE_ARGS+=(-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" -DANDROID_ABI="${{ matrix.target.arch == 'arm64' && 'arm64-v8a' || 'x86_64' }}" -DANDROID_PLATFORM=android-21)
+            CMAKE_ARGS+=(
+              -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+              -DANDROID_ABI="${{ matrix.target.arch == 'arm64' && 'arm64-v8a' || 'x86_64' }}"
+              -DANDROID_PLATFORM=android-21
+            )
           elif [[ "${{ matrix.target.platform }}" == "ios" ]]; then
-            CMAKE_ARGS+=(-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=${{ matrix.target.arch }} -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0)
+            CMAKE_ARGS+=(-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0)
           elif [[ "${{ matrix.target.platform }}" == "macos" ]]; then
             CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=${{ matrix.target.arch }})
           fi
-          cmake -S "$GITHUB_WORKSPACE" -B "$BUILD_DIR" "${CMAKE_ARGS[@]}"
 
-      - name: Build with CMake
-        run: |
-          BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
+          # 1. 配置 (明确指定源码位置)
+          cmake -S . -B "$BUILD_DIR" "${CMAKE_ARGS[@]}"
+          
+          # 2. 构建
           cmake --build "$BUILD_DIR" --parallel --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
+          
+          # 3. 安装
+          cmake --install "$BUILD_DIR" --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
 
-      - name: Save CMake Build Cache
-        # 即使 Build 失败也可以考虑保存，以保留已完成的编译单元 (.o/.obj)
-        # 也可以设置为仅在成功时保存
+      # 保存项目构建缓存 (即便失败也尝试保存)
+      - name: Save Project Build Cache
+        if: always()
         uses: actions/cache/save@v4
         with:
           path: build-${{ matrix.target.platform }}-${{ matrix.target.arch }}
-          key: ${{ steps.cmake-cache-restore.outputs.cache-primary-key }}
+          key: ${{ steps.build-cache-restore.outputs.cache-primary-key }}
 
-      # --- 5. 产物处理 ---
-      - name: Install and Export
-        if: success()
-        run: |
-          BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
-          cmake --install "$BUILD_DIR" --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
-
+      # 清理并上传产物
       - name: Windows - Cleanup PDBs
-        if: ${{ matrix.target.platform == 'windows' && success() }}
+        if: matrix.target.platform == 'windows' && success()
         shell: pwsh
-        run: |
-          if (Test-Path bin) { Get-ChildItem bin/* -Include *.exp,*.lib,*.pdb -Recurse | Remove-Item -Force }
+        run: if (Test-Path bin) { Get-ChildItem bin/* -Include *.exp,*.lib,*.pdb -Recurse | Remove-Item -Force }
 
       - name: Upload Artifact
         if: success()
