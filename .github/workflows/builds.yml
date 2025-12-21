@@ -1,9 +1,7 @@
-name: Build Moonlight GDExtension (CMake + vcpkg)
+name: Build Moonlight GDExtension (Standardized)
 
 on:
   push:
-    branches: [ "vcpkg" ]
-  pull_request:
     branches: [ "vcpkg" ]
   workflow_dispatch:
 
@@ -26,7 +24,6 @@ jobs:
     runs-on: ${{ matrix.target.os }}
     
     env:
-      # 开启 GitHub Actions 缓存后端
       VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
 
     steps:
@@ -35,142 +32,69 @@ jobs:
         with:
           submodules: recursive
 
-      # 修复文件名大小写
-      - name: Fix CMakeLists Filename Case (Linux/Android)
-        if: runner.os != 'Windows'
-        run: |
-          if [ -f "CmakeLists.txt" ]; then
-            mv CmakeLists.txt CMakeLists.txt
-          fi
-
-      - name: Install System Dependencies
-        shell: bash
-        run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            sudo apt-get update && sudo apt-get install -y nasm
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            brew install nasm
-          fi
-
+      # --- 工具准备 ---
       - name: Get CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Set vcpkg triplet
-        id: set_triplet
+      - name: Set Environment Variables
         shell: bash
         run: |
+          # 映射 Triplet
           case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
             "linux-x86_64")   T="x64-linux" ;;
             "linux-arm64")    T="arm64-linux" ;;
             "windows-x86_64") T="x64-windows" ;;
-            "macos-x86_64")   T="x64-osx" ;;
-            "macos-arm64")    T="arm64-osx" ;;
+            "macos-x86_64")   T="x64-osx";  echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> $GITHUB_ENV ;;
+            "macos-arm64")    T="arm64-osx"; echo "CMAKE_OSX_ARCHITECTURES=arm64" >> $GITHUB_ENV ;;
             "ios-arm64")      T="arm64-ios" ;;
-            "android-x86_64") T="x64-android" ;;
-            "android-arm64")  T="arm64-android" ;;
+            "android-x86_64") T="x64-android"; echo "ANDROID_ABI=x86_64" >> $GITHUB_ENV ;;
+            "android-arm64")  T="arm64-android"; echo "ANDROID_ABI=arm64-v8a" >> $GITHUB_ENV ;;
           esac
-          echo "triplet=$T" >> $GITHUB_OUTPUT
-          # 设为环境变量，run-vcpkg 会自动读取
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
 
-      # 设置 Android NDK
+      # --- Android NDK 处理 ---
       - name: Setup Android NDK
         if: matrix.target.platform == 'android'
         shell: bash
         run: |
           if [[ "${{ matrix.target.arch }}" == "arm64" ]]; then
-            NDK_VER="r28c"
-            NDK_FILENAME="android-ndk-${NDK_VER}-aarch64-linux-musl.tar.xz"
-            DOWNLOAD_URL="https://github.com/HomuHomu833/android-ndk-custom/releases/download/r28/${NDK_FILENAME}"
-            NDK_INSTALL_DIR="$HOME/ndk-custom"
-            mkdir -p "${NDK_INSTALL_DIR}"
-            curl -L "${DOWNLOAD_URL}" -o "${NDK_INSTALL_DIR}/${NDK_FILENAME}"
-            tar -xf "${NDK_INSTALL_DIR}/${NDK_FILENAME}" -C "${NDK_INSTALL_DIR}"
-            NDK_PATH=$(find "${NDK_INSTALL_DIR}" -maxdepth 1 -type d -name "android-ndk-r*" -print -quit)
-            echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
+            # arm64 运行器需要自定义 NDK
+            curl -L "https://github.com/HomuHomu833/android-ndk-custom/releases/download/r28/android-ndk-r28c-aarch64-linux-musl.tar.xz" -o ndk.tar.xz
+            tar -xf ndk.tar.xz
+            echo "ANDROID_NDK_HOME=$(pwd)/$(ls -d android-ndk-r*)" >> $GITHUB_ENV
           else
             echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.0.12433566" >> $GITHUB_ENV
           fi
 
-      # --- 关键重构：使用 run-vcpkg ---
+      # --- 初始化 vcpkg (不手动 checkout，让 Action 管理) ---
       - name: Run vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          # 让插件自己管理 vcpkg 目录，不要手动 checkout vcpkg 仓库
-          # vcpkgGitCommitId: 'd2452281016c6d77b6ef199d599d9929eafe4807' # 建议与 vcpkg-configuration.json 一致
-          runVcpkgInstall: true
-          # 修复歧义：精确指定根目录下的 manifest 文件
-          vcpkgJsonGlob: 'vcpkg.json' 
-          # 排除 vcpkg 内部目录，防止扫描到不该看的文件
-          # vcpkgJsonIgnores: '**/vcpkg/**'
+          # 与 vcpkg-configuration.json 的 baseline 保持一致
+          vcpkgGitCommitId: 'd2452281016c6d77b6ef199d599d9929eafe4807'
+          vcpkgJsonGlob: 'vcpkg.json' # 锁定根目录文件，修复 ambiguity 报错
 
-      - name: Restore Project Build Cache
-        id: build-cache-restore
-        uses: actions/cache/restore@v4
+      # --- 使用 run-cmake 执行规范化构建 ---
+      - name: Run CMake
+        uses: lukka/run-cmake@v10
         with:
-          path: build-${{ matrix.target.platform }}-${{ matrix.target.arch }}
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('CMakeLists.txt', 'src/**') }}
+          configurePreset: '${{ matrix.target.platform }}'
+          buildPreset: '${{ matrix.target.platform }}'
+          # 通过额外参数处理 Release/Debug
+          configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
+          buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
-      - name: Configure and Build Project
-        shell: bash
-        run: |
-          BUILD_DIR="build-${{ matrix.target.platform }}-${{ matrix.target.arch }}"
-          # 注意：run-vcpkg 会自动设置 VCPKG_ROOT 环境变量
-          CMAKE_ARGS=(
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-            -DVCPKG_TARGET_TRIPLET="${{ steps.set_triplet.outputs.triplet }}"
-            -DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
-            -G Ninja
-          )
-          
-          if [[ "${{ matrix.target.platform }}" == "android" ]]; then
-            CMAKE_ARGS+=(
-              -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
-              -DANDROID_ABI="${{ matrix.target.arch == 'arm64' && 'arm64-v8a' || 'x86_64' }}"
-              -DANDROID_PLATFORM=android-21
-            )
-          elif [[ "${{ matrix.target.platform }}" == "ios" ]]; then
-            CMAKE_ARGS+=(-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0)
-          elif [[ "${{ matrix.target.platform }}" == "macos" ]]; then
-            CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=${{ matrix.target.arch }})
-          fi
-
-          cmake -S . -B "$BUILD_DIR" "${CMAKE_ARGS[@]}"
-          cmake --build "$BUILD_DIR" --parallel --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
-          cmake --install "$BUILD_DIR" --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
-
-      - name: Save Project Build Cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: build-${{ matrix.target.platform }}-${{ matrix.target.arch }}
-          key: ${{ steps.build-cache-restore.outputs.cache-primary-key }}
-
-      - name: Windows - Cleanup PDBs
-        if: matrix.target.platform == 'windows' && success()
+      # --- 产物处理 ---
+      - name: Windows - Cleanup
+        if: matrix.target.platform == 'windows'
         shell: pwsh
-        run: if (Test-Path bin) { Get-ChildItem bin/* -Include *.exp,*.lib,*.pdb -Recurse | Remove-Item -Force }
+        run: |
+          if (Test-Path bin) { 
+            Get-ChildItem bin/* -Include *.exp,*.lib,*.pdb -Recurse | Remove-Item -Force 
+          }
 
       - name: Upload Artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: moonlight-gdext-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}
           path: bin/
-
-  merge:
-    runs-on: ubuntu-22.04
-    needs: build
-    steps:
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: downloaded-artifacts
-          pattern: moonlight-gdext-*
-          merge-multiple: true
-
-      - name: Upload Final Merged Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: moonlight-gdextension-all
-          path: downloaded-artifacts/
