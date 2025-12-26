@@ -118,6 +118,8 @@ jobs:
       # --- 使用 run-cmake 执行规范化构建 ---
       - name: Run CMake
         uses: lukka/run-cmake@v10
+        env:
+          VCPKG_FORCE_SYSTEM_BINARIES: ${{ matrix.target.arch == 'arm64' && '1' || '0' }}
         with:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
