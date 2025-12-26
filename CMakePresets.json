@@ -8,7 +8,8 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_TARGET_TRIPLET": "$env{VCPKG_DEFAULT_TRIPLET}"
+        "VCPKG_TARGET_TRIPLET": "$env{VCPKG_DEFAULT_TRIPLET}",
+        "CMAKE_COMPILE_WARNING_AS_ERROR": "FALSE"
       }
     },
     { "name": "linux", "inherits": "base" },
