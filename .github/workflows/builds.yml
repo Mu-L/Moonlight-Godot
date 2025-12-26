@@ -32,7 +32,7 @@ jobs:
       # VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
       # nuget vcpkg缓存
       USERNAME: ${{ github.repository_owner }}
-      VCPKG_EXE: "[ String.raw`${{ github.workspace }}/vcpkg/vcpkg` ]"
+      VCPKG_EXE: ${{ github.workspace }}/vcpkg/vcpkg
       FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
       VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json,readwrite"
 
