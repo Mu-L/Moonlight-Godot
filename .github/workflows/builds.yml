@@ -115,11 +115,23 @@ jobs:
         with:
           vcpkgJsonGlob: "vcpkg.json"
 
+      - name: Add NuGet sources for vcpkg cache
+        shell: pwsh
+        run: |
+          .$(${{ env.VCPKG_EXE }} fetch nuget) `
+            sources add `
+            -Source "${{ env.FEED_URL }}" `
+            -StorePasswordInClearText `
+            -Name GitHubPackages `
+            -UserName "${{ env.USERNAME }}" `
+            -Password "${{ secrets.GITHUB_TOKEN }}"
+          .$(${{ env.VCPKG_EXE }} fetch nuget) `
+            setapikey "${{ secrets.GITHUB_TOKEN }}" `
+            -Source "${{ env.FEED_URL }}"
+
       # --- 使用 run-cmake 执行规范化构建 ---
       - name: Run CMake
         uses: lukka/run-cmake@v10
-        env:
-          VCPKG_FORCE_SYSTEM_BINARIES: ${{ matrix.target.arch == 'arm64' && '1' || '0' }}
         with:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
