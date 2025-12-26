@@ -76,9 +76,9 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            sudo apt-get update && sudo apt-get install -y nasm
+            sudo apt-get update && sudo apt-get install -y nasm linux-libc-dev
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            brew install nasm
+            brew install nasm mono
           fi
 
       - name: Get CMake and Ninja
