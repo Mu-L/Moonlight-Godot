@@ -90,6 +90,11 @@ jobs:
 
       - name: Get CMake and Ninja
         uses: lukka/get-cmake@latest
+        
+      - name: Setup .NET for Nuget
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
 
       - name: Setup Android NDK
         if: ${{ matrix.target.platform == 'android'}}
