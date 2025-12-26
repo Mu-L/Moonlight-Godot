@@ -24,7 +24,11 @@ jobs:
           - { platform: android, arch: arm64, os: ubuntu-24.04 }
           - { platform: android, arch: x86_64, os: ubuntu-22.04 }
     runs-on: ${{ matrix.target.os }}
-
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 实验性：使用GitHub dependency graph
+      VCPKG_FEATURE_FLAGS: dependencygraph
+      
     steps:
       # ——环境初始化——
       - name: Checkout Repository
@@ -66,6 +70,19 @@ jobs:
           esac
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
 
+      # ——准备编译工具——
+      # 安装系统编译器依赖
+      - name: Install System Dependencies
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get update && sudo apt-get install -y nasm
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install nasm
+          fi
+
+      - name: Get CMake and Ninja
+        uses: lukka/get-cmake@latest
       - name: Setup Android NDK 
         if: ${{ matrix.target.platform == 'android'}}
         uses: nttld/setup-ndk@v1
