@@ -28,7 +28,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # 实验性：使用GitHub dependency graph
       VCPKG_FEATURE_FLAGS: dependencygraph
-
+      
     steps:
       # ——环境初始化——
       - name: Checkout Repository
@@ -53,7 +53,7 @@ jobs:
           if [ -n "$VCPKG_JSON" ] && [ "$VCPKG_JSON" != "./vcpkg.json" ]; then
             mv "$VCPKG_JSON" vcpkg.json
           fi
-
+      
       - name: Set Environment Variables
         shell: bash
         run: |
@@ -83,8 +83,8 @@ jobs:
 
       - name: Get CMake and Ninja
         uses: lukka/get-cmake@latest
-
-      - name: Setup Android NDK
+        
+      - name: Setup Android NDK 
         if: ${{ matrix.target.platform == 'android'}}
         uses: nttld/setup-ndk@v1
         with:
@@ -103,7 +103,7 @@ jobs:
       - name: Run vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgJsonGlob: "vcpkg.json"
+          vcpkgJsonGlob: 'vcpkg.json' 
 
       - name: Add Platform Specific ffmpeg Features
         shell: bash
@@ -111,7 +111,7 @@ jobs:
           FEATURES=()
           PLATFORM="${{ matrix.target.platform }}"
           ARCH="${{ matrix.target.arch }}"
-
+          
           # nvcodec: linux | (!osx & !uwp & !(arm64 & windows))
           if [[ "$PLATFORM" == "linux" ]] || [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && ! ("$ARCH" == "arm64" && "$PLATFORM" == "windows") ]]; then
             FEATURES+=("nvcodec")
@@ -127,7 +127,12 @@ jobs:
             FEATURES+=("amf")
           fi
 
-          if [[ ${#FEATURES[@]} -gt 0 && "$PLATFORM" != 'android']]; then
+          # android
+          if [[ "$PLATFORM" == "android"]]; then
+            FEATURES=()
+          fi
+
+          if [ ${#FEATURES[@]} -gt 0 ]; then
             IFS=','
             FEATURE_STR="${FEATURES[*]}"
             echo "Adding features: $FEATURE_STR"
@@ -148,6 +153,7 @@ jobs:
           # 通过额外参数处理 Release/Debug
           configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
+
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
