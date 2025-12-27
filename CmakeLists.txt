@@ -24,6 +24,8 @@ endif()
 project(${LIBNAME} LANGUAGES CXX)
 
 # 2. 平台与架构识别
+if(ANDROID)
+    set(TARGET_PLATFORM "android")
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(TARGET_PLATFORM "windows")
 elseif(APPLE)
@@ -31,8 +33,25 @@ elseif(APPLE)
 else()
     set(TARGET_PLATFORM "linux")
 endif()
-set(PLATFORM_ID "${TARGET_PLATFORM}.${CMAKE_SYSTEM_PROCESSOR}")
+# 统一处理器架构名称
+if(ANDROID)
+    # Android NDK 习惯使用 ANDROID_ABI 变量
+    if(ANDROID_ABI STREQUAL "arm64-v8a")
+        set(ACTUAL_ARCH "arm64")
+    elseif(ANDROID_ABI STREQUAL "x86_64")
+        set(ACTUAL_ARCH "x86_64")
+    else()
+        set(ACTUAL_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+else()
+    set(ACTUAL_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
 
+if(ACTUAL_ARCH STREQUAL "aarch64")
+    set(ACTUAL_ARCH "arm64")
+endif()
+
+set(PLATFORM_ID "${TARGET_PLATFORM}.${ACTUAL_ARCH}")
 # 3. 查找依赖项
 
 # --- FFmpeg ---
@@ -42,8 +61,7 @@ set(FFMPEG_DEPENDENCY_camera2ndk_RELEASE "")
 find_package(FFMPEG REQUIRED)
 
 # --- CURL ---
-# [修复] 移除版本号 "8.17.0-DEV"，解决 "Could not find configuration file" 错误。
-# vcpkg 已经通过 vcpkg.json 锁定了版本，此处只需请求库即可。
+add_definitions(-DCURL_STATICLIB)
 find_package(CURL REQUIRED)
 
 # --- Godot-cpp ---
@@ -53,7 +71,20 @@ find_package(unofficial-godot-cpp CONFIG REQUIRED)
 find_package(moonlight-common-c CONFIG REQUIRED)
 
 # 4. 目标配置
-get_target_property(GODOTCPP_SUFFIX unofficial::godot::cpp GODOTCPP_SUFFIX)
+# 优化：优先使用命令行传入的 GODOTCPP_SUFFIX，其次尝试从目标属性获取
+if(DEFINED GODOTCPP_SUFFIX AND NOT GODOTCPP_SUFFIX STREQUAL "")
+    set(GODOTCPP_SUFFIX_INTERNAL "${GODOTCPP_SUFFIX}")
+elseif(DEFINED ENV{GODOTCPP_SUFFIX})
+    set(GODOTCPP_SUFFIX_INTERNAL "$ENV{GODOTCPP_SUFFIX}")
+else()
+    get_target_property(PROP_SUFFIX unofficial::godot::cpp GODOTCPP_SUFFIX)
+    if(PROP_SUFFIX AND NOT PROP_SUFFIX STREQUAL "PROP_SUFFIX-NOTFOUND")
+        set(GODOTCPP_SUFFIX_INTERNAL "${PROP_SUFFIX}")
+    else()
+        set(GODOTCPP_SUFFIX_INTERNAL "")
+    endif()
+endif()
+
 add_library(${LIBNAME} SHARED)
 
 # 源文件
@@ -80,12 +111,15 @@ target_link_libraries(${LIBNAME}
     CURL::libcurl
     moonlight-common-c::moonlight-common-c
     ${FFMPEG_LIBRARIES} 
+    # 在 Linux/Android 上静态链接通常需要额外链接原子库或线程库
+    $<$<PLATFORM_ID:Linux>:atomic m pthread dl>
+    $<$<PLATFORM_ID:Android>:atomic m log>
 )
 
 # 6. 输出路径
 set_target_properties(${LIBNAME} PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "${LIBNAME}${GODOTCPP_SUFFIX}"
+    OUTPUT_NAME "${LIBNAME}${GODOTCPP_SUFFIX_INTERNAL}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${PLATFORM_ID}"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${PLATFORM_ID}"
 )

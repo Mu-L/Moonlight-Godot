@@ -61,14 +61,22 @@ jobs:
           case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
             "linux-x86_64")   T="x64-linux" ;;
             "linux-arm64")    T="arm64-linux" ;;
-            "windows-x86_64") T="x64-windows-static" ;;
+            "windows-x86_64") T="x64-windows-static-md" ;;
             "macos-x86_64")   T="x64-osx";  echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> $GITHUB_ENV ;;
             "macos-arm64")    T="arm64-osx"; echo "CMAKE_OSX_ARCHITECTURES=arm64" >> $GITHUB_ENV ;;
             "ios-arm64")      T="arm64-ios" ;;
-            "android-x86_64") T="x64-android"; echo "ANDROID_ABI=x86_64" >> $GITHUB_ENV ;;
-            "android-arm64")  T="arm64-android"; echo "ANDROID_ABI=arm64-v8a" >> $GITHUB_ENV ;;
+            "android-x86_64") 
+              T="x64-android"
+              echo "ANDROID_ABI=x86_64" >> $GITHUB_ENV
+              ;;
+            "android-arm64")  
+              T="arm64-android"
+              echo "ANDROID_ABI=arm64-v8a" >> $GITHUB_ENV
+              ;;
           esac
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
+          # 导出为环境变量，以便 CMake 备选
+          echo "GODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}" >> $GITHUB_ENV
 
       # ——准备编译工具——
       # 安装系统编译器依赖
@@ -76,7 +84,10 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            sudo apt-get update && sudo apt-get install -y nasm linux-libc-dev ninja-build build-essential gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+            sudo apt-get update && sudo apt-get install -y \
+              nasm ninja-build build-essential \
+              gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+              libatomic1-arm64-cross
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             brew install nasm ninja
           fi
@@ -96,7 +107,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'CMakePresets.json') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       # ——构建——
       # --- 初始化 vcpkg (不手动 checkout，让 Action 管理) ---
@@ -144,19 +155,21 @@ jobs:
             vcpkg add port "ffmpeg[$FEATURE_STR]"
           fi
 
-      # --- 使用 run-cmake 执行规范化构建 ---
       - name: Run CMake
         uses: lukka/run-cmake@v10
-        env:
-          VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
-          GODOTCPP_SUFFIX: ".${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch || 'x86_64' }}"
-          CMAKE_MAKE_PROGRAM: Ninja
         with:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
-          # 通过额外参数处理 Release/Debug
-          configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}','-DGODOTCPP_SUFFIX=${{ env.GODOTCPP_SUFFIX }}']"
-          buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}','-DGODOTCPP_SUFFIX=${{ env.GODOTCPP_SUFFIX }}']"
+          # 关键：所有 -D 参数必须在 configure 阶段传递
+          configurePresetAdditionalArgs: |
+            -DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
+            -DGODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}
+            -DANDROID_PLATFORM=android-24
+            -DANDROID_STL=c++_static
+            -DANDROID_ABI=${{ env.ANDROID_ABI }}
+          # build 阶段不应携带 -D 参数
+          buildPresetAdditionalArgs: |
+            --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
 
 
       - name: Save vcpkg cache
@@ -164,7 +177,7 @@ jobs:
         if: always()
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'CMakePresets.json') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       # ——产物处理——
       - name: Windows - Cleanup
