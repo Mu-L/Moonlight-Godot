@@ -20,7 +20,6 @@
         "avfilter",
         "gpl",
         "x264",
-        "x265",
         "aom",
         "dav1d",
         "vulkan",

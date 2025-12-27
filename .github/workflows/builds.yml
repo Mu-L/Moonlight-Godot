@@ -61,7 +61,7 @@ jobs:
           case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
             "linux-x86_64")   T="x64-linux" ;;
             "linux-arm64")    T="arm64-linux" ;;
-            "windows-x86_64") T="x64-windows-static-md" ;;
+            "windows-x86_64") T="x64-windows-static" ;;
             "macos-x86_64")   T="x64-osx";  echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> $GITHUB_ENV ;;
             "macos-arm64")    T="arm64-osx"; echo "CMAKE_OSX_ARCHITECTURES=arm64" >> $GITHUB_ENV ;;
             "ios-arm64")      T="arm64-ios" ;;
@@ -127,6 +127,11 @@ jobs:
             FEATURES+=("amf")
           fi
 
+          # x264: !osx
+          if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" ]]; then
+            FEATURES+=("x264")
+          fi
+
           # android
           if [ "$PLATFORM" == "android" ]; then
             FEATURES=()
@@ -145,14 +150,13 @@ jobs:
         env:
           VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
           GODOTCPP_SUFFIX: ".${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch || 'x86_64' }}"
-          VCPKG_LIBRARY_LINKAGE: static
-          CMAKE_MAKE_PROGRAM: ninja
+          CMAKE_MAKE_PROGRAM: Ninja
         with:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
           # 通过额外参数处理 Release/Debug
-          configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
-          buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
+          configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}','-DGODOTCPP_SUFFIX=${{ env.GODOTCPP_SUFFIX }}']"
+          buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}','-DGODOTCPP_SUFFIX=${{ env.GODOTCPP_SUFFIX }}']"
 
 
       - name: Save vcpkg cache
