@@ -128,7 +128,7 @@ jobs:
           fi
 
           # android
-          if [[ "$PLATFORM" == "android"]]; then
+          if [ "$PLATFORM" == "android" ]; then
             FEATURES=()
           fi
 
