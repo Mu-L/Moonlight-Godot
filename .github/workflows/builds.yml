@@ -28,7 +28,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # 实验性：使用GitHub dependency graph
       VCPKG_FEATURE_FLAGS: dependencygraph
-      
+
     steps:
       # ——环境初始化——
       - name: Checkout Repository
@@ -53,7 +53,7 @@ jobs:
           if [ -n "$VCPKG_JSON" ] && [ "$VCPKG_JSON" != "./vcpkg.json" ]; then
             mv "$VCPKG_JSON" vcpkg.json
           fi
-      
+
       - name: Set Environment Variables
         shell: bash
         run: |
@@ -61,7 +61,7 @@ jobs:
           case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
             "linux-x86_64")   T="x64-linux" ;;
             "linux-arm64")    T="arm64-linux" ;;
-            "windows-x86_64") T="x64-windows" ;;
+            "windows-x86_64") T="x64-windows-static-md" ;;
             "macos-x86_64")   T="x64-osx";  echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> $GITHUB_ENV ;;
             "macos-arm64")    T="arm64-osx"; echo "CMAKE_OSX_ARCHITECTURES=arm64" >> $GITHUB_ENV ;;
             "ios-arm64")      T="arm64-ios" ;;
@@ -76,15 +76,15 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            sudo apt-get update && sudo apt-get install -y nasm linux-libc-dev
+            sudo apt-get update && sudo apt-get install -y nasm linux-libc-dev ninja-build build-essential gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            brew install nasm
+            brew install nasm ninja
           fi
 
       - name: Get CMake and Ninja
         uses: lukka/get-cmake@latest
-        
-      - name: Setup Android NDK 
+
+      - name: Setup Android NDK
         if: ${{ matrix.target.platform == 'android'}}
         uses: nttld/setup-ndk@v1
         with:
@@ -103,7 +103,7 @@ jobs:
       - name: Run vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgJsonGlob: 'vcpkg.json' 
+          vcpkgJsonGlob: "vcpkg.json"
 
       - name: Add Platform Specific ffmpeg Features
         shell: bash
@@ -111,7 +111,7 @@ jobs:
           FEATURES=()
           PLATFORM="${{ matrix.target.platform }}"
           ARCH="${{ matrix.target.arch }}"
-          
+
           # nvcodec: linux | (!osx & !uwp & !(arm64 & windows))
           if [[ "$PLATFORM" == "linux" ]] || [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && ! ("$ARCH" == "arm64" && "$PLATFORM" == "windows") ]]; then
             FEATURES+=("nvcodec")
@@ -127,7 +127,7 @@ jobs:
             FEATURES+=("amf")
           fi
 
-          if [ ${#FEATURES[@]} -gt 0 ]; then
+          if [[ ${#FEATURES[@]} -gt 0 && "$PLATFORM" != 'android']]; then
             IFS=','
             FEATURE_STR="${FEATURES[*]}"
             echo "Adding features: $FEATURE_STR"
@@ -141,13 +141,13 @@ jobs:
           VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
           GODOTCPP_SUFFIX: ".${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch || 'x86_64' }}"
           VCPKG_LIBRARY_LINKAGE: static
+          CMAKE_MAKE_PROGRAM: ninja
         with:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
           # 通过额外参数处理 Release/Debug
           configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
-
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
