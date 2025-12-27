@@ -12,12 +12,20 @@
         "CMAKE_COMPILE_WARNING_AS_ERROR": "FALSE"
       }
     },
-    { "name": "linux", "inherits": "base" },
-    { "name": "windows", "inherits": "base" },
+    {
+      "name": "linux",
+      "inherits": "base"
+    },
+    {
+      "name": "windows",
+      "inherits": "base"
+    },
     {
       "name": "macos",
       "inherits": "base",
-      "cacheVariables": { "CMAKE_OSX_ARCHITECTURES": "$env{CMAKE_OSX_ARCHITECTURES}" }
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "$env{CMAKE_OSX_ARCHITECTURES}"
+      }
     },
     {
       "name": "android",
@@ -39,10 +47,25 @@
     }
   ],
   "buildPresets": [
-    { "name": "linux", "configurePreset": "linux" },
-    { "name": "windows", "configurePreset": "windows" },
-    { "name": "macos", "configurePreset": "macos" },
-    { "name": "android", "configurePreset": "android" },
-    { "name": "ios", "configurePreset": "ios" }
+    {
+      "name": "linux",
+      "configurePreset": "linux"
+    },
+    {
+      "name": "windows",
+      "configurePreset": "windows"
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos"
+    },
+    {
+      "name": "android",
+      "configurePreset": "android"
+    },
+    {
+      "name": "ios",
+      "configurePreset": "ios"
+    }
   ]
 }

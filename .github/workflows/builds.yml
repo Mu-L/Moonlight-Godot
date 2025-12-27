@@ -1,4 +1,4 @@
-name: Build Moonlight GDExtension (Standardized)
+name: Build Moonlight GDExtension
 
 on:
   push:
@@ -78,7 +78,7 @@ jobs:
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             sudo apt-get update && sudo apt-get install -y nasm linux-libc-dev
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            brew install nasm mono
+            brew install nasm
           fi
 
       - name: Get CMake and Ninja
@@ -95,7 +95,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'CMakePresets.json') }}
 
       # ——构建——
       # --- 初始化 vcpkg (不手动 checkout，让 Action 管理) ---
@@ -109,6 +109,8 @@ jobs:
         uses: lukka/run-cmake@v10
         env:
           VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
+          GODOTCPP_SUFFIX: ".${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch || 'x86_64' }}"
+          VCPKG_LIBRARY_LINKAGE: static
         with:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
@@ -116,12 +118,13 @@ jobs:
           configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
+
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
         if: always()
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'CMakePresets.json') }}
 
       # ——产物处理——
       - name: Windows - Cleanup
