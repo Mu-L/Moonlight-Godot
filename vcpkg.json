@@ -11,16 +11,21 @@
     },
     {
       "name": "ffmpeg",
+      "default-features": false,
       "features": [
+        "avcodec",
+        "avformat",
+        "swresample",
+        "swscale",
+        "avfilter",
         "gpl",
         "x264",
         "x265",
         "aom",
         "dav1d",
+        "vulkan",
         "nvcodec",
         "amf",
-        "qsv",
-        "vulkan",
         "opus"
       ]
     },
