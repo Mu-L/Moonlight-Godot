@@ -105,6 +105,35 @@ jobs:
         with:
           vcpkgJsonGlob: 'vcpkg.json' 
 
+      - name: Add Platform Specific ffmpeg Features
+        shell: bash
+        run: |
+          FEATURES=()
+          PLATFORM="${{ matrix.target.platform }}"
+          ARCH="${{ matrix.target.arch }}"
+          
+          # nvcodec: linux | (!osx & !uwp & !(arm64 & windows))
+          if [[ "$PLATFORM" == "linux" ]] || [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && ! ("$ARCH" == "arm64" && "$PLATFORM" == "windows") ]]; then
+            FEATURES+=("nvcodec")
+          fi
+
+          # qsv: ((x86 | x64) & (android | linux)) | (windows & !uwp)
+          if [[ ("$ARCH" == "x86_64" && ("$PLATFORM" == "android" || "$PLATFORM" == "linux")) ]] || [[ "$PLATFORM" == "windows" ]]; then
+            FEATURES+=("qsv")
+          fi
+
+          # amf: !osx
+          if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" ]]; then
+            FEATURES+=("amf")
+          fi
+
+          if [ ${#FEATURES[@]} -gt 0 ]; then
+            IFS=','
+            FEATURE_STR="${FEATURES[*]}"
+            echo "Adding features: $FEATURE_STR"
+            vcpkg add port "ffmpeg[$FEATURE_STR]"
+          fi
+
       # --- 使用 run-cmake 执行规范化构建 ---
       - name: Run CMake
         uses: lukka/run-cmake@v10

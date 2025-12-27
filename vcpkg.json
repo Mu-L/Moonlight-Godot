@@ -24,8 +24,6 @@
         "aom",
         "dav1d",
         "vulkan",
-        "nvcodec",
-        "amf",
         "opus"
       ]
     },
