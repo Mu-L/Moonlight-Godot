@@ -161,15 +161,9 @@ jobs:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
           # 关键：所有 -D 参数必须在 configure 阶段传递
-          configurePresetAdditionalArgs: |
-            -DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
-            -DGODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}
-            -DANDROID_PLATFORM=android-24
-            -DANDROID_STL=c++_static
-            -DANDROID_ABI=${{ env.ANDROID_ABI }}
+          configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}', '-DANDROID_NATIVE_API_LEVEL=24', '-DANDROID_ABI=${{ env.ANDROID_ABI }}', '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24', '-DGODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}']"
           # build 阶段不应携带 -D 参数
-          buildPresetAdditionalArgs: |
-            --config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}
+          buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
 
       - name: Save vcpkg cache
