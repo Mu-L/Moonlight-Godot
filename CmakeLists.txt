@@ -130,6 +130,7 @@ set_target_properties(${LIBNAME} PROPERTIES
 
 # 7. 自动化部署
 set(INSTALL_DEMO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/addons/${LIBNAME}/bin/${PLATFORM_ID}")
+set(WORKSPACE_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin/${PLATFORM_ID}")
 
 # 部署主插件 DLL
 add_custom_command(TARGET ${LIBNAME} POST_BUILD
@@ -137,7 +138,11 @@ add_custom_command(TARGET ${LIBNAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different 
         "$<TARGET_FILE:${LIBNAME}>" 
         "${INSTALL_DEMO_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>"
-    COMMENT "Deploying plugin library to Godot project..."
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${WORKSPACE_BIN_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+        "$<TARGET_FILE:${LIBNAME}>" 
+        "${WORKSPACE_BIN_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>"
+    COMMENT "Deploying plugin library to Godot project and workspace..."
 )
 
 # [优化] 部署运行时依赖 (仅在非静态构建时才需要)
@@ -145,12 +150,26 @@ add_custom_command(TARGET ${LIBNAME} POST_BUILD
 # TARGET_RUNTIME_DLLS 将为空或仅包含系统库，此时该命令可能会报错或无操作。
 # 我们保留此逻辑作为后备，但建议您切换到 static-md triplet 以消除这些额外的 DLL。
 if(WIN32)
-    # 修复：使用正确的 CMake 语法
+    # 使用 file(GENERATE) 生成脚本以安全处理 TARGET_RUNTIME_DLLS 为空的情况
+    set(DEPLOY_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/deploy_dlls.cmake")
+    file(GENERATE OUTPUT "${DEPLOY_SCRIPT}" CONTENT "
+set(DLL_LIST \"$<TARGET_RUNTIME_DLLS:${LIBNAME}>\")
+set(DEST_DIRS \"${INSTALL_DEMO_DIR}\" \"${WORKSPACE_BIN_DIR}\")
+if(DLL_LIST)
+    foreach(DEST \${DEST_DIRS})
+        if(NOT EXISTS \"\${DEST}\")
+            file(MAKE_DIRECTORY \"\${DEST}\")
+        endif()
+        foreach(DLL \${DLL_LIST})
+            get_filename_component(FNAME \"\${DLL}\" NAME)
+            execute_process(COMMAND \"${CMAKE_COMMAND}\" -E copy_if_different \"\${DLL}\" \"\${DEST}/\${FNAME}\")
+        endforeach()
+    endforeach()
+endif()
+")
+
     add_custom_command(TARGET ${LIBNAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_RUNTIME_DLLS:${LIBNAME}>"
-            "${INSTALL_DEMO_DIR}"
+        COMMAND ${CMAKE_COMMAND} -P "${DEPLOY_SCRIPT}"
         COMMENT "Deploying dependencies (if any)..."
-        # 移除 COMMAND_ERROR_IS_FATAL ANY 或使用正确的语法
     )
 endif()
