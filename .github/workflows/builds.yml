@@ -133,7 +133,7 @@ jobs:
           fi
 
           # x265: !osx
-          if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" ]]; then
+          if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && "$ARCH" != "arm64" ]]; then
           FEATURES+=("x265")
           fi
           
