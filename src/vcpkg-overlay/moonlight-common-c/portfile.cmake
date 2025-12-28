@@ -11,7 +11,7 @@ vcpkg_from_github(
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH_LIBENET
     REPO cgutman/enet
-    REF master
+    REF moonlight
     SHA512 fca8f42585729eb5427c419f23b9c8bea793ec61ebf712a031a7c4572fe1da0f093ffcd085d86f2a0cb306c210d10a5166a987caf0733763b00aabb9ac9a6858
     HEAD_REF moonlight
 )
