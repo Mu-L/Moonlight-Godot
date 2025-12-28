@@ -28,6 +28,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # 实验性：使用GitHub dependency graph
       VCPKG_FEATURE_FLAGS: dependencygraph
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg_cache,readwrite
       
     steps:
       # ——环境初始化——
