@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.21)
 
 # 1. [优化] 静态链接配置
 # 为了减少分发文件数量，我们希望将依赖库静态链接到主 DLL 中。
@@ -145,13 +145,12 @@ add_custom_command(TARGET ${LIBNAME} POST_BUILD
 # TARGET_RUNTIME_DLLS 将为空或仅包含系统库，此时该命令可能会报错或无操作。
 # 我们保留此逻辑作为后备，但建议您切换到 static-md triplet 以消除这些额外的 DLL。
 if(WIN32)
-    # 使用生成器表达式来避免在列表为空时报错 (CMake 3.21+)
-    # 如果版本较低，这段代码在全静态链接时可能会因参数为空而警告，这是正常的。
+    # 修复：使用正确的 CMake 语法
     add_custom_command(TARGET ${LIBNAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_RUNTIME_DLLS:${LIBNAME}>"
             "${INSTALL_DEMO_DIR}"
-        COMMAND_ERROR_IS_FATAL ANY
         COMMENT "Deploying dependencies (if any)..."
+        # 移除 COMMAND_ERROR_IS_FATAL ANY 或使用正确的语法
     )
 endif()
