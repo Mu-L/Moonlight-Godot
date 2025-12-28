@@ -103,13 +103,6 @@ jobs:
           ndk-version: r28c
           link-to-sdk: true
 
-      - name: Restore Project Build Cache
-        id: build-cache-restore
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-
       # ——构建——
       # --- 初始化 vcpkg (不手动 checkout，让 Action 管理) ---
       - name: Run vcpkg
@@ -141,20 +134,27 @@ jobs:
 
           # x264: !osx
           if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" ]]; then
-            FEATURES+=("x264")
+          FEATURES+=("x264")
           fi
-
+          
           # android
           if [ "$PLATFORM" == "android" ]; then
-            FEATURES=()
+          FEATURES=()
           fi
-
+          
           if [ ${#FEATURES[@]} -gt 0 ]; then
             IFS=','
             FEATURE_STR="${FEATURES[*]}"
             echo "Adding features: $FEATURE_STR"
             vcpkg add port "ffmpeg[$FEATURE_STR]"
           fi
+
+      - name: Restore Project Build Cache
+        id: build-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg_cache
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Run CMake
         uses: lukka/run-cmake@v10
@@ -165,7 +165,6 @@ jobs:
           configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}', '-DANDROID_NATIVE_API_LEVEL=24', '-DANDROID_ABI=${{ env.ANDROID_ABI }}', '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24', '-DGODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}']"
           # build 阶段不应携带 -D 参数
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
-
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
