@@ -132,9 +132,9 @@ jobs:
             FEATURES+=("amf")
           fi
 
-          # x264: !osx
+          # x265: !osx
           if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" ]]; then
-          FEATURES+=("x264")
+          FEATURES+=("x265")
           fi
           
           # android
