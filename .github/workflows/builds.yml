@@ -187,3 +187,20 @@ jobs:
         with:
           name: moonlight-gdext-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}
           path: bin/
+
+  merge:
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+          pattern: moonlight-gdext-*
+          merge-multiple: true
+
+      - name: Upload Final Merged Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moonlight-gdextension-all
+          path: downloaded-artifacts/

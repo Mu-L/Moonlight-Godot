@@ -6,6 +6,8 @@
 #include <godot_cpp/godot.hpp>
 
 // #include "moonlight_stream_core.h"
+#include "gdexample.h"
+
 
 using namespace godot;
 
@@ -14,8 +16,7 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
-	// GDREGISTER_CLASS(MoonlightStreamCore);
-}
+	GDREGISTER_RUNTIME_CLASS(GDExample);
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {

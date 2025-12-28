@@ -3,7 +3,7 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO moonlight-stream/moonlight-common-c
-    REF master
+    REF b126e481a195fdc7152d211def17190e3434bcce
     SHA512 eeb8e4878b97c43f6d1e7a2837051f18297dfd080957776c13cc4282c0c8e4e7f048fb043c54e66a0a3498ee48b3567a1240c52f7c6bd3ab0c1353ac63e88b05
     HEAD_REF master
     )
@@ -11,7 +11,7 @@ vcpkg_from_github(
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH_LIBENET
     REPO cgutman/enet
-    REF moonlight
+    REF dea6fb5414b180908b58c0293c831105b5d124dd
     SHA512 fca8f42585729eb5427c419f23b9c8bea793ec61ebf712a031a7c4572fe1da0f093ffcd085d86f2a0cb306c210d10a5166a987caf0733763b00aabb9ac9a6858
     HEAD_REF moonlight
 )
