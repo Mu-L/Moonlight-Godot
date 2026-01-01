@@ -99,8 +99,13 @@ target_sources(${LIBNAME} PRIVATE ${SOURCE_FILES})
 target_compile_features(${LIBNAME} PRIVATE cxx_std_17)
 target_include_directories(${LIBNAME} PRIVATE src)
 target_include_directories(${LIBNAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
+# [修复] 将之前的 set(...) 替换为 set_property(TARGET ...)
+# 原因：add_library 已经在上面执行过了，简单的 set 变量无法影响已创建的目标。
+if(MSVC)
+    set_property(TARGET ${LIBNAME} PROPERTY 
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(MSVC)
     target_compile_options(${LIBNAME} PRIVATE /W4)
     # [优化] 如果是静态链接 Curl，必须定义此宏，否则链接器会寻找 __imp_curl_easy_init
