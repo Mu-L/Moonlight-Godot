@@ -62,7 +62,7 @@ jobs:
           case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
             "linux-x86_64")   T="x64-linux" ;;
             "linux-arm64")    T="arm64-linux" ;;
-            "windows-x86_64") T="x64-windows-static-md" ;;
+            "windows-x86_64") T="x64-windows-static" ;;
             "macos-x86_64")   T="x64-osx";  echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> $GITHUB_ENV ;;
             "macos-arm64")    T="arm64-osx"; echo "CMAKE_OSX_ARCHITECTURES=arm64" >> $GITHUB_ENV ;;
             "ios-arm64")      T="arm64-ios" ;;
