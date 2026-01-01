@@ -100,6 +100,7 @@ target_compile_features(${LIBNAME} PRIVATE cxx_std_17)
 target_include_directories(${LIBNAME} PRIVATE src)
 target_include_directories(${LIBNAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
 
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(MSVC)
     target_compile_options(${LIBNAME} PRIVATE /W4)
     # [优化] 如果是静态链接 Curl，必须定义此宏，否则链接器会寻找 __imp_curl_easy_init
