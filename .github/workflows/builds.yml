@@ -62,7 +62,7 @@ jobs:
           case "${{ matrix.target.platform }}-${{ matrix.target.arch }}" in
             "linux-x86_64")   T="x64-linux" ;;
             "linux-arm64")    T="arm64-linux" ;;
-            "windows-x86_64") T="x64-windows-static" ;;
+            "windows-x86_64") T="x64-windows-static-md" ;;
             "macos-x86_64")   T="x64-osx";  echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> $GITHUB_ENV ;;
             "macos-arm64")    T="arm64-osx"; echo "CMAKE_OSX_ARCHITECTURES=arm64" >> $GITHUB_ENV ;;
             "ios-arm64")      T="arm64-ios" ;;
@@ -156,6 +156,14 @@ jobs:
           path: ${{ github.workspace }}/vcpkg_cache
           key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
+      - name: Restore CMake Build Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-
+
       - name: Run CMake
         uses: lukka/run-cmake@v10
         with:
@@ -165,6 +173,12 @@ jobs:
           configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}', '-DANDROID_NATIVE_API_LEVEL=24', '-DANDROID_ABI=${{ env.ANDROID_ABI }}', '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24', '-DGODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}']"
           # build 阶段不应携带 -D 参数
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
+
+      - name: Save CMake Build Cache
+        uses: actions/cache/save@v4
+        with:
+          path: build
+          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ github.sha }}
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
