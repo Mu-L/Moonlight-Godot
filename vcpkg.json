@@ -26,6 +26,7 @@
         "opus"
       ]
     },
+    "godot-cpp",
     "moonlight-common-c"
   ]
 }
