@@ -1,12 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
-# 1. [优化] 静态链接配置
-# 为了减少分发文件数量，我们希望将依赖库静态链接到主 DLL 中。
-# 推荐使用 x64-windows-static-md (静态库 + 动态CRT)，这样既能打包依赖，又能兼容 Godot 的 CRT。
-# 如果未在外部(settings.json)指定 triplet，此处尝试默认设置（仅在 Windows 下）
+# win平台默认使用静态链接库
 if(WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
-    # 注意：你需要确保 vcpkg 安装了 x64-windows-static-md 版本的库
-    # 如果构建报错，请在 settings.json 中显式传入 -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
     set(VCPKG_TARGET_TRIPLET "x64-windows-static-md" CACHE STRING "Target triplet")
 endif()
 
@@ -59,8 +54,7 @@ set(PLATFORM_ID "${TARGET_PLATFORM}.${ACTUAL_ARCH}")
 # 3. 查找依赖项
 
 # --- FFmpeg ---
-# 静态链接时可能需要手动处理一些依赖，但 vcpkg 的 CONFIG 模式通常能处理好。
-# 这里继续使用 MODULE 模式 (FindFFMPEG.cmake)，因为它是目前兼容性较好的方式。
+# 在Android上禁用FFmpeg的camera2ndk模块，否则会导致编译失败
 set(FFMPEG_DEPENDENCY_camera2ndk_RELEASE "") 
 find_package(FFMPEG REQUIRED)
 
@@ -74,7 +68,7 @@ find_package(unofficial-godot-cpp CONFIG REQUIRED)
 # --- Moonlight-common-c ---
 find_package(moonlight-common-c CONFIG REQUIRED)
 
-# 4. 变量优先级处理
+# 4. 库名前缀
 if(DEFINED GODOTCPP_SUFFIX AND NOT GODOTCPP_SUFFIX STREQUAL "")
     set(GODOTCPP_SUFFIX_INTERNAL "${GODOTCPP_SUFFIX}")
 elseif(DEFINED ENV{GODOTCPP_SUFFIX})
@@ -99,8 +93,7 @@ target_sources(${LIBNAME} PRIVATE ${SOURCE_FILES})
 target_compile_features(${LIBNAME} PRIVATE cxx_std_17)
 target_include_directories(${LIBNAME} PRIVATE src)
 target_include_directories(${LIBNAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
-# [修复] 将之前的 set(...) 替换为 set_property(TARGET ...)
-# 原因：add_library 已经在上面执行过了，简单的 set 变量无法影响已创建的目标。
+
 if(MSVC)
     set_property(TARGET ${LIBNAME} PROPERTY 
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -108,7 +101,6 @@ endif()
 
 if(MSVC)
     target_compile_options(${LIBNAME} PRIVATE /W4)
-    # [优化] 如果是静态链接 Curl，必须定义此宏，否则链接器会寻找 __imp_curl_easy_init
     target_compile_definitions(${LIBNAME} PRIVATE CURL_STATICLIB)
 else()
     target_compile_options(${LIBNAME} PRIVATE -Wall -Wextra)
@@ -151,10 +143,7 @@ add_custom_command(TARGET ${LIBNAME} POST_BUILD
     COMMENT "Deploying plugin library to Godot project and workspace..."
 )
 
-# [优化] 部署运行时依赖 (仅在非静态构建时才需要)
-# 当使用 x64-windows-static-md 时，FFmpeg 和 Curl 会被合并进主 DLL，
-# TARGET_RUNTIME_DLLS 将为空或仅包含系统库，此时该命令可能会报错或无操作。
-# 我们保留此逻辑作为后备，但建议您切换到 static-md triplet 以消除这些额外的 DLL。
+# 部署运行时依赖 (仅在非静态构建时才需要)
 if(WIN32)
     # 使用 file(GENERATE) 生成脚本以安全处理 TARGET_RUNTIME_DLLS 为空的情况
     set(DEPLOY_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/deploy_dlls.cmake")
