@@ -16,21 +16,21 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     endif()
 endif()
 
+project(${LIBNAME} LANGUAGES CXX)
+
 # 修复 iOS 构建中 Ninja 生成器无法解析 'iphoneos' 的问题
-# 必须在 project() 之前执行，以便编译器检查使用正确的 sysroot
-if("${CMAKE_OSX_SYSROOT}" STREQUAL "iphoneos")
+# 必须在 project() 之后检查，确保覆盖 toolchain 的设置
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND "${CMAKE_OSX_SYSROOT}" STREQUAL "iphoneos")
     execute_process(COMMAND xcrun --sdk iphoneos --show-sdk-path
         OUTPUT_VARIABLE IOS_SDK_PATH
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
     if(EXISTS "${IOS_SDK_PATH}")
+        message(STATUS "Resolved 'iphoneos' sysroot to: ${IOS_SDK_PATH}")
         set(CMAKE_OSX_SYSROOT "${IOS_SDK_PATH}" CACHE PATH "Sysroot" FORCE)
         set(CMAKE_OSX_SYSROOT "${IOS_SDK_PATH}")
-        message(STATUS "Resolved 'iphoneos' sysroot to: ${IOS_SDK_PATH}")
     endif()
 endif()
-
-project(${LIBNAME} LANGUAGES CXX)
 
 # Make sure all the dependencies are satisfied
 find_package(Python3 3.4 REQUIRED)

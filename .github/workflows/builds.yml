@@ -182,7 +182,7 @@ jobs:
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
-        if: matrix.target-type== 'template_debug'
+        if: always() && matrix.target-type== 'template_debug'
         with:
           path: ${{ github.workspace }}/vcpkg_cache
           key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
