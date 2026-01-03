@@ -160,9 +160,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: build
-          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-
+          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json') }}
+
 
       - name: Run CMake
         uses: lukka/run-cmake@v10
@@ -178,7 +177,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: build
-          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ github.sha }}
+          key: ${{ runner.os }}-cmake-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json') }}
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
