@@ -18,6 +18,17 @@ endif()
 
 project(${LIBNAME} LANGUAGES CXX)
 
+# 修复 iOS 构建中 sysroot 路径无法解析导致找不到标准库头文件的问题
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND "${CMAKE_OSX_SYSROOT}" STREQUAL "iphoneos")
+    execute_process(COMMAND xcrun --sdk iphoneos --show-sdk-path
+        OUTPUT_VARIABLE IOS_SDK_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(EXISTS "${IOS_SDK_PATH}")
+        set(CMAKE_OSX_SYSROOT "${IOS_SDK_PATH}" CACHE PATH "Sysroot" FORCE)
+    endif()
+endif()
+
 # Make sure all the dependencies are satisfied
 find_package(Python3 3.4 REQUIRED)
 find_program(GIT git REQUIRED)
