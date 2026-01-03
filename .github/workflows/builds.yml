@@ -20,7 +20,8 @@ jobs:
           - { platform: windows, arch: x86_64, os: windows-latest }
           - { platform: macos, arch: x86_64, os: macos-latest }
           - { platform: macos, arch: arm64, os: macos-latest }
-          - { platform: ios, arch: arm64, os: macos-latest }
+          # - { platform: ios, arch: arm64, os: macos-latest }
+          # ios存在BUG
           - { platform: android, arch: arm64, os: ubuntu-24.04 }
           - { platform: android, arch: x86_64, os: ubuntu-22.04 }
     runs-on: ${{ matrix.target.os }}
@@ -149,7 +150,7 @@ jobs:
             vcpkg add port "ffmpeg[$FEATURE_STR]"
           fi
 
-      - name: Restore Project Build Cache
+      - name: Restore vcpkg Cache
         id: build-cache-restore
         uses: actions/cache/restore@v4
         with:
