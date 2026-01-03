@@ -105,6 +105,8 @@ file(GLOB_RECURSE DOC_XML LIST_DIRECTORIES NO CONFIGURE_DEPENDS "${CMAKE_CURRENT
 # conditionally add doc data to compile output
 if(DOC_XML)
     if(GODOTCPP_TARGET MATCHES "editor|template_debug")
+        # 在配置阶段删除上一次构建生成的 doc_source.cpp，确保重新生成以避免路径或内容冲突
+        file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/gen/doc_source.cpp")
         target_doc_sources(${LIBNAME} ${DOC_XML})
     endif()
 endif()

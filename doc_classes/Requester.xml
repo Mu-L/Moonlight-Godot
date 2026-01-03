@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="Requester" inherits="MoonlightGodot" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		基于 libcurl 的 HTTP (S) 请求封装类，支持 MTLS 和异步回调。
+	</brief_description>
+	<description>
+		[Requester] 类对 [code] libcurl [/code] 进行了封装，提供简便的 HTTP 和 HTTPS 请求功能。
+		
+		它专为 [MoonlightGodot] 插件设计，支持在后台线程中异步处理网络请求，避免阻塞游戏主线程。
+		特别支持了双向 TLS (MTLS) 认证，允许加载客户端证书、密钥以及指定服务端 CA 证书进行严格的连接验证。
+	</description>
+	<methods>
+		<method name="request">
+			<return type="void" />
+			<argument index="0" name="url" type="String" />
+			<argument index="1" name="method" type="String" />
+			<argument index="2" name="body" type="PackedByteArray" />
+			<argument index="3" name="headers" type="Dictionary" />
+			<argument index="4" name="ssl_options" type="Dictionary" />
+			<argument index="5" name="callback" type="Callable" />
+			<description>
+				发起一个异步 HTTP 或 HTTPS 请求。
+				
+				[b] 参数说明：[/b]
+				- [param url]: 目标 URL 地址。
+				- [param method]: 请求方法，仅支持 "GET" 和 "POST"。
+				- [param body]: 请求体数据（字节数组）。仅当 method 为 "POST" 时发送。
+				- [param headers]: 请求头字典，键值对形式。
+				- [param ssl_options]: SSL/TLS 配置字典，支持以下键：
+				    - [code]"client_cert"[/code]: 客户端证书文件路径 (PEM)。
+				    - [code]"client_key"[/code]: 客户端私钥文件路径。
+				    - [code]"server_cert"[/code]: 服务端 CA 证书路径（用于证书固定 / Pinning）。
+				- [param callback]: 请求结束后的回调函数。
+				
+				[b] 回调签名：[/b]
+				[codeblock]
+				func _on_request_completed (response_code: int, response_body: PackedByteArray, response_headers: Dictionary, error_text: String)
+				[/codeblock]
+				
+				如果请求成功，[param error_text] 为空字符串。如果发生 CURL 错误或初始化失败，[param response_code] 将为 -1 且 [param error_text] 包含错误详情。
+			</description>
+		</method>
+	</methods>
+</class>
