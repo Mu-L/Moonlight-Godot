@@ -129,6 +129,10 @@ if(MSVC)
     target_compile_definitions(${LIBNAME} PRIVATE CURL_STATICLIB)
 else()
     target_compile_options(${LIBNAME} PRIVATE -Wall -Wextra)
+    # 修复Android下 fortification 导致的链接错误 (__sendto_chk undefined)
+    if(ANDROID)
+        target_compile_options(${LIBNAME} PRIVATE -U_FORTIFY_SOURCE)
+    endif()
 endif()
 
 # 5. 链接库

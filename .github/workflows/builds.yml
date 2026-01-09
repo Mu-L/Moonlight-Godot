@@ -5,6 +5,10 @@ on:
     branches: ["vcpkg"]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -69,10 +73,14 @@ jobs:
             "android-x86_64") 
               T="x64-android"
               echo "ANDROID_ABI=x86_64" >> $GITHUB_ENV
+              echo "ANDROID_PLATFORM=android-24" >> $GITHUB_ENV
+              echo "ANDROID_NATIVE_API_LEVEL=24" >> $GITHUB_ENV
               ;;
             "android-arm64")  
               T="arm64-android"
               echo "ANDROID_ABI=arm64-v8a" >> $GITHUB_ENV
+              echo "ANDROID_PLATFORM=android-24" >> $GITHUB_ENV
+              echo "ANDROID_NATIVE_API_LEVEL=24" >> $GITHUB_ENV
               ;;
           esac
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
@@ -100,7 +108,7 @@ jobs:
         if: ${{ matrix.target.platform == 'android'}}
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r28c
+          ndk-version: r27c
           link-to-sdk: true
 
       # ——构建——
