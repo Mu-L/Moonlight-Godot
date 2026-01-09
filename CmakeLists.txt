@@ -89,6 +89,31 @@ add_library(${LIBNAME} SHARED)
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "src/*.cpp" "src/*.h")
 target_sources(${LIBNAME} PRIVATE ${SOURCE_FILES})
 
+# ----------------------------------------------------------------------------
+# Documentation Source Generation
+# ----------------------------------------------------------------------------
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+set(DOC_CLASSES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/doc_classes")
+set(GEN_DOC_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/doc_classes.cpp")
+set(DOC_GENERATOR_SCRIPT "${DOC_CLASSES_DIR}/doc_source_generator.py")
+
+# 获取所有 XML 文件以便 CMake 跟踪依赖变化
+file(GLOB DOC_XML_FILES "${DOC_CLASSES_DIR}/*.xml")
+
+# 添加自定义命令生成源代码
+add_custom_command(
+    OUTPUT "${GEN_DOC_SOURCE}"
+    COMMAND Python3::Interpreter "${DOC_GENERATOR_SCRIPT}" "${GEN_DOC_SOURCE}" "${DOC_CLASSES_DIR}"
+    DEPENDS "${DOC_GENERATOR_SCRIPT}" ${DOC_XML_FILES}
+    COMMENT "Generating doc_classes.cpp from XML documentation..."
+    VERBATIM
+)
+
+# 确保生成的源文件被添加到目标中 (请将 your_target_name 替换为您实际的目标名称)
+target_sources(${LIBNAME} PRIVATE "${GEN_DOC_SOURCE}")
+
 # 编译特性与选项
 target_compile_features(${LIBNAME} PRIVATE cxx_std_17)
 target_include_directories(${LIBNAME} PRIVATE src)
@@ -122,13 +147,13 @@ target_link_libraries(${LIBNAME}
 set_target_properties(${LIBNAME} PROPERTIES
     PREFIX ""
     OUTPUT_NAME "${LIBNAME}${GODOTCPP_SUFFIX_INTERNAL}"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${PLATFORM_ID}"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${PLATFORM_ID}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${TARGET_PLATFORM}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/${TARGET_PLATFORM}"
 )
 
 # 7. 自动化部署
-set(INSTALL_DEMO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/addons/${LIBNAME}/bin/${PLATFORM_ID}")
-set(WORKSPACE_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin/${PLATFORM_ID}")
+set(INSTALL_DEMO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/addons/${LIBNAME}/bin/${TARGET_PLATFORM}")
+set(WORKSPACE_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin/${TARGET_PLATFORM}")
 
 # 部署主插件 DLL
 add_custom_command(TARGET ${LIBNAME} POST_BUILD

@@ -13,7 +13,7 @@
 			<return type="void" />
 			<param index="0" name="variant" type="Variant" />
 			<description>
-				咕咕咕咕咕
+				咕咕咕咕咕？
 			</description>
 		</method>
 	</methods>
