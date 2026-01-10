@@ -86,10 +86,7 @@ jobs:
               ;;
           esac
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
-          # 禁用 Fortify Source 以解决 Android NDK r27+ 在低 API 级别下的链接错误 (undefined symbol: __sendto_chk 等)
-          echo "CFLAGS=-D_FORTIFY_SOURCE=0" >> $GITHUB_ENV
-          echo "CXXFLAGS=-D_FORTIFY_SOURCE=0" >> $GITHUB_ENV
-          
+
           # 导出为环境变量，以便 CMake 备选
           echo "GODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}" >> $GITHUB_ENV
 
