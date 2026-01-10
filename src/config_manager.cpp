@@ -38,6 +38,13 @@ String ConfigManager::_format_pem_for_qt(String pem) {
 	return "@ByteArray(" + out + ")";
 }
 
+String ConfigManager::_parse_pem_from_qt(String qt_pem) {
+	if (qt_pem.begins_with("@ByteArray(") && qt_pem.ends_with(")")) {
+		return qt_pem.substr(11, qt_pem.length() - 12).replace("\\n", "\n");
+	}
+	return qt_pem;
+}
+
 void ConfigManager::_check_and_create_certs() {
 	if (!config->has_section_key("General", "certificate") || !config->has_section_key("General", "key")) {
 		// 修复：Crypto 需要实例化，而非作为单例获取
@@ -61,16 +68,8 @@ Dictionary ConfigManager::get_client_keys() {
 	String cert = config->get_value("General", "certificate");
 	String key = config->get_value("General", "key");
 
-	// 解析 Qt 格式：去除 @ByteArray() 包装并还原换行符
-	if (cert.begins_with("@ByteArray(") && cert.ends_with(")")) {
-		cert = cert.substr(11, cert.length() - 12).replace("\\n", "\n");
-	}
-	if (key.begins_with("@ByteArray(") && key.ends_with(")")) {
-		key = key.substr(11, key.length() - 12).replace("\\n", "\n");
-	}
-
-	d["certificate"] = cert;
-	d["key"] = key;
+	d["certificate"] = _parse_pem_from_qt(cert);
+	d["key"] = _parse_pem_from_qt(key);
 	return d;
 }
 
@@ -97,6 +96,9 @@ Array ConfigManager::get_hosts() {
 			host["hostname"] = config->get_value("hosts", prefix + "hostname", "");
 			host["mac"] = config->get_value("hosts", prefix + "mac", "");
 			host["localaddress"] = config->get_value("hosts", prefix + "localaddress", "");
+			host["https_port"] = config->get_value("hosts", prefix + "https_port", 47984);
+			String srvcert = config->get_value("hosts", prefix + "srvcert", "");
+			host["srvcert"] = _parse_pem_from_qt(srvcert);
 			hosts.append(host);
 		}
 	}
@@ -118,7 +120,11 @@ void ConfigManager::update_host(int index, const Dictionary &data) {
 	for (int i = 0; i < keys.size(); i++) {
 		String key = keys[i];
 		if (key != "id") {
-			config->set_value("hosts", prefix + key, data[key]);
+			Variant value = data[key];
+			if (key == "srvcert") {
+				value = _format_pem_for_qt(value);
+			}
+			config->set_value("hosts", prefix + key, value);
 		}
 	}
 	save_config();

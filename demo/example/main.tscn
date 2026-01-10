@@ -27,6 +27,11 @@ text = "test cert create"
 layout_mode = 2
 text = "test add host info"
 
+[node name="Button4" type="Button" parent="ScrollContainer/GridContainer"]
+layout_mode = 2
+text = "test remove host info"
+
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button4" to="." method="test_remove_host_info"]

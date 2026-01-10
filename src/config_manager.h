@@ -17,6 +17,7 @@ private:
 
 	void _check_and_create_certs();
 	String _format_pem_for_qt(String pem);
+	String _parse_pem_from_qt(String qt_pem);
 	String _get_host_prefix(int index);
 	String _get_app_prefix(int host_index, int app_index);
 	void _reindex_hosts();

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="ComputerManager" inherits="MoonlightGodot" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		负责处理与 Moonlight 主机的配对、连接检测、应用获取及流媒体会话管理的类。
+	</brief_description>
+	<description>
+		[ComputerManager] 是 Moonlight 协议实现的核心通信组件。它通过 HTTP 和 HTTPS 请求与运行 GameStream/Sunshine 的主机进行交互。
+		
+		主要功能包括：
+		1. [b]配对流程[/b]：生成 PIN 码，交换证书，处理加密挑战（Salt/Challenge）。
+		2. [b]信息获取[/b]：查询主机在线状态、配置及应用列表。
+		3. [b]资源下载[/b]：获取游戏封面图片。
+		4. [b]会话控制[/b]：启动（Launch）和停止（Cancel）流媒体会话。
+		
+		此类的大多数网络操作都是异步的，通过 [Callable] 回调函数返回结果。
+	</description>
+	<methods>
+		<method name="set_config_manager">
+			<return type="void" />
+			<argument index="0" name="cm" type="Object" />
+			<description>
+				设置引用的 [ConfigManager] 实例。该实例用于存储配对后的主机信息和证书。
+			</description>
+		</method>
+		<method name="start_pair">
+			<return type="String" />
+			<argument index="0" name="ip" type="String" />
+			<argument index="1" name="port" type="int" default="47989" />
+			<description>
+				开始与指定 IP 地址的主机进行配对。
+				
+				初始化配对状态机，生成随机盐和 AES 密钥。
+				[b]返回：[/b] 一个 4 位数字的 PIN 码字符串。用户需要在宿主机的配对对话框中输入此 PIN 码。
+			</description>
+		</method>
+		<method name="complete_pair">
+			<return type="String" />
+			<description>
+				推进配对状态机。需要在调用 [method start_pair] 后持续调用（例如在定时器或处理循环中），直到配对完成或失败。
+				
+				[b]返回值说明：[/b]
+				- [code]"idle"[/code]: 未开始配对。
+				- [code]"working"[/code]: 配对正在进行中（正在等待网络响应或状态转换）。
+				- [code]"paired"[/code]: 配对成功完成。
+				- [code]"failed"[/code]: 配对失败。
+			</description>
+		</method>
+		<method name="cancel_pair">
+			<return type="void" />
+			<description>
+				取消当前的配对过程，并向主机发送取消请求。重置内部状态机。
+			</description>
+		</method>
+		<method name="unpair">
+			<return type="void" />
+			<argument index="0" name="host_id" type="int" />
+			<description>
+				取消与指定主机 ID 的配对，并从配置中移除该主机。
+			</description>
+		</method>
+		<method name="connect_to_computer">
+			<return type="void" />
+			<argument index="0" name="ip" type="String" />
+			<argument index="1" name="port" type="int" default="47989" />
+			<argument index="2" name="callback" type="Callable" default="Callable()" />
+			<description>
+				尝试连接到指定主机以获取服务器信息（ServerInfo）。
+				
+				[param callback] 将被调用并传入一个 [Dictionary]，包含：
+				- [code]"status"[/code]: "online" 或 "offline"。
+				- [code]"hostname"[/code]: 主机名称。
+				- [code]"paired"[/code]: 布尔值，是否已配对。
+				- [code]"ip"[/code]: 输入的 IP 地址。
+				- [code]"https_port"[/code]: 获取到的 HTTPS 端口。
+			</description>
+		</method>
+		<method name="get_app_list">
+			<return type="void" />
+			<argument index="0" name="host_id" type="int" />
+			<argument index="1" name="callback" type="Callable" default="Callable()" />
+			<description>
+				获取指定已配对主机的应用程序列表。
+				
+				成功获取后，应用数据会自动存储到 [ConfigManager] 中。
+				[param callback] 将被调用并传入一个布尔值（成功为 true）。
+			</description>
+		</method>
+		<method name="get_app_cover">
+			<return type="void" />
+			<argument index="0" name="host_id" type="int" />
+			<argument index="1" name="app_id" type="int" />
+			<argument index="2" name="callback" type="Callable" />
+			<description>
+				下载指定应用程序的封面图片。
+				
+				[param callback] 将被调用并传入一个 [ImageTexture]（成功时）或 null（失败时）。
+			</description>
+		</method>
+		<method name="establish_stream">
+			<return type="void" />
+			<argument index="0" name="host_id" type="int" />
+			<argument index="1" name="app_id" type="int" />
+			<argument index="2" name="options" type="Dictionary" />
+			<argument index="3" name="callback" type="Callable" />
+			<description>
+				向主机发送启动应用（Launch）请求以建立流媒体会话。
+				
+				[param options] 字典可包含：
+				- [code]"width"[/code]: 宽度 (int)。
+				- [code]"height"[/code]: 高度 (int)。
+				- [code]"fps"[/code]: 帧率 (int)。
+				
+				[param callback] 收到响应后被调用，参数为响应体字符串（通常包含 RTSP URL 或相关信息）。
+			</description>
+		</method>
+		<method name="stop_stream">
+			<return type="void" />
+			<argument index="0" name="host_id" type="int" />
+			<argument index="1" name="callback" type="Callable" />
+			<description>
+				向主机发送取消（Cancel）请求以停止当前运行的应用程序。
+			</description>
+		</method>
+	</methods>
+</class>

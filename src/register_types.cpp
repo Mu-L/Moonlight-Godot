@@ -10,6 +10,7 @@
 #include "example_class.h"
 #include "moonlight_godot.h"
 #include "requester.h"
+#include "computer_manager.h"
 
 using namespace godot;
 
@@ -25,6 +26,7 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	
 	GDREGISTER_CLASS(ConfigManager); // Register class
 	GDREGISTER_CLASS(Requester);
+	GDREGISTER_CLASS(ComputerManager);
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {
