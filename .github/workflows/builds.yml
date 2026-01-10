@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+  
 jobs:
   build:
     strategy:
@@ -69,10 +73,16 @@ jobs:
             "android-x86_64") 
               T="x64-android"
               echo "ANDROID_ABI=x86_64" >> $GITHUB_ENV
+              # 必须与 vcpkg triplet (VCPKG_CMAKE_SYSTEM_VERSION 28) 保持一致
+              echo "ANDROID_PLATFORM=android-28" >> $GITHUB_ENV
+              echo "ANDROID_NATIVE_API_LEVEL=28" >> $GITHUB_ENV
               ;;
             "android-arm64")  
               T="arm64-android"
               echo "ANDROID_ABI=arm64-v8a" >> $GITHUB_ENV
+              # 必须与 vcpkg triplet (VCPKG_CMAKE_SYSTEM_VERSION 28) 保持一致
+              echo "ANDROID_PLATFORM=android-28" >> $GITHUB_ENV
+              echo "ANDROID_NATIVE_API_LEVEL=28" >> $GITHUB_ENV
               ;;
           esac
           echo "VCPKG_DEFAULT_TRIPLET=$T" >> $GITHUB_ENV
@@ -100,7 +110,8 @@ jobs:
         if: ${{ matrix.target.platform == 'android'}}
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r28c
+          # 使用 LTS 版本 r27c 以避免 beta 版潜在的链接问题
+          ndk-version: r27c
           link-to-sdk: true
 
       # ——构建——
@@ -161,8 +172,8 @@ jobs:
         with:
           configurePreset: "${{ matrix.target.platform }}"
           buildPreset: "${{ matrix.target.platform }}"
-          # 关键：所有 -D 参数必须在 configure 阶段传递
-          configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}', '-DANDROID_NATIVE_API_LEVEL=24', '-DANDROID_ABI=${{ env.ANDROID_ABI }}', '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24', '-DGODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}']"
+          # 关键：将 API Level 统一提升至 28 以匹配 vcpkg 依赖库
+          configurePresetAdditionalArgs: "['-DCMAKE_BUILD_TYPE=${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}', '-DANDROID_NATIVE_API_LEVEL=28', '-DANDROID_ABI=${{ env.ANDROID_ABI }}', '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-28', '-DGODOTCPP_SUFFIX=.${{ matrix.target.platform }}.${{ matrix.target-type }}.${{ matrix.target.arch }}']"
           # build 阶段不应携带 -D 参数
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
