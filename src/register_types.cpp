@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 // #include "moonlight_stream_core.h"
+#include "config_manager.h" // Include header
 #include "example_class.h"
 #include "moonlight_godot.h"
 #include "requester.h"
@@ -21,6 +22,8 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 
 	// 必须先注册父类，再注册子类
 	GDREGISTER_CLASS(MoonlightGodot);
+	
+	GDREGISTER_CLASS(ConfigManager); // Register class
 	GDREGISTER_CLASS(Requester);
 }
 

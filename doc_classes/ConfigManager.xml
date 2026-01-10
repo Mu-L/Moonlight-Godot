@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="ConfigManager" inherits="MoonlightGodot" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		管理 Moonlight 客户端配置、证书及主机列表的类。
+	</brief_description>
+	<description>
+		[ConfigManager] 负责读写位于 [code]user://addons/moonlight-godot/config.ini[/code] 的配置文件。
+		
+		该类内部保持与 Moonlight-Qt 客户端配置文件样式的兼容性（使用 QSettings 风格的数组索引）。
+		它会在初始化时检查并自动生成用于 MTLS 认证的 RSA 客户端私钥和自签名证书。
+		提供了对串流主机列表（Hosts）和应用程序列表（Apps）的增删改查（CRUD）操作，并自动处理了底层的数组索引重排逻辑。
+	</description>
+	<methods>
+		<method name="load_config">
+			<return type="void" />
+			<description>
+				从磁盘重新加载配置文件。如果文件不存在，将创建默认结构。
+				通常在类实例化时会自动调用此方法，除非外部进程修改了文件，否则无需手动调用。
+			</description>
+		</method>
+		<method name="save_config">
+			<return type="void" />
+			<description>
+				将当前内存中的配置保存到磁盘。
+				[b]注意：[/b] 大多数修改方法（如 [method add_host], [method update_host]）会自动调用此方法。
+			</description>
+		</method>
+		<method name="get_client_keys">
+			<return type="Dictionary" />
+			<description>
+				获取客户端用于 MTLS 的证书和私钥。
+				
+				[b]返回字典结构：[/b]
+				- [code]"certificate"[/code]: PEM 格式的证书字符串。
+				- [code]"key"[/code]: PEM 格式的私钥字符串。
+				
+			</description>
+		</method>
+		<method name="get_hosts">
+			<return type="Array" />
+			<description>
+				获取所有已保存的主机列表。
+				返回一个 [Dictionary] 数组，每个字典代表一个主机，包含 [code]id[/code] (内部索引), [code]uuid[/code], [code]hostname[/code], [code]mac[/code] 等信息。
+			</description>
+		</method>
+		<method name="add_host">
+			<return type="int" />
+			<argument index="0" name="data" type="Dictionary" />
+			<description>
+				添加一个新的主机配置到列表末尾。
+				[param data] 应包含主机的基本信息（如 uuid, hostname, mac 等）。
+				返回新分配的主机索引 ID。
+			</description>
+		</method>
+		<method name="update_host">
+			<return type="void" />
+			<argument index="0" name="index" type="int" />
+			<argument index="1" name="data" type="Dictionary" />
+			<description>
+				更新指定索引 [param index] 的主机信息。
+				[param data] 中的键值对将覆盖现有配置，未提及的键保持不变。
+			</description>
+		</method>
+		<method name="remove_host">
+			<return type="void" />
+			<argument index="0" name="index" type="int" />
+			<description>
+				删除指定索引 [param index] 的主机。
+				此操作是昂贵的，因为它会触发数组重排：该索引之后的所有主机及其应用配置将向前移动（索引减 1）以填补空缺，保持索引连续性。
+			</description>
+		</method>
+		<method name="get_apps">
+			<return type="Array" />
+			<argument index="0" name="host_index" type="int" />
+			<description>
+				获取指定主机 [param host_index] 下的所有应用程序列表。
+				返回一个字典数组，每个字典包含应用的 [code]name[/code], [code]id[/code] 以及 [code]index[/code] 等信息。
+			</description>
+		</method>
+		<method name="add_app">
+			<return type="void" />
+			<argument index="0" name="host_index" type="int" />
+			<argument index="1" name="data" type="Dictionary" />
+			<description>
+				为指定主机 [param host_index] 添加一个新的应用程序。
+				[param data] 应包含应用信息（如 name, id）。
+			</description>
+		</method>
+		<method name="remove_app">
+			<return type="void" />
+			<argument index="0" name="host_index" type="int" />
+			<argument index="1" name="app_index" type="int" />
+			<description>
+				删除指定主机 [param host_index] 下的指定应用 [param app_index]。
+				此操作会触发该主机下应用列表的重排。
+			</description>
+		</method>
+		<method name="set_custom_data">
+			<return type="void" />
+			<argument index="0" name="target" type="int" enum="ConfigManager.ConfigTarget" />
+			<argument index="1" name="host_idx" type="int" />
+			<argument index="2" name="app_idx" type="int" />
+			<argument index="3" name="key" type="String" />
+			<argument index="4" name="value" type="Variant" />
+			<description>
+				向配置文件的指定位置写入自定义数据。这允许存储除标准 Moonlight 属性之外的 Godot 特定配置。
+				
+				[b]参数说明：[/b]
+				- [param target]: 写入的目标层级（全局、主机或应用）。
+				- [param host_idx]: 主机索引（仅当 target 为 TARGET_HOST 或 TARGET_APP 时有效）。
+				- [param app_idx]: 应用索引（仅当 target 为 TARGET_APP 时有效）。
+				- [param key]: 配置键名。
+				- [param value]: 要写入的值（Variant 类型）。
+			</description>
+		</method>
+		<method name="get_custom_data">
+			<return type="Variant" />
+			<argument index="0" name="target" type="int" enum="ConfigManager.ConfigTarget" />
+			<argument index="1" name="host_idx" type="int" />
+			<argument index="2" name="app_idx" type="int" />
+			<argument index="3" name="key" type="String" />
+			<argument index="4" name="default_value" type="Variant" />
+			<description>
+				从配置文件的指定位置读取数据。如果键不存在，则返回 [param default_value]。
+			</description>
+		</method>
+	</methods>
+	<constants>
+		<constant name="TARGET_GLOBAL" value="0" enum="ConfigTarget">
+			全局配置目标（对应 INI 文件中的 [General] 节）。
+		</constant>
+		<constant name="TARGET_HOST" value="1" enum="ConfigTarget">
+			主机配置目标（对应 [hosts] 节下的特定主机前缀，如 "1\"）。
+		</constant>
+		<constant name="TARGET_APP" value="2" enum="ConfigTarget">
+			应用配置目标（对应 [hosts] 节下的特定主机和应用前缀，如 "1\apps\1\"）。
+		</constant>
+	</constants>
+</class>

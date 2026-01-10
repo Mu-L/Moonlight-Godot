@@ -18,3 +18,16 @@ func _on_baidu_request_completed(response_code: int, response_body: PackedByteAr
         print("响应内容: ", response_body.get_string_from_utf8())
     else:
         print("请求失败: ", error_text)
+
+
+func test_cert_create() -> void:
+    var configmanager = ConfigManager.new()
+    print(configmanager.get_client_keys())
+
+
+func test_add_host_info() -> void:
+    var config: Dictionary={
+            "hostname":"TEST"
+        }
+    var configmanager = ConfigManager.new()
+    print(configmanager.add_host(config))
