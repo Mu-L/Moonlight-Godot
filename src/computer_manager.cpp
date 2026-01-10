@@ -237,9 +237,10 @@ void ComputerManager::get_app_list(int host_id, Callable callback) {
 	String ip;
 	int port = 47984;
 	for (int i = 0; i < hosts.size(); i++) {
-		if ((int)hosts[i]["id"] == host_id) {
-			ip = hosts[i].get("localaddress");
-			port = hosts[i].get("https_port");
+		Dictionary host = hosts[i];
+		if ((int64_t)host["id"] == host_id) {
+			ip = host.get("localaddress", "");
+			port = host.get("https_port", 47984);
 		}
 	}
 	if (ip.is_empty())
@@ -279,9 +280,10 @@ void ComputerManager::get_app_cover(int host_id, int app_id, Callable callback) 
 	String ip;
 	int port = 47984;
 	for (int i = 0; i < hosts.size(); i++) {
-		if ((int)hosts[i]["id"] == host_id) {
-			ip = hosts[i].get("localaddress");
-			port = hosts[i].get("https_port");
+		Dictionary host = hosts[i];
+		if ((int64_t)host["id"] == host_id) {
+			ip = host.get("localaddress", "");
+			port = host.get("https_port", 47984);
 		}
 	}
 	if (ip.is_empty())
@@ -315,9 +317,10 @@ void ComputerManager::establish_stream(int host_id, int app_id, Dictionary optio
 	String ip;
 	int port = 47984;
 	for (int i = 0; i < hosts.size(); i++) {
-		if ((int)hosts[i]["id"] == host_id) {
-			ip = hosts[i].get("localaddress");
-			port = hosts[i].get("https_port");
+		Dictionary host = hosts[i];
+		if ((int64_t)host["id"] == host_id) {
+			ip = host.get("localaddress", "");
+			port = host.get("https_port", 47984);
 		}
 	}
 
@@ -333,9 +336,10 @@ void ComputerManager::stop_stream(int host_id, Callable callback) {
 	String ip;
 	int port = 47984;
 	for (int i = 0; i < hosts.size(); i++) {
-		if ((int)hosts[i]["id"] == host_id) {
-			ip = hosts[i].get("localaddress");
-			port = hosts[i].get("https_port");
+		Dictionary host = hosts[i];
+		if ((int64_t)host["id"] == host_id) {
+			ip = host.get("localaddress", "");
+			port = host.get("https_port", 47984);
 		}
 	}
 
