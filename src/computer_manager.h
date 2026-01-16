@@ -24,11 +24,11 @@ private:
 	// Pairing State
 	enum PairState {
 		PAIR_IDLE,
-		PAIR_GET_CERT, // Phase 1: Send Salt, Get Server Cert
-		PAIR_CLIENT_CHALLENGE, // Phase 2: Send Client Challenge
-		PAIR_SERVER_CHALLENGE_RESP, // Phase 3: Send Server Challenge Response
-		PAIR_CLIENT_PAIRING_SECRET, // Phase 4: Send Client Pairing Secret
-		PAIR_HTTPS_PAIR_CHALLENGE, // Phase 5: Finalize via HTTPS
+		PAIR_STAGE_1_GET_CERT, // HTTP: Send Salt + ClientCert -> Get ServerCert
+		PAIR_STAGE_2_CLIENT_CHALLENGE, // HTTP: Send Encrypted(ClientRandom) -> Get Encrypted(ServerSecret)
+		PAIR_STAGE_3_SERVER_RESPONSE, // HTTP: Send Encrypted(Hash(ServerSecret+CertSig+ClientSecret)) -> Get ServerSignature
+		PAIR_STAGE_4_CLIENT_SECRET, // HTTP: Send ClientSecret + Sign(ClientSecret)
+		PAIR_STAGE_5_HTTPS_CHALLENGE, // HTTPS: Verify secure connection
 		PAIR_FINISHED,
 		PAIR_ERROR
 	};
@@ -41,16 +41,25 @@ private:
 	PackedByteArray pair_salt;
 	PackedByteArray pair_aes_key;
 	String unique_id;
+	String current_uuid;
 
 	// Pairing temporary data
 	String server_cert_pem;
+	PackedByteArray client_secret_random; // 16 bytes random for stage 2
+	PackedByteArray server_challenge; // Extracted from stage 2 response (last 16 bytes)
+	PackedByteArray server_secret; // Extracted from stage 3 response
+	PackedByteArray client_pairing_secret; // Generated in stage 3
 	bool is_requesting = false;
-	String last_error;
+
+	// Helper to track if we created the config manager internally
+	bool owns_config_manager = false;
 
 	Dictionary cached_https_ports;
 
 	// Helpers
 	void _reset_pairing();
+	void _step_pair(); // Advance the pairing state machine
+
 	PackedByteArray _generate_random_bytes(int size);
 	String _bytes_to_hex(const PackedByteArray &bytes);
 	PackedByteArray _hex_to_bytes(const String &hex);
@@ -59,6 +68,7 @@ private:
 	PackedByteArray _decrypt_aes_ecb(const PackedByteArray &data, const PackedByteArray &key);
 	PackedByteArray _sign_data(const PackedByteArray &data);
 	PackedByteArray _sha256(const PackedByteArray &data);
+	PackedByteArray _extract_signature_from_der(const PackedByteArray &der); // Helper for ASN.1 parsing
 
 	String _get_unique_id();
 	String _get_uuid();
@@ -84,7 +94,6 @@ public:
 
 	// 1. Pairing
 	String start_pair(String ip, int port = 47989);
-	String complete_pair(); // Returns: "working", "paired", "failed", "pin_needed"
 	void cancel_pair();
 	void unpair(int host_id);
 

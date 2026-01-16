@@ -7,16 +7,21 @@ using namespace godot;
 
 ComputerManager::ComputerManager() {
 	requester = memnew(Requester);
+	owns_config_manager = false;
 }
 
 ComputerManager::~ComputerManager() {
 	if (requester) {
 		memdelete(requester);
 	}
+	if (owns_config_manager && config_manager) {
+		memdelete(config_manager);
+	}
 }
 
 void ComputerManager::set_config_manager(Object *cm) {
 	config_manager = Object::cast_to<ConfigManager>(cm);
+	owns_config_manager = false; // 外部所有权
 }
 
 // ============================================================================
@@ -24,180 +29,276 @@ void ComputerManager::set_config_manager(Object *cm) {
 // ============================================================================
 
 String ComputerManager::start_pair(String ip, int port) {
+	// 如果缺少 config_manager，则在内部初始化一个默认的
+	if (config_manager == nullptr) {
+		config_manager = memnew(ConfigManager);
+		owns_config_manager = true;
+		// ConfigManager 构造函数应处理加载默认值或空状态
+	}
+
 	_reset_pairing();
 	pair_ip = ip;
 	pair_port = port;
 	pair_https_port = cached_https_ports.get(ip, 47984);
+	unique_id = _get_unique_id();
+	current_uuid = _get_uuid();
 
-	// 1. 生成PIN码（4位随机数字）
+	// 1. 生成一个 PIN 码（4 位随机数字）
 	int pin_val = UtilityFunctions::randi() % 10000;
 	pair_pin = String::num_int64(pin_val).pad_zeros(4);
 
-	// 2. 生成盐和密钥
+	// 2. Generate salt and key
+	// client.c: SHA256(salt + PIN) -> aes_key (AES-128 uses 16 bytes)
 	pair_salt = _generate_random_bytes(16);
 	pair_aes_key = _calculate_aes_key(pair_salt, pair_pin);
 
-	// 3. 初始化状态
-	pair_state = PAIR_GET_CERT;
-	is_requesting = false;
-	unique_id = _get_unique_id();
+	// 3. 开始进程
+	pair_state = PAIR_STAGE_1_GET_CERT;
+	_step_pair();
 
 	return pair_pin;
 }
 
-String ComputerManager::complete_pair() {
-	if (pair_state == PAIR_IDLE)
-		return "idle";
-	if (pair_state == PAIR_FINISHED)
-		return "paired";
-	if (pair_state == PAIR_ERROR)
-		return "failed";
-	if (is_requesting)
-		return "working";
+void ComputerManager::_step_pair() {
+	if (pair_state == PAIR_IDLE || pair_state == PAIR_FINISHED || pair_state == PAIR_ERROR)
+		return;
 
+	is_requesting = true;
 	String base_url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/pair";
-	String common_params = "uniqueid=" + unique_id + "&uuid=" + _get_uuid() + "&devicename=roth&updateState=1";
+	String common_params = "uniqueid=" + unique_id + "&uuid=" + current_uuid + "&devicename=roth&updateState=1";
 
-	Dictionary ssl_opts;
+	Dictionary ssl_opts; // HTTP为空
 
 	switch (pair_state) {
-		case PAIR_GET_CERT: {
+		case PAIR_STAGE_1_GET_CERT: {
+			//Stage 1: Send the salt and client certificate, obtain the server certificate. The server blocks here, waiting for the PIN code input.
 			Dictionary keys = config_manager->get_client_keys();
 			String client_cert_pem = keys["certificate"];
-			// 简单清理 PEM 以便传输头部（移除头部/换行符）
-			String cert_clean = client_cert_pem.replace("-----BEGIN CERTIFICATE-----", "").replace("-----END CERTIFICATE-----", "").replace("\n", "");
+
+			// Remove leading/trailing/line break characters for hexadecimal encoding
+			String cert_clean = client_cert_pem.replace("-----BEGIN CERTIFICATE-----", "")
+										.replace("-----END CERTIFICATE-----", "")
+										.replace("\n", "")
+										.replace("\r", "");
+
 			PackedByteArray cert_bytes = Marshalls::get_singleton()->base64_to_raw(cert_clean);
 
 			String url = base_url + "?" + common_params + "&phrase=getservercert&salt=" + _bytes_to_hex(pair_salt) + "&clientcert=" + _bytes_to_hex(cert_bytes);
 			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(1));
-			is_requesting = true;
 			break;
 		}
-		case PAIR_CLIENT_CHALLENGE: {
-			PackedByteArray random_bytes = _generate_random_bytes(16);
-			PackedByteArray challenge_enc = _encrypt_aes_ecb(random_bytes, pair_aes_key);
+		case PAIR_STAGE_2_CLIENT_CHALLENGE: {
+			// Stage 2: Send encrypted client challenge
+			// Generate 16 bytes of random data
+			client_secret_random = _generate_random_bytes(16);
+			// Encrypt using AES key
+			PackedByteArray challenge_enc = _encrypt_aes_ecb(client_secret_random, pair_aes_key);
 
 			String url = base_url + "?" + common_params + "&clientchallenge=" + _bytes_to_hex(challenge_enc);
 			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(2));
-			is_requesting = true;
 			break;
 		}
-		case PAIR_SERVER_CHALLENGE_RESP: {
-			// 有效载荷存储在上一步回调的 last_error 中
-			String payload = last_error;
-			last_error = "";
-			String url = base_url + "?" + common_params + "&serverchallengeresp=" + payload;
+		case PAIR_STAGE_3_SERVER_RESPONSE: {
+			// 第3阶段：响应服务器挑战
+			// 负载：ServerChallenge   CertSig   ClientSecret
+			// 注意：之前的逻辑错误地使用了server_secret，应该使用server_challenge。
+
+			// 1. 获取客户端证书 DER 以提取签名
+			Dictionary keys = config_manager->get_client_keys();
+			String cert_clean = String(keys["certificate"]).replace("-----BEGIN CERTIFICATE-----", "").replace("-----END CERTIFICATE-----", "").replace("\n", "").replace("\r", "");
+			PackedByteArray cert_der = Marshalls::get_singleton()->base64_to_raw(cert_clean);
+			PackedByteArray cert_sig = _extract_signature_from_der(cert_der);
+
+			// 2. 生成客户端密钥（16 字节）
+			client_pairing_secret = _generate_random_bytes(16);
+
+			// 3. 构建负载：服务器挑战   证书签名   客户端密钥
+			PackedByteArray payload;
+			payload.append_array(server_challenge); // 根据 nvhttp.cpp 从 server_secret 修正
+			payload.append_array(cert_sig);
+			payload.append_array(client_pairing_secret);
+
+			// 4. 哈希 SHA256
+			PackedByteArray hash = _sha256(payload);
+
+			// 5. 加密哈希
+			PackedByteArray hash_enc = _encrypt_aes_ecb(hash, pair_aes_key);
+
+			String url = base_url + "?" + common_params + "&serverchallengeresp=" + _bytes_to_hex(hash_enc);
 			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(3));
-			is_requesting = true;
 			break;
 		}
-		case PAIR_CLIENT_PAIRING_SECRET: {
-			String payload = last_error;
-			last_error = "";
-			String url = base_url + "?" + common_params + "&clientpairingsecret=" + payload;
+		case PAIR_STAGE_4_CLIENT_SECRET: {
+			// 第4阶段：发送客户端密钥和签名
+			// 有效载荷：客户端密钥   签名(客户端密钥)
+			// 注意：根据 client.c 和 nvhttp.cpp，这一步不是加密的
+
+			// 1. 使用客户端私钥对客户端密钥进行签名
+			PackedByteArray signature = _sign_data(client_pairing_secret);
+
+			// 2. 连接
+			PackedByteArray payload = client_pairing_secret;
+			payload.append_array(signature);
+
+			// 3. 以 HEX（纯文本）发送
+			String url = base_url + "?" + common_params + "&clientpairingsecret=" + _bytes_to_hex(payload);
 			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(4));
-			is_requesting = true;
 			break;
 		}
-		case PAIR_HTTPS_PAIR_CHALLENGE: {
+		case PAIR_STAGE_5_HTTPS_CHALLENGE: {
+			// Stage 5: Completed via HTTPS
 			String https_url = "https://" + pair_ip + ":" + String::num_int64(pair_https_port) + "/pair";
 			String url = https_url + "?" + common_params + "&phrase=pairchallenge";
+
+			// 现在必须使用 SSL 选项
 			requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(), callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(5));
-			is_requesting = true;
 			break;
 		}
 	}
-
-	return "working";
 }
 
 void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body, Dictionary headers, String error, int step) {
 	is_requesting = false;
 
 	if (code != 200) {
-		if (step == 1)
-			return; // 仍在等待主机输入PIN码
-		pair_state = PAIR_ERROR;
-		return;
+		//Special handling: If waiting for a PIN, the server might not immediately return 200? In practice, GFE/Sunshine usually either blocks or returns 200 with paired=0. If it's a real network error:
+		if (code == 0 || code >= 400) {
+			pair_state = PAIR_ERROR;
+			emit_signal("pair_completed", false, "Network Error: " + String::num_int64(code) + " " + error);
+			return;
+		}
 	}
 
 	String xml = body.get_string_from_utf8();
-	if (_extract_xml_value(xml, "paired") != "1") {
-		if (step == 1)
-			return; // 仍在等待
+	bool is_paired = _extract_xml_value(xml, "paired") == "1";
+
+	// Check failed
+	if (!is_paired && step != 1) {
+		// Except for Stage 1 (waiting for PIN), paired=0 usually indicates failure
 		pair_state = PAIR_ERROR;
+		String msg = _extract_xml_value(xml, "status_message");
+		if (msg.is_empty())
+			msg = "Pairing failed at step " + String::num_int64(step);
+		emit_signal("pair_completed", false, msg);
 		return;
 	}
 
 	switch (step) {
-		case 1: { // Get Cert
-			String plaincert = _extract_xml_value(xml, "plaincert");
-			if (!plaincert.is_empty()) {
-				// 响应中的 plaincert 是 Hex 编码的 PEM 证书
-				server_cert_pem = _hex_to_bytes(plaincert).get_string_from_ascii();
-				pair_state = PAIR_CLIENT_CHALLENGE;
+		case 1: { // Obtain Certificate
+			if (!is_paired) {
+				//Waiting for PIN input… If polling, the server may return paired=0, but it usually blocks. If we get paired=0, we may need to retry or fail. Currently, assume that if code=200 and plaincert is missing, it indicates failure or the user has canceled.
+				String status_msg = _extract_xml_value(xml, "status_message");
+				if (!status_msg.is_empty()) {
+					pair_state = PAIR_ERROR;
+					emit_signal("pair_completed", false, status_msg);
+					return;
+				}
+				// Retry? Or just fail immediately. The README says it will block.
+				// If the code reaches this point, the request has already been completed.
+				// Assume failure if there is no certificate.
 			}
+
+			String plaincert = _extract_xml_value(xml, "plaincert");
+			if (plaincert.is_empty()) {
+				pair_state = PAIR_ERROR;
+				emit_signal("pair_completed", false, "No server certificate received.");
+				return;
+			}
+
+			// Store server certificate (from hexadecimal to PEM)
+			// If we want to save it as PEM, it needs to be properly formatted, but for internal logic, we might just keep it in hexadecimal or raw format.
+			// However, for later verify_signature (if we implement it), we need this key.
+			// For now, just store it in raw format.
+			server_cert_pem = _hex_to_bytes(plaincert).get_string_from_ascii(); // 假设十六进制解码为 PEM 字符串
+
+			pair_state = PAIR_STAGE_2_CLIENT_CHALLENGE;
+			_step_pair();
 			break;
 		}
-		case 2: { // Got Server Response
+		case 2: { // Server response received
 			String resp_hex = _extract_xml_value(xml, "challengeresponse");
-			PackedByteArray resp = _decrypt_aes_ecb(_hex_to_bytes(resp_hex), pair_aes_key);
+			if (resp_hex.is_empty()) {
+				emit_signal("pair_completed", false, "Empty challenge response");
+				return;
+			}
 
-			// 简化逻辑：对解密后的响应进行哈希处理并重新加密
-			PackedByteArray hash = _sha256(resp);
-			PackedByteArray hash_enc = _encrypt_aes_ecb(hash, pair_aes_key);
-			last_error = _bytes_to_hex(hash_enc); // 进入下一步
+			PackedByteArray resp_enc = _hex_to_bytes(resp_hex);
+			PackedByteArray resp_dec = _decrypt_aes_ecb(resp_enc, pair_aes_key);
 
-			pair_state = PAIR_SERVER_CHALLENGE_RESP;
+			// 解密数据结构：[SHA256 哈希（32 字节）]   [服务器挑战（16 字节）]
+			// 总大小应为 48 字节（SHA1 为 36 字节，但我们使用 SHA256）
+
+			if (resp_dec.size() < 48) {
+				emit_signal("pair_completed", false, "Invalid server response size");
+				return;
+			}
+
+			// 提取 ServerChallenge（最后 16 个字节）
+			// client.c：memcpy(challenge_response, challenge_response_data + hash_length, 16);
+			server_challenge = resp_dec.slice(32, 48);
+
+			pair_state = PAIR_STAGE_3_SERVER_RESPONSE;
+			_step_pair();
 			break;
 		}
-		case 3: { // 获取配对密钥
-			// 准备第四阶段
-			PackedByteArray client_secret = _generate_random_bytes(16);
-			PackedByteArray signature = _sign_data(client_secret);
-			PackedByteArray payload = client_secret;
-			payload.append_array(signature);
+		case 3: { // Pairing key obtained
+			String pairing_secret_hex = _extract_xml_value(xml, "pairingsecret");
 
-			last_error = _bytes_to_hex(payload);
-			pair_state = PAIR_CLIENT_PAIRING_SECRET;
+			// pairingsecret = ServerSecret   Signature(ServerSecret)
+			// 如果需要，我们可以提取 ServerSecret，但该协议主要用它来进行中间人攻击验证。
+			PackedByteArray pairing_secret = _hex_to_bytes(pairing_secret_hex);
+			if (pairing_secret.size() >= 16) {
+				server_secret = pairing_secret.slice(0, 16);
+			}
+
+			pair_state = PAIR_STAGE_4_CLIENT_SECRET;
+			_step_pair();
 			break;
 		}
-		case 4: {
-			pair_state = PAIR_HTTPS_PAIR_CHALLENGE;
+		case 4: { // The client key has been sent
+			pair_state = PAIR_STAGE_5_HTTPS_CHALLENGE;
+			_step_pair();
 			break;
 		}
-		case 5: {
-			// 成功
+		case 5: { // HTTPS 挑战
+			// 成功！
 			Dictionary host_data;
 			host_data["hostname"] = pair_ip;
 			host_data["localaddress"] = pair_ip;
-			host_data["uuid"] = _get_uuid();
+			host_data["uuid"] = current_uuid;
 			host_data["srvcert"] = server_cert_pem;
 			host_data["https_port"] = pair_https_port;
 			config_manager->add_host(host_data);
+
 			pair_state = PAIR_FINISHED;
+			emit_signal("pair_completed", true, "Pairing successful");
 			break;
 		}
 	}
 }
 
 void ComputerManager::cancel_pair() {
-	if (pair_state != PAIR_IDLE) {
-		String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/unpair?uniqueid=" + unique_id + "&uuid=" + _get_uuid();
+	if (pair_state != PAIR_IDLE && pair_state != PAIR_FINISHED && pair_state != PAIR_ERROR) {
+		String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/unpair?uniqueid=" + unique_id + "&uuid=" + current_uuid;
 		requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), Callable());
 	}
 	_reset_pairing();
 }
 
 void ComputerManager::unpair(int host_id) {
-	config_manager->remove_host(host_id);
+	if (config_manager) {
+		config_manager->remove_host(host_id);
+	}
 }
 
 void ComputerManager::_reset_pairing() {
 	pair_state = PAIR_IDLE;
 	is_requesting = false;
-	last_error = "";
 	server_cert_pem = "";
+	server_secret.clear();
+	server_challenge.clear();
+	client_secret_random.clear();
+	client_pairing_secret.clear();
 }
 
 // ============================================================================
@@ -365,7 +466,9 @@ PackedByteArray ComputerManager::_generate_random_bytes(int size) {
 
 PackedByteArray ComputerManager::_calculate_aes_key(const PackedByteArray &salt, const String &pin) {
 	PackedByteArray combined = salt;
+	// 将 PIN 转换为 ASCII 字节（例如 "1234" -> 0x31 0x32 0x33 0x34）
 	combined.append_array(pin.to_ascii_buffer());
+	// Return the first 16 bytes of SHA256
 	return _sha256(combined).slice(0, 16);
 }
 
@@ -403,7 +506,88 @@ PackedByteArray ComputerManager::_sign_data(const PackedByteArray &data) {
 	key.instantiate();
 	if (key->load_from_string(keys["key"]) != OK)
 		return PackedByteArray();
-	return c->sign(HashingContext::HASH_SHA256, data, key);
+
+	// Godot Crypto::sign 当使用 HASH_SHA256 时，需要传入 32 字节的哈希摘要(Digest)
+	PackedByteArray hash = _sha256(data);
+	return c->sign(HashingContext::HASH_SHA256, hash, key);
+}
+
+PackedByteArray ComputerManager::_extract_signature_from_der(const PackedByteArray &der) {
+	// A minimal ASN.1 parser used to find the last BIT STRING in a sequence
+	// X.509 structure: SEQUENCE { ... }
+	// Inside: TBSCertificate, AlgorithmIdentifier, BIT STRING (signature)
+
+	int len = der.size();
+	const uint8_t *data = der.ptr();
+	int pos = 0;
+
+	// 1. Check external sequence
+	if (pos >= len || data[pos++] != 0x30)
+		return PackedByteArray(); // Not a sequence
+
+	// Skip length byte
+	if (pos >= len)
+		return PackedByteArray();
+	if (data[pos] & 0x80) {
+		int len_bytes = data[pos] & 0x7F;
+		pos += 1 + len_bytes;
+	} else {
+		pos++;
+	}
+
+	//We expect 3 child elements. The signature is the third one (bit string, tag 0x03). We iterate through the child elements.
+	int child_count = 0;
+	while (pos < len) {
+		uint8_t tag = data[pos];
+
+		// If we find the third element and it is a BIT STRING (0x03)
+		if (child_count == 2) {
+			if (tag == 0x03) {
+				pos++; // Skip tags
+				// Parse length
+				int val_len = 0;
+				if (data[pos] & 0x80) {
+					int len_bytes = data[pos] & 0x7F;
+					pos++;
+					for (int i = 0; i < len_bytes; i++) {
+						val_len = (val_len << 8) | data[pos++];
+					}
+				} else {
+					val_len = data[pos++];
+				}
+
+				// A BIT STRING has 1 byte at the beginning to count the unused bits.
+				if (val_len > 1) {
+					// Return bytes, skipping bytes with unused bits
+					return der.slice(pos + 1, pos + val_len);
+				}
+				return PackedByteArray();
+			}
+			return PackedByteArray(); // Isn't the third element a bit string?
+		}
+
+		// Skip current element
+		pos++; // Skip tags
+		// Parse the length to skip
+		int val_len = 0;
+		if (pos < len) {
+			if (data[pos] & 0x80) {
+				int len_bytes = data[pos] & 0x7F;
+				pos++;
+				for (int i = 0; i < len_bytes; i++) {
+					if (pos >= len)
+						return PackedByteArray();
+					val_len = (val_len << 8) | data[pos++];
+				}
+			} else {
+				val_len = data[pos++];
+			}
+		}
+		pos += val_len;
+		child_count++;
+	}
+
+	return PackedByteArray();
 }
 
 String ComputerManager::_bytes_to_hex(const PackedByteArray &bytes) {
@@ -436,7 +620,7 @@ String ComputerManager::_get_unique_id() {
 }
 
 String ComputerManager::_get_uuid() {
-	return _bytes_to_hex(_generate_random_bytes(16));
+	return _bytes_to_hex(_generate_random_bytes(16)); // A standard UUID is 16 bytes
 }
 
 Dictionary ComputerManager::_get_ssl_options() {
@@ -451,7 +635,6 @@ void ComputerManager::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_config_manager", "cm"), &ComputerManager::set_config_manager);
 
 	ClassDB::bind_method(D_METHOD("start_pair", "ip", "port"), &ComputerManager::start_pair, DEFVAL(47989));
-	ClassDB::bind_method(D_METHOD("complete_pair"), &ComputerManager::complete_pair);
 	ClassDB::bind_method(D_METHOD("cancel_pair"), &ComputerManager::cancel_pair);
 	ClassDB::bind_method(D_METHOD("unpair", "host_id"), &ComputerManager::unpair);
 
@@ -466,4 +649,6 @@ void ComputerManager::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_app_list_completed"), &ComputerManager::_on_app_list_completed);
 	ClassDB::bind_method(D_METHOD("_on_app_cover_completed"), &ComputerManager::_on_app_cover_completed);
 	ClassDB::bind_method(D_METHOD("_on_simple_request_completed"), &ComputerManager::_on_simple_request_completed);
+
+	ADD_SIGNAL(MethodInfo("pair_completed", PropertyInfo(Variant::BOOL, "success"), PropertyInfo(Variant::STRING, "message")));
 }
