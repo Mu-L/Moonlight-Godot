@@ -68,12 +68,6 @@ find_package(unofficial-godot-cpp CONFIG REQUIRED)
 # --- Moonlight-common-c ---
 find_package(moonlight-common-c CONFIG REQUIRED)
 
-# 查找pkg-config
-find_package(PkgConfig REQUIRED)
-
-# 使用pkg-config查找libtasn1
-pkg_check_modules(LIBTASN1 REQUIRED libtasn1)
-
 # 4. 库名前缀
 if(DEFINED GODOTCPP_SUFFIX AND NOT GODOTCPP_SUFFIX STREQUAL "")
     set(GODOTCPP_SUFFIX_INTERNAL "${GODOTCPP_SUFFIX}")
