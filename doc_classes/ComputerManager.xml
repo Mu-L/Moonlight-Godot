@@ -94,14 +94,11 @@
 			<argument index="2" name="options" type="Dictionary" />
 			<argument index="3" name="callback" type="Callable" />
 			<description>
-				向主机发送启动应用（Launch）请求以建立流媒体会话。
+				向主机发送启动应用（Launch/resume）请求以建立流媒体会话。
 				
-				[param options] 字典可包含：
-				- [code]"width"[/code]: 宽度 (int)。
-				- [code]"height"[/code]: 高度 (int)。
-				- [code]"fps"[/code]: 帧率 (int)。
+				[param options] 字典可包含的键值请参考[url=https://github.com/html5syt/Moonlight-Godot/blob/vcpkg/README.md]readme文档[/url]。
 				
-				[param callback] 收到响应后被调用，参数为响应体字符串（通常包含 RTSP URL 或相关信息）。
+				[param callback] 收到响应后被调用，参数为响应体字符串（包含 RTSP URL、输入的参数、tcp/udp端口号等相关信息）。
 			</description>
 		</method>
 		<method name="stop_stream">

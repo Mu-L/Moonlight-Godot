@@ -379,6 +379,12 @@ void ComputerManager::_reset_pairing() {
 // ============================================================================
 
 void ComputerManager::connect_to_computer(String ip, int port, Callable callback) {
+	// 如果缺少 config_manager，则在内部初始化一个默认的
+	if (config_manager == nullptr) {
+		config_manager = memnew(ConfigManager);
+		owns_config_manager = true;
+		// ConfigManager 构造函数应处理加载默认值或空状态
+	}
 	String url = "http://" + ip + ":" + String::num_int64(port) + "/serverinfo?uniqueid=" + _get_unique_id() + "&uuid=" + _get_uuid();
 	requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(),
 			callable_mp(this, &ComputerManager::_on_server_info_completed).bind(Variant(callback), Variant(ip)));
@@ -472,6 +478,13 @@ void ComputerManager::_on_app_list_completed(int code, PackedByteArray body, Dic
 }
 
 void ComputerManager::get_app_cover(int host_id, int app_id, Callable callback) {
+	// 如果缺少 config_manager，则在内部初始化一个默认的
+	if (config_manager == nullptr) {
+		config_manager = memnew(ConfigManager);
+		owns_config_manager = true;
+		// ConfigManager 构造函数应处理加载默认值或空状态
+	}
+
 	Array hosts = config_manager->get_hosts();
 	String ip;
 	int port = 47984;
@@ -505,7 +518,7 @@ void ComputerManager::_on_app_cover_completed(int code, PackedByteArray body, Di
 }
 
 // ============================================================================
-// 4. Stream
+// 4. 流连接管理
 // ============================================================================
 
 void ComputerManager::establish_stream(int host_id, int app_id, Dictionary options, Callable callback) {
@@ -517,19 +530,179 @@ void ComputerManager::establish_stream(int host_id, int app_id, Dictionary optio
 		if ((int64_t)host["id"] == host_id) {
 			ip = host.get("localaddress", "");
 			port = host.get("https_port", 47984);
+			break;
 		}
 	}
 
-	String url = "https://" + ip + ":" + String::num_int64(port) + "/launch?uniqueid=" + unique_id + "&uuid=" + _get_uuid() + "&appid=" + String::num_int64(app_id);
-	url += "&mode=" + String::num_int64(options.get("width", 1280)) + "x" + String::num_int64(options.get("height", 720)) + "x" + String::num_int64(options.get("fps", 60));
+	if (ip.is_empty()) {
+		if (callback.is_valid()) {
+			Dictionary err;
+			err["status"] = "error";
+			err["message"] = "Host not found";
+			callback.call(err);
+		}
+		return;
+	}
 
+	// 1. 准备参数和密钥
+	Dictionary ctx;
+	ctx["ip"] = ip;
+	ctx["port"] = port;
+	ctx["app_id"] = app_id;
+	ctx["options"] = options;
+	ctx["callback"] = callback;
+
+	// 生成 rikey (128-bit AES key, Hex string)
+	PackedByteArray rikey_bytes = _generate_random_bytes(16);
+	ctx["rikey"] = _bytes_to_hex(rikey_bytes);
+
+	// 生成 rikeyid (Random integer)
+	PackedByteArray rikeyid_bytes = _generate_random_bytes(4);
+	int64_t rikeyid = rikeyid_bytes.decode_u32(0);
+	ctx["rikeyid"] = rikeyid;
+
+	// 2. 首先检查服务器状态 (/serverinfo) 以决定策略
+	String url = "https://" + ip + ":" + String::num_int64(port) + "/serverinfo?uniqueid=" + unique_id + "&uuid=" + _get_uuid();
 	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
-			callable_mp(this, &ComputerManager::_on_simple_request_completed).bind(Variant(callback)));
+			callable_mp(this, &ComputerManager::_on_launch_serverinfo_completed).bind(ctx));
 }
 
-// ============================================================================
-// 5. 流连接管理
-// ============================================================================
+void ComputerManager::_on_launch_serverinfo_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx) {
+	if (code != 200) {
+		Callable cb = ctx["callback"];
+		if (cb.is_valid()) {
+			Dictionary res;
+			res["status"] = "error";
+			res["message"] = "Server check failed: " + error;
+			cb.call(res);
+		}
+		return;
+	}
+
+	String xml = body.get_string_from_utf8();
+	String current_game_str = _extract_xml_value(xml, "currentgame");
+	int current_game = current_game_str.to_int();
+
+	// 逻辑：如果服务端已有游戏运行 (currentgame != 0)，则使用 /resume，否则使用 /launch
+	String command = (current_game != 0) ? "resume" : "launch";
+
+	// 进入实际请求阶段
+	_perform_launch_request(ctx, command);
+}
+
+void ComputerManager::_perform_launch_request(Dictionary ctx, String command) {
+	String ip = ctx["ip"];
+	int port = ctx["port"];
+	int app_id = ctx["app_id"];
+	Dictionary options = ctx["options"];
+	String rikey = ctx["rikey"];
+	int64_t rikeyid = ctx["rikeyid"];
+
+	// 构造基本 URL (Required params)
+	String url = "https://" + ip + ":" + String::num_int64(port) + "/" + command + "?uniqueid=" + unique_id + "&uuid=" + _get_uuid();
+	url += "&appid=" + String::num_int64(app_id);
+	url += "&rikey=" + rikey;
+	url += "&rikeyid=" + String::num_int64(rikeyid);
+
+	// 可选参数 - 无默认值 (仅当 options 包含时添加)
+	if (options.has("width") && options.has("height") && options.has("fps")) {
+		String mode = String::num_int64(options["width"]) + "x" + String::num_int64(options["height"]) + "x" + String::num_int64(options["fps"]);
+		url += "&mode=" + mode;
+	}
+
+	if (options.has("sops")) {
+		url += "&sops=" + String::num_int64(options["sops"]);
+	}
+	if (options.has("surround_audio_info")) {
+		url += "&surroundAudioInfo=" + String::num_int64(options["surround_audio_info"]);
+	}
+	if (options.has("surround_params")) {
+		url += "&surroundParams=" + String(options["surround_params"]);
+	}
+	if (options.has("remote_controllers_bitmap")) {
+		url += "&remoteControllersBitmap=" + String::num_int64(options["remote_controllers_bitmap"]);
+	}
+	if (options.has("gcmap")) {
+		url += "&gcmap=" + String::num_int64(options["gcmap"]);
+	}
+	if (options.has("additional_states")) {
+		url += "&additionalStates=" + String::num_int64(options["additional_states"]);
+	}
+	if (options.has("corever")) {
+		url += "&corever=" + String::num_int64(options["corever"]);
+	}
+	if (options.has("continuous_audio")) {
+		url += "&continuousAudio=" + String::num_int64(options["continuous_audio"]);
+	}
+
+	int hdr_mode = options.get("hdr_mode", 0);
+	if (options.has("hdr_mode")) {
+		url += "&hdrMode=" + String::num_int64(hdr_mode);
+	}
+
+	// 可选参数 - 有默认值 (总是添加)
+	int local_audio = options.get("local_audio_play_mode", 1);
+	url += "&localAudioPlayMode=" + String::num_int64(local_audio);
+
+	if (hdr_mode == 1) {
+		// HDR 启用时，相关参数变为使用 README 中的默认值
+		url += "&clientHdrCapVersion=" + String::num_int64(options.get("client_hdr_cap_version", 0));
+		url += "&clientHdrCapSupportedFlagsInUint32=" + String::num_int64(options.get("client_hdr_cap_supported_flags", 0));
+		url += "&clientHdrCapMetaDataId=" + String(options.get("client_hdr_cap_meta_data_id", "NV_STATIC_METADATA_TYPE_1"));
+		url += "&clientHdrCapDisplayData=" + String(options.get("client_hdr_cap_display_data", "0x0x0x0x0x0x0x0x0x0x0"));
+	}
+
+	// 遍历 options 添加未被显式处理的自定义参数
+	Array keys = options.keys();
+	for (int i = 0; i < keys.size(); i++) {
+		String key = keys[i];
+		// 跳过已知的、已手动处理的键
+		if (key == "width" || key == "height" || key == "fps" ||
+				key == "sops" || key == "surround_audio_info" || key == "surround_params" ||
+				key == "remote_controllers_bitmap" || key == "gcmap" || key == "additional_states" ||
+				key == "corever" || key == "continuous_audio" ||
+				key == "hdr_mode" || key == "local_audio_play_mode" ||
+				key == "client_hdr_cap_version" || key == "client_hdr_cap_supported_flags" ||
+				key == "client_hdr_cap_meta_data_id" || key == "client_hdr_cap_display_data") {
+			continue;
+		}
+		// 原样追加其他参数
+		url += "&" + key + "=" + String(options[key]);
+	}
+
+	// 发送请求
+	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
+			callable_mp(this, &ComputerManager::_on_launch_request_completed).bind(ctx));
+}
+
+void ComputerManager::_on_launch_request_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx) {
+	Callable cb = ctx["callback"];
+	if (!cb.is_valid())
+		return;
+
+	Dictionary response = ctx.duplicate();
+	response.erase("callback"); // 清理回调引用
+
+	if (code == 200) {
+		String xml = body.get_string_from_utf8();
+		String session_url = _extract_xml_value(xml, "sessionUrl0");
+
+		if (!session_url.is_empty()) {
+			response["status"] = "success";
+			response["session_url"] = session_url;
+			// 成功：返回包含所有请求参数(rikey等)和session_url的字典
+		} else {
+			response["status"] = "error";
+			response["message"] = "Session URL not found in response. Game may be stuck.";
+			response["xml_debug"] = xml;
+		}
+	} else {
+		response["status"] = "error";
+		response["message"] = "Launch/Resume failed (" + String::num_int64(code) + "): " + error;
+	}
+
+	cb.call(response);
+}
 
 void ComputerManager::stop_stream(int host_id, Callable callback) {
 	Array hosts = config_manager->get_hosts();
@@ -554,7 +727,7 @@ void ComputerManager::_on_simple_request_completed(int code, PackedByteArray bod
 }
 
 // ============================================================================
-// 助手
+// 工具函数
 // ============================================================================
 
 PackedByteArray ComputerManager::_generate_random_bytes(int size) {
@@ -755,6 +928,9 @@ void ComputerManager::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_app_list_completed"), &ComputerManager::_on_app_list_completed);
 	ClassDB::bind_method(D_METHOD("_on_app_cover_completed"), &ComputerManager::_on_app_cover_completed);
 	ClassDB::bind_method(D_METHOD("_on_simple_request_completed"), &ComputerManager::_on_simple_request_completed);
+
+	ClassDB::bind_method(D_METHOD("_on_launch_serverinfo_completed"), &ComputerManager::_on_launch_serverinfo_completed);
+	ClassDB::bind_method(D_METHOD("_on_launch_request_completed"), &ComputerManager::_on_launch_request_completed);
 
 	ADD_SIGNAL(MethodInfo("pair_completed", PropertyInfo(Variant::BOOL, "success"), PropertyInfo(Variant::STRING, "message")));
 }

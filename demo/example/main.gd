@@ -67,3 +67,26 @@ func test_get_app_texture() -> void:
     configmanager.load_config()
     var applist = configmanager.get_apps(1)
     computermamager.get_app_cover(1,applist[0]["id"],func(texture_return): $ScrollContainer/GridContainer/TextureRect.texture = texture_return)
+
+
+func test_connect_to_server() -> void:
+    computermamager.connect_to_computer("127.0.0.1",47989,func(info): print(info))
+    
+
+
+func test_establish_stream() -> void:
+    var options = {
+        "width": "1920",
+        "height": "1080",
+        "fps": "60",
+        "additionalStates": "1",
+        "sops": "1",
+        "surroundAudioInfo": "65536",
+        "remoteControllersBitmap": "15",
+        "gcmap": "1",
+        "gcpersist": "1",
+    }
+    computermamager.establish_stream(1,1191261554,options,func(info): print(info))
+
+func test_stop_stream() -> void:
+    computermamager.stop_stream(1,func(info): print(info))

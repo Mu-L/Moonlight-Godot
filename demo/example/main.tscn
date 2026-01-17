@@ -25,7 +25,7 @@ text = "test http request"
 [node name="Button2" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test cert create"
+text = "!test cert create"
 
 [node name="Button3" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
@@ -35,12 +35,17 @@ text = "test get host info"
 [node name="Button4" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test remove host info"
+text = "!test remove host info"
 
 [node name="Button5" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test start pair"
+
+[node name="Button10" type="Button" parent="ScrollContainer/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test connect to server"
 
 [node name="Button7" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
@@ -62,11 +67,24 @@ custom_minimum_size = Vector2(130, 180)
 layout_mode = 2
 expand_mode = 1
 
+[node name="Button11" type="Button" parent="ScrollContainer/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test establish stream"
+
+[node name="Button12" type="Button" parent="ScrollContainer/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test stop stream"
+
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button4" to="." method="test_remove_host_info"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button5" to="." method="test_start_pair"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button10" to="." method="test_connect_to_server"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button7" to="." method="test_cancel_pair"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button8" to="." method="test_get_applist"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button9" to="." method="test_get_app_texture"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button11" to="." method="test_establish_stream"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button12" to="." method="test_stop_stream"]

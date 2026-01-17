@@ -83,6 +83,10 @@ private:
 	void _on_app_cover_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback);
 	void _on_simple_request_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback);
 
+	void _on_launch_serverinfo_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx);
+	void _perform_launch_request(Dictionary ctx, String command);
+	void _on_launch_request_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx);
+
 	String _extract_xml_value(const String &xml, const String &tag);
 
 protected:
