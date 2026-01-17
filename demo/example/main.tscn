@@ -2,36 +2,54 @@
 
 [ext_resource type="Script" uid="uid://bd0uy7cwied51" path="res://example/main.gd" id="1_iyjup"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node"]
 script = ExtResource("1_iyjup")
 
 [node name="ScrollContainer" type="ScrollContainer" parent="."]
-offset_right = 1151.0
-offset_bottom = 655.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="GridContainer" type="GridContainer" parent="ScrollContainer"]
+[node name="GridContainer" type="HFlowContainer" parent="ScrollContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-columns = 5
 
 [node name="Button" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 21
 text = "test http request"
 
 [node name="Button2" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 21
 text = "test cert create"
 
 [node name="Button3" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 21
 text = "test add host info"
 
 [node name="Button4" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 21
 text = "test remove host info"
+
+[node name="Button5" type="Button" parent="ScrollContainer/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test start pair"
+
+[node name="Button7" type="Button" parent="ScrollContainer/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test unpair"
 
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button4" to="." method="test_remove_host_info"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button5" to="." method="test_start_pair"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button7" to="." method="test_cancel_pair"]

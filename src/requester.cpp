@@ -1,4 +1,5 @@
 #include "requester.h"
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <mutex>
@@ -44,6 +45,10 @@ size_t Requester::_header_cb(char *buffer, size_t size, size_t nitems, void *use
 }
 
 void Requester::request(String p_url, String p_method, PackedByteArray p_body, Dictionary p_headers, Dictionary p_ssl_options, Callable p_callback) {
+	if (OS::get_singleton()->is_debug_build()) {
+		UtilityFunctions::print("[Moonlight-Requester] ", p_method, " ", p_url);
+	}
+
 	// 使用 std::thread 异步执行，detach 分离线程（简单起见，生产环境建议使用线程池）
 	std::thread([=]() {
 		_perform_request_thread(p_url, p_method, p_body, p_headers, p_ssl_options, p_callback);
@@ -99,7 +104,7 @@ void Requester::_perform_request_thread(String p_url, String p_method, PackedByt
 			String cert_path = p_ssl_options["client_cert"];
 			if (!cert_path.is_empty()) {
 				curl_easy_setopt(curl, CURLOPT_SSLCERT, cert_path.utf8().get_data());
-				curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE, "PEM");
+				// curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE, "PEM"); // Default is PEM
 			}
 		}
 		// 客户端密钥
@@ -118,8 +123,14 @@ void Requester::_perform_request_thread(String p_url, String p_method, PackedByt
 				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 			}
 		} else {
-			// 如果没指定，默认不严格校验，或依赖系统CA（视需求而定）
-			// 这里假设没传server_cert则不强制pinning，但libcurl默认会校验系统CA
+			// Check for explicit verify disable
+			if (p_ssl_options.has("verify_peer") && !p_ssl_options["verify_peer"]) {
+				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+			} else {
+				// Default secure behavior
+				// curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+			}
 		}
 
 		// Callback setup
@@ -142,6 +153,13 @@ void Requester::_perform_request_thread(String p_url, String p_method, PackedByt
 			res_data.body.resize(body_buffer.size());
 			if (body_buffer.size() > 0) {
 				memcpy(res_data.body.ptrw(), body_buffer.data(), body_buffer.size());
+			}
+
+			if (OS::get_singleton()->is_debug_build()) {
+				UtilityFunctions::print("[Moonlight-Requester] Response Code: ", res_data.response_code);
+				if (res_data.body.size() > 0) {
+					UtilityFunctions::print("[Moonlight-Requester] Response Body: ", res_data.body.get_string_from_utf8());
+				}
 			}
 		}
 

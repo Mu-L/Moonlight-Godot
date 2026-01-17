@@ -1,5 +1,7 @@
 #include "computer_manager.h"
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/marshalls.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -75,13 +77,9 @@ void ComputerManager::_step_pair() {
 			Dictionary keys = config_manager->get_client_keys();
 			String client_cert_pem = keys["certificate"];
 
-			// Remove leading/trailing/line break characters for hexadecimal encoding
-			String cert_clean = client_cert_pem.replace("-----BEGIN CERTIFICATE-----", "")
-										.replace("-----END CERTIFICATE-----", "")
-										.replace("\n", "")
-										.replace("\r", "");
-
-			PackedByteArray cert_bytes = Marshalls::get_singleton()->base64_to_raw(cert_clean);
+			// 修复：GameStream 协议要求发送 Hex 编码的 PEM 字符串（包含头尾），而不是 DER
+			// 参考 client.c：它直接读取 PEM 文件并进行 Hex 编码发送
+			PackedByteArray cert_bytes = client_cert_pem.to_utf8_buffer();
 
 			String url = base_url + "?" + common_params + "&phrase=getservercert&salt=" + _bytes_to_hex(pair_salt) + "&clientcert=" + _bytes_to_hex(cert_bytes);
 			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(1));
@@ -150,8 +148,20 @@ void ComputerManager::_step_pair() {
 			String https_url = "https://" + pair_ip + ":" + String::num_int64(pair_https_port) + "/pair";
 			String url = https_url + "?" + common_params + "&phrase=pairchallenge";
 
-			// 现在必须使用 SSL 选项
-			requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(), callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(5));
+			// Get standard paths
+			Dictionary ssl_opts = _get_ssl_options();
+
+			// For Step 5, we have the server cert in memory (server_cert_pem).
+			// We must write it to a temp file to pin it, otherwise connection fails or is insecure.
+			String temp_cert_path = "user://addons/moonlight-godot/temp_server_cert.crt";
+			{
+				Ref<FileAccess> f = FileAccess::open(temp_cert_path, FileAccess::WRITE);
+				if (f.is_valid())
+					f->store_string(server_cert_pem);
+			}
+			ssl_opts["server_cert"] = ProjectSettings::get_singleton()->globalize_path(temp_cert_path);
+
+			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(5));
 			break;
 		}
 	}
@@ -161,10 +171,10 @@ void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body,
 	is_requesting = false;
 
 	if (code != 200) {
-		//Special handling: If waiting for a PIN, the server might not immediately return 200? In practice, GFE/Sunshine usually either blocks or returns 200 with paired=0. If it's a real network error:
-		if (code == 0 || code >= 400) {
+		// Code 0 or -1 (Curl error) or >= 400
+		if (code <= 0 || code >= 400) {
 			pair_state = PAIR_ERROR;
-			emit_signal("pair_completed", false, "Network Error: " + String::num_int64(code) + " " + error);
+			emit_signal("pair_completed", false, "Network Error (" + String::num_int64(code) + "): " + error);
 			return;
 		}
 	}
@@ -624,11 +634,8 @@ String ComputerManager::_get_uuid() {
 }
 
 Dictionary ComputerManager::_get_ssl_options() {
-	Dictionary d;
-	Dictionary keys = config_manager->get_client_keys();
-	d["client_cert"] = keys["certificate"];
-	d["client_key"] = keys["key"];
-	return d;
+	// Use paths instead of content for curl
+	return config_manager->get_client_cert_paths();
 }
 
 void ComputerManager::_bind_methods() {

@@ -1,4 +1,3 @@
-
 # Moonlight Godot
 
 A Godot extension to use moonlight in Godot.
@@ -181,7 +180,7 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 ## ✅ 服务端 API 列表（配对专用）
 
 ### 1. **`/pair?phrase=getservercert&...`**
-> **用途**：第一阶段 — 获取服务端证书  
+> **用途**：第一阶段 — 上报生成的随机盐与客户端证书，获取服务端证书。服务端会在此阶段阻塞等待用户输入 PIN 码。  
 > **请求参数**：
 - `devicename=roth`（固定设备名）
 - `updateState=1`
@@ -189,31 +188,39 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 - `salt=<16字节随机盐的 hex>`
 - `clientcert=<客户端 PEM 证书的 hex>`
 
-> **返回 XML**：
+> **响应参数（XML）**：
+- `plaincert`: 服务端 X.509 证书的 hex 编码字符串。
+
+> **加密准备**：
+- 客户端等待响应（服务端用户输入PIN）。
+- 计算 AES Key: `SHA256(salt + PIN)`，取前16字节用于 AES-128-ECB。
+
+> **返回 XML 示例**：
 ```xml
 <root status_code="200">
   <paired>1</paired>
   <plaincert>-----BEGIN CERTIFICATE-----...</plaincert>
 </root>
 ```
+
 > 若已存在配对会话，可能返回 `<paired>0</paired>` 或无 `plaincert`。
 
 > **客户端动作**：
 - 解析 `plaincert` 得到服务端证书
-- 暂存该证书用于后续 HTTPS 请求（证书绑定）
+- 在配置文件中按照服务端分类存储该证书用于后续 HTTPS 请求（证书绑定）
 
 ---
 
 ### 2. **`/pair?clientchallenge=...`**
-> **用途**：第二阶段 — 发送加密的客户端挑战  
+> **用途**：第二阶段 — 发送加密的客户端挑战，验证 PIN 码正确性。  
 > **请求参数**：
-- `devicename=roth`
-- `updateState=1`
 - `clientchallenge=<AES-ECB(16字节随机数, AES密钥).toHex()>`
 
-> 其中 **AES 密钥 = Hash(salt + PIN)**（SHA-1 或 SHA-256，取决于 GFE 版本）
+> **响应参数（XML）**：
+- `challengeresponse`: Hex 编码的加密数据。
+- **解密后内容** (AES-128-ECB): `SHA256(ClientRandom) + ServerRandom(16字节)`。
 
-> **返回 XML**：
+> **返回 XML 示例**：
 ```xml
 <root status_code="200">
   <paired>1</paired>
@@ -228,15 +235,20 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 ---
 
 ### 3. **`/pair?serverchallengeresp=...`**
-> **用途**：第三阶段 — 响应服务端挑战  
+> **用途**：第三阶段 — 响应服务端挑战，防止中间人攻击。  
 > **请求参数**：
-- `devicename=roth`
-- `updateState=1`
 - `serverchallengeresp=<加密的哈希值 hex>`
 
-> 加密内容为：`Hash(服务端挑战 + 客户端证书签名 + 客户端随机密钥)`（填充至 32 字节后 AES 加密）
+> **加密构造逻辑**：
+1. 数据拼接: `ServerRandom` (来自阶段2解密结果的后16字节) + `ClientCertSignature` (客户端证书签名部分) + `ClientSecret` (新生成的16字节随机数)。
+2. 哈希: `SHA256(拼接数据)`。
+3. 加密: `AES-128-ECB(哈希值, AES密钥)`。
 
-> **返回 XML**：
+> **响应参数（XML）**：
+- `pairingsecret`: Hex 编码数据。
+
+
+> **返回 XML 示例**：
 ```xml
 <root status_code="200">
   <paired>1</paired>
@@ -245,19 +257,22 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 ```
 
 > **客户端动作**：
-- 解析 `pairingsecret` → 前 16 字节为 `serverSecret`，后为 `serverSignature`
-- 验证 `serverSignature` 是否是对 `serverSecret` 的有效签名（使用服务端证书公钥）
+- **解析**：`ServerSecret(16字节) + ServerSignature`。
+- **验证**: 使用阶段1获取的服务端证书公钥，验证 `ServerSignature` 是否是对 `ServerSecret` 的有效签名。
   - 若失败 → **MITM 攻击，配对终止**
 - 验证服务端是否知道正确 PIN（通过比对哈希）
 
 ---
 
 ### 4. **`/pair?clientpairingsecret=...`**
-> **用途**：第四阶段 — 提交客户端配对密钥和签名  
+> **用途**：第四阶段 — 提交客户端配对密钥和签名。  
 > **请求参数**：
-- `devicename=roth`
-- `updateState=1`
-- `clientpairingsecret=<clientSecret + sign(clientSecret) 的 hex>`
+- `clientpairingsecret=<ClientSecret + Signature(ClientSecret) 的 hex>`
+
+> **构造逻辑**:
+- `ClientSecret` 为阶段3生成的随机数。
+- 使用客户端私钥对 `ClientSecret` 签名。
+- 直接拼接后转 Hex 发送（**不加密**）。
 
 > **返回 XML**：
 ```xml
@@ -320,7 +335,9 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 | 5 | `/pair` | GET | **HTTPS** | `phrase=pairchallenge` | 最终安全确认 |
 | - | `/unpair` | GET | HTTP | （无特殊参数） | 失败时清理配对状态 |
 
-> ⚠️ 注意：所有 `/pair` 请求都包含 Moonlight 固定的 `uniqueid=0123456789ABCDEF` 和随机 `uuid`（见 `NvHTTP::openConnection` 实现）。
+> ⚠️ 注意：所有 `/pair` 请求都包含 Moonlight 固定的 `uniqueid=0123456789ABCDEF` 和随机 `uuid`。
+>
+> 时序：第一阶段为阻塞等待服务端输入 PIN，第2~5阶段为当pin输入完成后执行。
 
 ---
 

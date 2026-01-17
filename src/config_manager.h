@@ -41,6 +41,7 @@ public:
 
 	// Certificates
 	Dictionary get_client_keys();
+	Dictionary get_client_cert_paths(); // New method
 
 	// Hosts
 	Array get_hosts();

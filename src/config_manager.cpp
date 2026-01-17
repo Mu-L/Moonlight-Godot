@@ -1,5 +1,6 @@
 #include "config_manager.h"
 #include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -26,6 +27,8 @@ void ConfigManager::load_config() {
 		save_config();
 	}
 	_check_and_create_certs();
+	// 初始化时执行一次同步，确保磁盘上的证书文件与配置一致
+	get_client_cert_paths();
 }
 
 void ConfigManager::save_config() {
@@ -54,8 +57,10 @@ void ConfigManager::_check_and_create_certs() {
 		Ref<CryptoKey> key = crypto->generate_rsa(2048);
 		Ref<X509Certificate> cert = crypto->generate_self_signed_certificate(key, "CN=NVIDIA GameStream Client");
 
-		String key_pem = key->save_to_string();
-		String cert_pem = cert->save_to_string();
+		// 修复：save_to_string 返回的字符串可能错误地包含 C 风格字符串的 Null 终止符(\0)
+		// 这在连接字符串时会导致异常字符（如 ）。使用 replace(String::chr(0), "") 显式移除它。
+		String key_pem = key->save_to_string().replace(String::chr(0), "").strip_edges();
+		String cert_pem = cert->save_to_string().replace(String::chr(0), "").strip_edges();
 
 		config->set_value("General", "certificate", _format_pem_for_qt(cert_pem));
 		config->set_value("General", "key", _format_pem_for_qt(key_pem));
@@ -70,6 +75,42 @@ Dictionary ConfigManager::get_client_keys() {
 
 	d["certificate"] = _parse_pem_from_qt(cert);
 	d["key"] = _parse_pem_from_qt(key);
+	return d;
+}
+
+Dictionary ConfigManager::get_client_cert_paths() {
+	Dictionary d;
+	Dictionary keys = get_client_keys();
+
+	String dir = config_path.get_base_dir();
+	String cert_path = dir.path_join("clientcert.pem");
+	String key_path = dir.path_join("clientkey.pem");
+
+	// 辅助 Lambda：对比文件内容，仅当不存在或不一致时才写入（避免不必要的 IO 和文件修改时间更新）
+	auto sync_file = [](String path, String content) {
+		bool content_matches = false;
+		if (FileAccess::file_exists(path)) {
+			Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+			if (f.is_valid()) {
+				if (f->get_as_text() == content) {
+					content_matches = true;
+				}
+			}
+		}
+
+		if (!content_matches) {
+			Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+			if (f.is_valid()) {
+				f->store_string(content);
+			}
+		}
+	};
+
+	sync_file(cert_path, keys["certificate"]);
+	sync_file(key_path, keys["key"]);
+
+	d["client_cert"] = ProjectSettings::get_singleton()->globalize_path(cert_path);
+	d["client_key"] = ProjectSettings::get_singleton()->globalize_path(key_path);
 	return d;
 }
 
@@ -325,6 +366,7 @@ void ConfigManager::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("load_config"), &ConfigManager::load_config);
 	ClassDB::bind_method(D_METHOD("save_config"), &ConfigManager::save_config);
 	ClassDB::bind_method(D_METHOD("get_client_keys"), &ConfigManager::get_client_keys);
+	ClassDB::bind_method(D_METHOD("get_client_cert_paths"), &ConfigManager::get_client_cert_paths);
 
 	ClassDB::bind_method(D_METHOD("get_hosts"), &ConfigManager::get_hosts);
 	ClassDB::bind_method(D_METHOD("add_host", "data"), &ConfigManager::add_host);

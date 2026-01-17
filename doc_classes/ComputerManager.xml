@@ -12,7 +12,7 @@
 		3. [b]资源下载[/b]：获取游戏封面图片。
 		4. [b]会话控制[/b]：启动（Launch）和停止（Cancel）流媒体会话。
 		
-		此类的大多数网络操作都是异步的，通过 [Callable] 回调函数返回结果。
+		此类的大多数网络操作都是异步的，通过 [Callable] 回调函数或信号返回结果。
 	</description>
 	<methods>
 		<method name="set_config_manager">
@@ -29,20 +29,10 @@
 			<description>
 				开始与指定 IP 地址的主机进行配对。
 				
-				初始化配对状态机，生成随机盐和 AES 密钥。
-				[b]返回：[/b] 一个 4 位数字的 PIN 码字符串。用户需要在宿主机的配对对话框中输入此 PIN 码。
-			</description>
-		</method>
-		<method name="complete_pair">
-			<return type="String" />
-			<description>
-				推进配对状态机。需要在调用 [method start_pair] 后持续调用（例如在定时器或处理循环中），直到配对完成或失败。
+				初始化配对状态机，生成随机盐和 AES 密钥，并自动开始 HTTP 请求流程。
+				配对结果将通过 [signal pair_complete] 信号返回。
 				
-				[b]返回值说明：[/b]
-				- [code]"idle"[/code]: 未开始配对。
-				- [code]"working"[/code]: 配对正在进行中（正在等待网络响应或状态转换）。
-				- [code]"paired"[/code]: 配对成功完成。
-				- [code]"failed"[/code]: 配对失败。
+				[b]返回：[/b] 一个 4 位数字的 PIN 码字符串。用户需要在宿主机的配对对话框中输入此 PIN 码。
 			</description>
 		</method>
 		<method name="cancel_pair">
@@ -122,4 +112,15 @@
 			</description>
 		</method>
 	</methods>
+	<signals>
+		<signal name="pair_complete">
+			<argument index="0" name="success" type="bool" />
+			<argument index="1" name="message" type="String" />
+			<description>
+				当配对流程结束时发出。
+				[param success] 如果配对成功则为 true，失败为 false。
+				[param message] 包含成功消息或失败的错误详情/阶段信息。
+			</description>
+		</signal>
+	</signals>
 </class>
