@@ -167,17 +167,30 @@ request.setSslConfiguration(IdentityManager::get()->getSslConfig());
 
 ## 🔐 配对流程概览
 
-NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的是：
+NVIDIA GameStream 的配对是一个 **多阶段交互式认证过程**（在此实现中分为 0~5 共 6 个阶段），目的是：
 1. 安全交换客户端证书
 2. 验证用户输入的 PIN 码
 3. 防止中间人攻击（MITM）
 4. 最终建立双向 TLS 信任（mTLS）
 
-整个过程全部通过 `/pair` 接口的不同参数组合完成，并在失败时调用 `/unpair` 清理状态。
+整个过程全部通过 `/pair` 接口的不同参数组合完成（第 0 阶段除外），并在失败时调用 `/unpair` 清理状态。
 
 ---
 
 ## ✅ 服务端 API 列表（配对专用）
+
+### 0. **`/serverinfo` (Preflight)**
+> **用途**：第 0 阶段 — 预检查。在开始正式配对前，获取主机 `uniqueid`、HTTPS 端口及当前配对状态。
+> **请求方式**：GET (HTTP)
+> **请求参数**：
+- `uniqueid` / `uuid`
+
+> **逻辑**：
+- 如果返回 `PairStatus=1` 且本地配置中已存在该主机，则直接视为配对成功。
+- 更新本地缓存的 HTTPS 端口。
+- 若未配对，进入第 1 阶段。
+
+---
 
 ### 1. **`/pair?phrase=getservercert&...`**
 > **用途**：第一阶段 — 上报生成的随机盐与客户端证书，获取服务端证书。服务端会在此阶段阻塞等待用户输入 PIN 码。  
@@ -186,7 +199,7 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 - `updateState=1`
 - `phrase=getservercert`
 - `salt=<16字节随机盐的 hex>`
-- `clientcert=<客户端 PEM 证书的 hex>`
+- `clientcert=<客户端 PEM 证书的 hex>` (注意：发送的是 PEM 字符串的 hex 编码，而非 DER)
 
 > **响应参数（XML）**：
 - `plaincert`: 服务端 X.509 证书的 hex 编码字符串。
@@ -249,16 +262,11 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 
 
 > **返回 XML 示例**：
-```xml
-<root status_code="200">
-  <paired>1</paired>
-  <pairingsecret><服务端密钥+签名 hex></pairingsecret>
-</root>
-```
+
 
 > **客户端动作**：
 - **解析**：`ServerSecret(16字节) + ServerSignature`。
-- **验证**: 使用阶段1获取的服务端证书公钥，验证 `ServerSignature` 是否是对 `ServerSecret` 的有效签名。
+- **验证**: 使用阶段1获取的服务端证书公钥，验证 `ServerSignature` 是否是对 `ServerSecret` 的有效签名（本实现中暂略过此验证，直接进入下一阶段）。
   - 若失败 → **MITM 攻击，配对终止**
 - 验证服务端是否知道正确 PIN（通过比对哈希）
 
@@ -328,6 +336,7 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 
 | 阶段 | API 路径 | 方法 | 协议 | 关键参数 | 目的 |
 |------|--------|------|------|--------|------|
+| 0 | `/serverinfo` | GET | HTTP | `uniqueid`, `uuid` | 预检查配对状态与端口 |
 | 1 | `/pair` | GET | HTTP | `phrase=getservercert`, `salt`, `clientcert` | 获取服务端证书 |
 | 2 | `/pair` | GET | HTTP | `clientchallenge` | 发送加密挑战 |
 | 3 | `/pair` | GET | HTTP | `serverchallengeresp` | 响应服务端挑战 |
@@ -335,7 +344,7 @@ NVIDIA GameStream 的配对是一个 **5 阶段交互式认证过程**，目的�
 | 5 | `/pair` | GET | **HTTPS** | `phrase=pairchallenge` | 最终安全确认 |
 | - | `/unpair` | GET | HTTP | （无特殊参数） | 失败时清理配对状态 |
 
-> ⚠️ 注意：所有 `/pair` 请求都包含 Moonlight 固定的 `uniqueid=0123456789ABCDEF` 和随机 `uuid`。
+> ⚠️ 注意：所有 `/pair` 请求都包含 Moonlight 客户端生成的 `uniqueid` 和随机 `uuid`。
 >
 > 时序：第一阶段为阻塞等待服务端输入 PIN，第2~5阶段为当pin输入完成后执行。
 

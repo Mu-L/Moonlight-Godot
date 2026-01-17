@@ -58,6 +58,7 @@
 				
 				[param callback] 将被调用并传入一个 [Dictionary]，包含：
 				- [code]"status"[/code]: "online" 或 "offline"。
+				- [code]"uniqueid"[/code]: 服务器唯一标识符，用于区分不同主机。
 				- [code]"hostname"[/code]: 主机名称。
 				- [code]"paired"[/code]: 布尔值，是否已配对。
 				- [code]"ip"[/code]: 输入的 IP 地址。
@@ -113,7 +114,7 @@
 		</method>
 	</methods>
 	<signals>
-		<signal name="pair_complete">
+		<signal name="pair_completed">
 			<argument index="0" name="success" type="bool" />
 			<argument index="1" name="message" type="String" />
 			<description>

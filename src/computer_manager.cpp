@@ -55,7 +55,7 @@ String ComputerManager::start_pair(String ip, int port) {
 	pair_aes_key = _calculate_aes_key(pair_salt, pair_pin);
 
 	// 3. 开始进程
-	pair_state = PAIR_STAGE_1_GET_CERT;
+	pair_state = PAIR_STAGE_0_PREFLIGHT;
 	_step_pair();
 
 	return pair_pin;
@@ -72,6 +72,12 @@ void ComputerManager::_step_pair() {
 	Dictionary ssl_opts; // HTTP为空
 
 	switch (pair_state) {
+		case PAIR_STAGE_0_PREFLIGHT: {
+			// Stage 0: Check server info to see if we are already paired and get server unique ID
+			String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/serverinfo?uniqueid=" + unique_id + "&uuid=" + current_uuid;
+			requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(0));
+			break;
+		}
 		case PAIR_STAGE_1_GET_CERT: {
 			//Stage 1: Send the salt and client certificate, obtain the server certificate. The server blocks here, waiting for the PIN code input.
 			Dictionary keys = config_manager->get_client_keys();
@@ -148,18 +154,11 @@ void ComputerManager::_step_pair() {
 			String https_url = "https://" + pair_ip + ":" + String::num_int64(pair_https_port) + "/pair";
 			String url = https_url + "?" + common_params + "&phrase=pairchallenge";
 
-			// Get standard paths
+			// Get standard SSL options (provides cert content and disables verify_peer)
 			Dictionary ssl_opts = _get_ssl_options();
 
-			// For Step 5, we have the server cert in memory (server_cert_pem).
-			// We must write it to a temp file to pin it, otherwise connection fails or is insecure.
-			String temp_cert_path = "user://addons/moonlight-godot/temp_server_cert.crt";
-			{
-				Ref<FileAccess> f = FileAccess::open(temp_cert_path, FileAccess::WRITE);
-				if (f.is_valid())
-					f->store_string(server_cert_pem);
-			}
-			ssl_opts["server_cert"] = ProjectSettings::get_singleton()->globalize_path(temp_cert_path);
+			// 移除：不再需要写入临时文件或根据IP区分验证策略，统一由 _get_ssl_options 处理
+			// 证书固定已被全局禁用。
 
 			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(5));
 			break;
@@ -169,31 +168,90 @@ void ComputerManager::_step_pair() {
 
 void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body, Dictionary headers, String error, int step) {
 	is_requesting = false;
+	bool failed = false;
+	String fail_msg;
 
 	if (code != 200) {
 		// Code 0 or -1 (Curl error) or >= 400
 		if (code <= 0 || code >= 400) {
-			pair_state = PAIR_ERROR;
-			emit_signal("pair_completed", false, "Network Error (" + String::num_int64(code) + "): " + error);
-			return;
+			failed = true;
+			fail_msg = "Network Error (" + String::num_int64(code) + "): " + error;
 		}
 	}
 
-	String xml = body.get_string_from_utf8();
-	bool is_paired = _extract_xml_value(xml, "paired") == "1";
+	String xml;
+	bool is_paired = false;
+	if (!failed) {
+		xml = body.get_string_from_utf8();
+		if (step == 0) {
+			is_paired = _extract_xml_value(xml, "PairStatus") == "1";
+		} else {
+			is_paired = _extract_xml_value(xml, "paired") == "1";
+		}
 
-	// Check failed
-	if (!is_paired && step != 1) {
-		// Except for Stage 1 (waiting for PIN), paired=0 usually indicates failure
+		// Check failed
+		if (!is_paired && step != 1 && step != 0) {
+			// Except for Stage 1 (waiting for PIN) and Stage 0 (preflight), paired=0 usually indicates failure
+			failed = true;
+			fail_msg = _extract_xml_value(xml, "status_message");
+			if (fail_msg.is_empty())
+				fail_msg = "Pairing failed at step " + String::num_int64(step);
+		}
+	}
+
+	if (failed) {
+		// Reference client.c: Cleanup sends unpair on failure
+		// 发送 unpair 请求通知服务端清除状态 (Fire and forget)
+		String uuid = _get_uuid();
+		String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/unpair?uniqueid=" + unique_id + "&uuid=" + uuid;
+		requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), Callable());
+
 		pair_state = PAIR_ERROR;
-		String msg = _extract_xml_value(xml, "status_message");
-		if (msg.is_empty())
-			msg = "Pairing failed at step " + String::num_int64(step);
-		emit_signal("pair_completed", false, msg);
+		emit_signal("pair_completed", false, fail_msg);
 		return;
 	}
 
 	switch (step) {
+		case 0: { // Preflight check
+			server_unique_id = _extract_xml_value(xml, "uniqueid");
+			String https_port_str = _extract_xml_value(xml, "HttpsPort");
+			if (!https_port_str.is_empty()) {
+				pair_https_port = https_port_str.to_int();
+				cached_https_ports[pair_ip] = pair_https_port;
+			}
+
+			// 即使服务端返回 Paired=1 也可能不可靠，因此仅依赖本地配置是否存在该 Server Unique ID
+			bool known_and_paired = false;
+			if (!server_unique_id.is_empty()) {
+				Array hosts = config_manager->get_hosts();
+				for (int i = 0; i < hosts.size(); i++) {
+					Dictionary h = hosts[i];
+					// 检查是否存在且 Unique ID 匹配
+					if (h.get("server_unique_id", "") == server_unique_id) {
+						known_and_paired = true;
+
+						// 如果已配对但 IP 地址变更（例如 DHCP 分配了新 IP），则更新本地配置
+						if (h.get("localaddress", "") != pair_ip) {
+							Dictionary update_data;
+							update_data["localaddress"] = pair_ip;
+							config_manager->update_host(h["id"], update_data);
+						}
+						break;
+					}
+				}
+			}
+
+			if (known_and_paired) {
+				pair_state = PAIR_FINISHED;
+				emit_signal("pair_completed", true, "Already paired");
+				return;
+			}
+
+			// Not paired or not found locally, proceed to pairing
+			pair_state = PAIR_STAGE_1_GET_CERT;
+			_step_pair();
+			break;
+		}
 		case 1: { // Obtain Certificate
 			if (!is_paired) {
 				//Waiting for PIN input… If polling, the server may return paired=0, but it usually blocks. If we get paired=0, we may need to retry or fail. Currently, assume that if code=200 and plaincert is missing, it indicates failure or the user has canceled.
@@ -278,6 +336,7 @@ void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body,
 			host_data["uuid"] = current_uuid;
 			host_data["srvcert"] = server_cert_pem;
 			host_data["https_port"] = pair_https_port;
+			host_data["server_unique_id"] = server_unique_id;
 			config_manager->add_host(host_data);
 
 			pair_state = PAIR_FINISHED;
@@ -289,7 +348,10 @@ void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body,
 
 void ComputerManager::cancel_pair() {
 	if (pair_state != PAIR_IDLE && pair_state != PAIR_FINISHED && pair_state != PAIR_ERROR) {
-		String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/unpair?uniqueid=" + unique_id + "&uuid=" + current_uuid;
+		// 参考 client.c: gs_unpair
+		// 主动取消时发送 unpair 请求。注意：这里应生成一个新的随机 UUID，而不是使用当前的 current_uuid。
+		String uuid = _get_uuid();
+		String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/unpair?uniqueid=" + unique_id + "&uuid=" + uuid;
 		requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), Callable());
 	}
 	_reset_pairing();
@@ -304,6 +366,7 @@ void ComputerManager::unpair(int host_id) {
 void ComputerManager::_reset_pairing() {
 	pair_state = PAIR_IDLE;
 	is_requesting = false;
+	server_unique_id = "";
 	server_cert_pem = "";
 	server_secret.clear();
 	server_challenge.clear();
@@ -327,6 +390,7 @@ void ComputerManager::_on_server_info_completed(int code, PackedByteArray body, 
 	if (code == 200) {
 		String xml = body.get_string_from_utf8();
 		result["hostname"] = _extract_xml_value(xml, "hostname");
+		result["uniqueid"] = _extract_xml_value(xml, "uniqueid");
 		result["paired"] = _extract_xml_value(xml, "PairStatus") == "1";
 		result["ip"] = ip;
 
@@ -634,8 +698,18 @@ String ComputerManager::_get_uuid() {
 }
 
 Dictionary ComputerManager::_get_ssl_options() {
-	// Use paths instead of content for curl
-	return config_manager->get_client_cert_paths();
+	// 获取证书内容字符串 (非路径)
+	Dictionary keys = config_manager->get_client_keys();
+	Dictionary opts;
+
+	// 映射到 Requester 期望的键名
+	opts["client_cert"] = keys["certificate"];
+	opts["client_key"] = keys["key"];
+
+	// 策略：始终禁用 Peer 验证（因服务端证书 CN 为非标准 "Sunshine Gamestream Host" 且不匹配 IP）
+	opts["verify_peer"] = false;
+
+	return opts;
 }
 
 void ComputerManager::_bind_methods() {

@@ -27,9 +27,10 @@
 				- [param body]: 请求体数据（字节数组）。仅当 method 为 "POST" 时发送。
 				- [param headers]: 请求头字典，键值对形式。
 				- [param ssl_options]: SSL/TLS 配置字典，支持以下键：
-				    - [code]"client_cert"[/code]: 客户端证书文件路径 (PEM)。
-				    - [code]"client_key"[/code]: 客户端私钥文件路径。
-				    - [code]"server_cert"[/code]: 服务端 CA 证书路径（用于证书固定 / Pinning）。
+				- [code]"client_cert"[/code]: 客户端证书内容 (PEM 字符串)。
+				- [code]"client_key"[/code]: 客户端私钥内容 (PEM 字符串)。
+				- [code]"server_cert"[/code]: 服务端 CA 证书内容 (PEM 字符串，用于自定义 CA 验证)。
+				- [code]"verify_peer"[/code]: 布尔值，是否验证对端证书（默认为 true）。如果设为 false，将跳过证书和主机名验证。
 				- [param callback]: 请求结束后的回调函数。
 				
 				[b] 回调签名：[/b]

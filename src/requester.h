@@ -39,7 +39,7 @@ public:
 	// method: 仅支持 "GET", "POST"
 	// body: 请求体数据 (仅 POST 请求有效)
 	// headers: 请求头字典
-	// ssl_options: 包含 "client_cert", "client_key", "server_cert" (路径) 的字典
+	// ssl_options: 包含 "client_cert", "client_key" (PEM 字符串内容), "verify_peer" (bool) 的字典。
 	// callback: 回调函数，签名 void(int code, PackedByteArray body, Dictionary headers, String error)
 	void request(String p_url, String p_method, PackedByteArray p_body, Dictionary p_headers, Dictionary p_ssl_options, Callable p_callback);
 };

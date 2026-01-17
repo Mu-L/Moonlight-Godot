@@ -140,6 +140,7 @@ Array ConfigManager::get_hosts() {
 			host["https_port"] = config->get_value("hosts", prefix + "https_port", 47984);
 			String srvcert = config->get_value("hosts", prefix + "srvcert", "");
 			host["srvcert"] = _parse_pem_from_qt(srvcert);
+			host["server_unique_id"] = config->get_value("hosts", prefix + "server_unique_id", "");
 			hosts.append(host);
 		}
 	}

@@ -24,6 +24,7 @@ private:
 	// Pairing State
 	enum PairState {
 		PAIR_IDLE,
+		PAIR_STAGE_0_PREFLIGHT, // HTTP: Check if already paired via serverinfo
 		PAIR_STAGE_1_GET_CERT, // HTTP: Send Salt + ClientCert -> Get ServerCert
 		PAIR_STAGE_2_CLIENT_CHALLENGE, // HTTP: Send Encrypted(ClientRandom) -> Get Encrypted(ServerSecret)
 		PAIR_STAGE_3_SERVER_RESPONSE, // HTTP: Send Encrypted(Hash(ServerSecret+CertSig+ClientSecret)) -> Get ServerSignature
@@ -44,6 +45,7 @@ private:
 	String current_uuid;
 
 	// Pairing temporary data
+	String server_unique_id;
 	String server_cert_pem;
 	PackedByteArray client_secret_random; // 16 bytes random for stage 2
 	PackedByteArray server_challenge; // Extracted from stage 2 response (last 16 bytes)

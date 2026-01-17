@@ -33,7 +33,19 @@
 				[b]返回字典结构：[/b]
 				- [code]"certificate"[/code]: PEM 格式的证书字符串。
 				- [code]"key"[/code]: PEM 格式的私钥字符串。
+			</description>
+		</method>
+		<method name="get_client_cert_paths">
+			<return type="Dictionary" />
+			<description>
+				获取客户端证书和私钥在磁盘上的绝对路径。
 				
+				此方法会检查配置目录下的 [code]clientcert.pem[/code] 和 [code]clientkey.pem[/code]。
+				如果文件不存在或内容与内存配置不一致，会自动将内存中的证书同步写入磁盘。
+				
+				[b]返回字典结构：[/b]
+				- [code]"client_cert"[/code]: 证书文件的绝对路径。
+				- [code]"client_key"[/code]: 私钥文件的绝对路径。
 			</description>
 		</method>
 		<method name="get_hosts">

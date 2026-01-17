@@ -46,7 +46,7 @@ size_t Requester::_header_cb(char *buffer, size_t size, size_t nitems, void *use
 
 void Requester::request(String p_url, String p_method, PackedByteArray p_body, Dictionary p_headers, Dictionary p_ssl_options, Callable p_callback) {
 	if (OS::get_singleton()->is_debug_build()) {
-		UtilityFunctions::print("[Moonlight-Requester] ", p_method, " ", p_url);
+		UtilityFunctions::print("[Moonlight-Requester-Debug] ", p_method, " ", p_url);
 	}
 
 	// 使用 std::thread 异步执行，detach 分离线程（简单起见，生产环境建议使用线程池）
@@ -99,37 +99,52 @@ void Requester::_perform_request_thread(String p_url, String p_method, PackedByt
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
 
 		// MTLS / HTTPS Options
-		// 客户端证书
-		if (p_ssl_options.has("client_cert")) {
-			String cert_path = p_ssl_options["client_cert"];
-			if (!cert_path.is_empty()) {
-				curl_easy_setopt(curl, CURLOPT_SSLCERT, cert_path.utf8().get_data());
-				// curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE, "PEM"); // Default is PEM
-			}
+		// 1. 优先处理显式禁用验证（包括全局策略）
+		if (p_ssl_options.has("verify_peer") && !p_ssl_options["verify_peer"]) {
+			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+			curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
 		}
-		// 客户端密钥
-		if (p_ssl_options.has("client_key")) {
-			String key_path = p_ssl_options["client_key"];
-			if (!key_path.is_empty()) {
-				curl_easy_setopt(curl, CURLOPT_SSLKEY, key_path.utf8().get_data());
-			}
-		}
-		// 服务端证书固定 (CA Pinning)
-		if (p_ssl_options.has("server_cert")) {
-			String ca_path = p_ssl_options["server_cert"];
-			if (!ca_path.is_empty()) {
-				curl_easy_setopt(curl, CURLOPT_CAINFO, ca_path.utf8().get_data());
+		// 2. 如果提供了服务端证书内容（且开启验证），则使用 BLOB
+		else if (p_ssl_options.has("server_cert")) {
+			String ca_content = p_ssl_options["server_cert"];
+			if (!ca_content.is_empty()) {
+				std::string ca_str = ca_content.utf8().get_data();
+				struct curl_blob blob;
+				blob.data = (void *)ca_str.c_str();
+				blob.len = ca_str.size();
+				blob.flags = CURL_BLOB_COPY;
+				curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &blob);
+				// 启用验证以利用 CAINFO
 				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
 				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 			}
-		} else {
-			// Check for explicit verify disable
-			if (p_ssl_options.has("verify_peer") && !p_ssl_options["verify_peer"]) {
-				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-				curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-			} else {
-				// Default secure behavior
-				// curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+		}
+
+		// 3. 客户端证书 (BLOB)
+		if (p_ssl_options.has("client_cert")) {
+			String cert_content = p_ssl_options["client_cert"];
+			if (!cert_content.is_empty()) {
+				std::string cert_str = cert_content.utf8().get_data();
+				struct curl_blob blob;
+				blob.data = (void *)cert_str.c_str();
+				blob.len = cert_str.size();
+				blob.flags = CURL_BLOB_COPY;
+				curl_easy_setopt(curl, CURLOPT_SSLCERT_BLOB, &blob);
+				curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE, "PEM");
+			}
+		}
+
+		// 4. 客户端密钥 (BLOB)
+		if (p_ssl_options.has("client_key")) {
+			String key_content = p_ssl_options["client_key"];
+			if (!key_content.is_empty()) {
+				std::string key_str = key_content.utf8().get_data();
+				struct curl_blob blob;
+				blob.data = (void *)key_str.c_str();
+				blob.len = key_str.size();
+				blob.flags = CURL_BLOB_COPY;
+				curl_easy_setopt(curl, CURLOPT_SSLKEY_BLOB, &blob);
+				curl_easy_setopt(curl, CURLOPT_SSLKEYTYPE, "PEM");
 			}
 		}
 
@@ -156,9 +171,9 @@ void Requester::_perform_request_thread(String p_url, String p_method, PackedByt
 			}
 
 			if (OS::get_singleton()->is_debug_build()) {
-				UtilityFunctions::print("[Moonlight-Requester] Response Code: ", res_data.response_code);
+				UtilityFunctions::print("[Moonlight-Requester-Debug] Response Code: ", res_data.response_code);
 				if (res_data.body.size() > 0) {
-					UtilityFunctions::print("[Moonlight-Requester] Response Body: ", res_data.body.get_string_from_utf8());
+					UtilityFunctions::print("[Moonlight-Requester-Debug] Response Body: ", res_data.body.get_string_from_utf8());
 				}
 			}
 		}

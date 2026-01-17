@@ -54,7 +54,7 @@ func test_remove_host_info() -> void:
 
 
 func test_start_pair() -> void:
-    var pin = computermamager.start_pair("127.0.0.1")
+    var pin = computermamager.start_pair("192.168.1.27")
     print("pin:",pin)
 
 func test_cancel_pair() -> void:
