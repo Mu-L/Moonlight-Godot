@@ -28,7 +28,7 @@ void ConfigManager::load_config() {
 	}
 	_check_and_create_certs();
 	// 初始化时执行一次同步，确保磁盘上的证书文件与配置一致
-	get_client_cert_paths();
+	// get_client_cert_paths();
 }
 
 void ConfigManager::save_config() {

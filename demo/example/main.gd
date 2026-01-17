@@ -38,24 +38,32 @@ func test_cert_create() -> void:
 
 
 func test_add_host_info() -> void:
-    var config: Dictionary={
-            "hostname":"TEST",
-            "uuid":Time.get_datetime_string_from_system()
-        }
-    print(configmanager.add_host(config))
+    #var config: Dictionary={
+            #"hostname":"TEST",
+            #"uuid":Time.get_datetime_string_from_system()
+        #}
+    #print(configmanager.add_host(config))
     print("current hosts:\n")
     print(configmanager.get_hosts(),"\n")
 
 
 func test_remove_host_info() -> void:
-    @warning_ignore("unused_variable")
-    var size = configmanager.get_hosts().size()
     configmanager.remove_host(1)
 
 
 func test_start_pair() -> void:
-    var pin = computermamager.start_pair("192.168.1.27")
+    var pin = computermamager.start_pair("127.0.0.1")
     print("pin:",pin)
 
 func test_cancel_pair() -> void:
     computermamager.unpair(1)
+
+
+func test_get_applist() -> void:
+    computermamager.get_app_list(1)
+
+
+func test_get_app_texture() -> void:
+    configmanager.load_config()
+    var applist = configmanager.get_apps(1)
+    computermamager.get_app_cover(1,applist[0]["id"],func(texture_return): $ScrollContainer/GridContainer/TextureRect.texture = texture_return)

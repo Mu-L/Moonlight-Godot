@@ -35,7 +35,7 @@
 				- [code]"key"[/code]: PEM 格式的私钥字符串。
 			</description>
 		</method>
-		<method name="get_client_cert_paths">
+		<method name="get_client_cert_paths" deprecated="客户端证书改为仅存储在配置文件中，而不是临时保存到本地。">
 			<return type="Dictionary" />
 			<description>
 				获取客户端证书和私钥在磁盘上的绝对路径。

@@ -375,7 +375,7 @@ void ComputerManager::_reset_pairing() {
 }
 
 // ============================================================================
-// 2. 连接
+// 2. 测试连接
 // ============================================================================
 
 void ComputerManager::connect_to_computer(String ip, int port, Callable callback) {
@@ -404,10 +404,16 @@ void ComputerManager::_on_server_info_completed(int code, PackedByteArray body, 
 }
 
 // ============================================================================
-// 3. 应用列表
+// 3. 应用列表及 Cover
 // ============================================================================
 
 void ComputerManager::get_app_list(int host_id, Callable callback) {
+	// 如果缺少 config_manager，则在内部初始化一个默认的
+	if (config_manager == nullptr) {
+		config_manager = memnew(ConfigManager);
+		owns_config_manager = true;
+		// ConfigManager 构造函数应处理加载默认值或空状态
+	}
 	Array hosts = config_manager->get_hosts();
 	String ip;
 	int port = 47984;
@@ -428,6 +434,14 @@ void ComputerManager::get_app_list(int host_id, Callable callback) {
 
 void ComputerManager::_on_app_list_completed(int code, PackedByteArray body, Dictionary headers, String error, int host_id, Callable callback) {
 	if (code == 200) {
+		// 获取现有应用列表以进行去重
+		Array existing_apps = config_manager->get_apps(host_id);
+		Array existing_ids;
+		for (int i = 0; i < existing_apps.size(); i++) {
+			Dictionary app = existing_apps[i];
+			existing_ids.append(app.get("id", 0));
+		}
+
 		String xml = body.get_string_from_utf8();
 		int pos = 0;
 		while (true) {
@@ -441,8 +455,15 @@ void ComputerManager::_on_app_list_completed(int code, PackedByteArray body, Dic
 			String app_xml = xml.substr(start, end - start + 6);
 			Dictionary app_data;
 			app_data["name"] = _extract_xml_value(app_xml, "AppTitle");
-			app_data["id"] = _extract_xml_value(app_xml, "ID").to_int();
-			config_manager->add_app(host_id, app_data);
+			int app_id = _extract_xml_value(app_xml, "ID").to_int();
+			app_data["id"] = app_id;
+
+			// 仅添加不存在的 ID
+			if (!existing_ids.has(app_id)) {
+				config_manager->add_app(host_id, app_data);
+				existing_ids.append(app_id);
+			}
+
 			pos = end + 6;
 		}
 	}
@@ -505,6 +526,10 @@ void ComputerManager::establish_stream(int host_id, int app_id, Dictionary optio
 	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
 			callable_mp(this, &ComputerManager::_on_simple_request_completed).bind(Variant(callback)));
 }
+
+// ============================================================================
+// 5. 流连接管理
+// ============================================================================
 
 void ComputerManager::stop_stream(int host_id, Callable callback) {
 	Array hosts = config_manager->get_hosts();
