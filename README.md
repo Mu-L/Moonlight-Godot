@@ -4,6 +4,10 @@ A Godot extension to use moonlight in Godot.
 
 # Notes
 
+## （大致）架构图
+
+![架构图](Notes\Moonlight-Godot.svg)
+
 ## Moonlight 客户端调用的服务端 API 
 
 ### ✅ 1. `/serverinfo`
