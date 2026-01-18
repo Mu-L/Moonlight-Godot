@@ -522,6 +522,12 @@ void ComputerManager::_on_app_cover_completed(int code, PackedByteArray body, Di
 // ============================================================================
 
 void ComputerManager::establish_stream(int host_id, int app_id, Dictionary options, Callable callback) {
+	// 如果缺少 config_manager，则在内部初始化一个默认的
+	if (config_manager == nullptr) {
+		config_manager = memnew(ConfigManager);
+		owns_config_manager = true;
+		// ConfigManager 构造函数应处理加载默认值或空状态
+	}
 	Array hosts = config_manager->get_hosts();
 	String ip;
 	int port = 47984;
@@ -582,6 +588,24 @@ void ComputerManager::_on_launch_serverinfo_completed(int code, PackedByteArray 
 	String xml = body.get_string_from_utf8();
 	String current_game_str = _extract_xml_value(xml, "currentgame");
 	int current_game = current_game_str.to_int();
+
+	// 提取 ServerCodecModeSupport 并存入 ctx
+	String scms_str = _extract_xml_value(xml, "ServerCodecModeSupport");
+	if (!scms_str.is_empty()) {
+		ctx["server_codec_mode_support"] = scms_str.to_int();
+	}
+
+	// 提取 appversion (修复断言失败的关键)
+	String app_version = _extract_xml_value(xml, "appversion");
+	if (!app_version.is_empty()) {
+		ctx["app_version"] = app_version;
+	}
+
+	// 提取 GfeVersion
+	String gfe_version = _extract_xml_value(xml, "GfeVersion");
+	if (!gfe_version.is_empty()) {
+		ctx["gfe_version"] = gfe_version;
+	}
 
 	// 逻辑：如果服务端已有游戏运行 (currentgame != 0)，则使用 /resume，否则使用 /launch
 	String command = (current_game != 0) ? "resume" : "launch";
@@ -691,6 +715,13 @@ void ComputerManager::_on_launch_request_completed(int code, PackedByteArray bod
 			response["status"] = "success";
 			response["session_url"] = session_url;
 			// 成功：返回包含所有请求参数(rikey等)和session_url的字典
+
+			// 平铺 options 到顶层，以便 StreamCore 可以直接读取 width/height 等
+			Dictionary opts = ctx.get("options", Dictionary());
+			Array keys = opts.keys();
+			for (int i = 0; i < keys.size(); i++) {
+				response[keys[i]] = opts[keys[i]];
+			}
 		} else {
 			response["status"] = "error";
 			response["message"] = "Session URL not found in response. Game may be stuck.";

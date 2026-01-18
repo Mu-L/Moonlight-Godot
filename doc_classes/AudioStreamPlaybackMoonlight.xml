@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="AudioStreamPlaybackMoonlight" inherits="AudioStreamPlaybackResampled" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		[AudioStreamMoonlight] 的内部播放实现。
+	</brief_description>
+	<description>
+		这是 Moonlight 音频流的内部播放逻辑实现，负责处理重采样和混音。它由 Godot 引擎的音频服务器自动实例化，通常不需要在脚本中直接访问或使用。
+	</description>
+	<methods>
+	</methods>
+</class>

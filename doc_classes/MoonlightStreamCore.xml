@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="MoonlightStreamCore" inherits="Node" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		负责处理 Moonlight 串流协议的核心逻辑，包括音视频解码与渲染。
+	</brief_description>
+	<description>
+		[MoonlightStreamCore] 是对[url=https://github.com/moonlight-stream/moonlight-common-c]Moonlight-common-c[/url] 库的封装。它使用 FFmpeg 库对接收到的视频流（H.264/HEVC/AV1）和音频流（Opus）进行解码。
+		
+		主要功能：
+		1. [b]连接管理[/b]：通过 [method start_play_stream] 建立与 Moonlight 主机的 RTSP 连接。
+		2. [b]视频渲染[/b]：将解码后的 YUV 视频数据转换为 RGBA 纹理，并自动更新到指定的 [TextureRect] 上。
+		3. [b]音频处理[/b]：解码 Opus 音频数据并填充到内部的 [AudioStreamMoonlight] 缓冲区中，供音频播放节点使用。
+		
+		注意：此类依赖于底层的 [code]moonlight-common-c[/code] 库和 FFmpeg 运行时库。
+	</description>
+	<methods>
+		<method name="start_play_stream">
+			<return type="void" />
+			<argument index="0" name="options" type="Dictionary" />
+			<description>
+				使用提供的配置（通常来自于[method ComputerManager.establish_stream]返回的options字典）选项启动流媒体播放。这将在后台线程中建立连接。
+				
+				[param options] 字典应包含以下键：
+				- [code]"ip"[/code]: (String) 主机 IP 地址。
+				- [code]"session_url"[/code]: (String) 从 [method ComputerManager.establish_stream] 获取的 RTSP 会话 URL。
+				- [code]"rikey"[/code]: (String) 128位 AES 密钥的十六进制字符串（通常由 ComputerManager 生成）。
+				- [code]"width"[/code]: (int) 视频宽度，默认 1280。
+				- [code]"height"[/code]: (int) 视频高度，默认 720。
+				- [code]"fps"[/code]: (int) 帧率，默认 60。
+				- [code]"bitrate"[/code]: (int) 比特率（kbps），默认 10000。
+				- [code]"packet_size"[/code]: (int) 网络包大小，默认 1024。
+			</description>
+		</method>
+		<method name="stop_play_stream">
+			<return type="void" />
+			<description>
+				停止当前的流媒体播放连接，并终止后台线程。
+			</description>
+		</method>
+		<method name="set_render_target">
+			<return type="void" />
+			<argument index="0" name="texture_rect" type="TextureRect" />
+			<description>
+				设置用于显示视频画面的 [TextureRect]。
+				
+				MoonlightStreamCore 会自动创建和更新该节点的纹理（Texture）。如果传入 null，则停止视频渲染更新。
+			</description>
+		</method>
+		<method name="reset_render_target">
+			<return type="void" />
+			<description>
+				重置渲染目标，停止向之前设置的 TextureRect 更新画面。
+			</description>
+		</method>
+		<method name="get_audio_stream">
+			<return type="AudioStream" />
+			<description>
+				获取用于播放接收到的音频数据的 [AudioStreamMoonlight] 实例。
+				
+				通常应将此返回值赋给 [AudioStreamPlayer] 节点的 [member AudioStreamPlayer.stream] 属性以播放声音。
+			</description>
+		</method>
+		<method name="reset_audio_stream">
+			<return type="void" />
+			<description>
+				清空并重置当前的音频流缓冲区。
+			</description>
+		</method>
+	</methods>
+</class>

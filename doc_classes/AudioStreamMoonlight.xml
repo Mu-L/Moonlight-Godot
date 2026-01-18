@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="AudioStreamMoonlight" inherits="AudioStream" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		用于 Moonlight 流媒体音频数据的自定义 AudioStream 资源。
+	</brief_description>
+	<description>
+		[AudioStreamMoonlight] 是一个自定义的音频流资源，它充当从网络接收的 PCM 音频数据的环形缓冲区。
+		
+		它由 [MoonlightStreamCore] 内部管理和填充。用户通常不需要手动实例化或操作此类，只需通过 [method MoonlightStreamCore.get_audio_stream] 获取实例并将其分配给音频播放器即可。
+	</description>
+	<methods>
+	</methods>
+</class>

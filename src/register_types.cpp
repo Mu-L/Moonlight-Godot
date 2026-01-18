@@ -6,10 +6,11 @@
 #include <godot_cpp/godot.hpp>
 
 // #include "moonlight_stream_core.h"
+#include "computer_manager.h"
 #include "config_manager.h" // Include header
 #include "moonlight_godot.h"
 #include "requester.h"
-#include "computer_manager.h"
+#include "stream_core.h"
 
 using namespace godot;
 
@@ -25,6 +26,9 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	GDREGISTER_CLASS(ConfigManager); // Register class
 	GDREGISTER_CLASS(Requester);
 	GDREGISTER_CLASS(ComputerManager);
+	GDREGISTER_CLASS(MoonlightStreamCore);
+	GDREGISTER_CLASS(AudioStreamMoonlight);
+	GDREGISTER_CLASS(AudioStreamPlaybackMoonlight);
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {
