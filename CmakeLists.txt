@@ -22,9 +22,9 @@ project(${LIBNAME} LANGUAGES CXX)
 # 强制所有目标（包括 vcpkg 构建的依赖项）使用位置无关代码 (PIC)
 # set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # 添加 -fPIC 编译选项
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
-
+set(VCPKG_C_FLAGS "-fPIC")
+set(VCPKG_CXX_FLAGS "-fPIC")
+set(VCPKG_LINKER_FLAGS "-fPIC")
 # 2. 平台与架构识别
 if(ANDROID)
     set(TARGET_PLATFORM "android")
