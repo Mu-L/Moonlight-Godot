@@ -18,6 +18,10 @@ endif()
 
 project(${LIBNAME} LANGUAGES CXX)
 
+# 修复 Linux (特别是 ARM64) 下链接静态库 (如 ffmpeg) 到共享库时的重定位错误 (relocation R_AARCH64_ADR_PREL_PG_HI21)
+# 强制所有目标（包括 vcpkg 构建的依赖项）使用位置无关代码 (PIC)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # 2. 平台与架构识别
 if(ANDROID)
     set(TARGET_PLATFORM "android")
