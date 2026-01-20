@@ -6,10 +6,9 @@
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mutex.hpp>
 #include <godot_cpp/classes/node.hpp>
-#include <godot_cpp/classes/sub_viewport.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/texture_rect.hpp>
 #include <godot_cpp/classes/thread.hpp>
-#include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
 
 #include <string>
@@ -18,6 +17,7 @@
 
 // FFmpeg forward declarations
 extern "C" {
+struct AVCodec;
 struct AVCodecContext;
 struct AVFrame;
 struct AVPacket;
@@ -29,6 +29,7 @@ namespace godot {
 
 class AudioStreamMoonlight;
 
+// 音频播放逻辑，运行在音频线程
 class AudioStreamPlaybackMoonlight : public AudioStreamPlaybackResampled {
 	GDCLASS(AudioStreamPlaybackMoonlight, AudioStreamPlaybackResampled);
 	friend class AudioStreamMoonlight;
@@ -44,7 +45,6 @@ public:
 	AudioStreamPlaybackMoonlight();
 	~AudioStreamPlaybackMoonlight();
 
-	// 将虚函数移至 public 以解决 godot-cpp register_virtuals 的访问权限问题 (C2248)
 	virtual void _start(double p_from_pos = 0.0) override;
 	virtual void _stop() override;
 	virtual bool _is_playing() const override;
@@ -56,13 +56,20 @@ public:
 	virtual float _get_stream_sampling_rate() const override;
 };
 
+// 音频流资源，负责接收 PCM 数据并存储在环形缓冲区
 class AudioStreamMoonlight : public AudioStream {
 	GDCLASS(AudioStreamMoonlight, AudioStream);
 	friend class AudioStreamPlaybackMoonlight;
 
 private:
-	List<float> audio_buffer;
-	mutable Ref<Mutex> buffer_mutex; // 修复：使用 Ref<Mutex> 而非直接成员对象
+	// Ring Buffer Implementation
+	Vector<float> ring_buffer;
+	int rb_write_pos = 0;
+	int rb_read_pos = 0;
+	int rb_capacity = 0;
+	int rb_used = 0;
+
+	mutable Ref<Mutex> buffer_mutex;
 	int mix_rate;
 	int channels;
 
@@ -71,6 +78,9 @@ public:
 
 	void push_audio(const float *samples, int count);
 	void clear_buffer();
+
+	// Internal helper for playback
+	int read_samples(AudioFrame *dst_buffer, int frame_count);
 
 	virtual Ref<AudioStreamPlayback> _instantiate_playback() const override;
 	virtual String _get_stream_name() const override;
@@ -86,33 +96,39 @@ class MoonlightStreamCore : public Node {
 private:
 	// Connection state
 	Ref<Thread> connection_thread;
+	Ref<Thread> video_thread;
 	bool is_streaming;
 
-	// String storage for C pointers in server_info
-	// 使用成员变量存储字符串数据，确保在连接线程运行期间指针有效
+	// Global Lock for Li library (not thread-safe)
+	static Mutex *lib_global_mutex;
+
+	// String storage for C pointers
 	std::string ip_storage;
 	std::string session_url_storage;
 	std::string app_version_storage;
 	std::string gfe_version_storage;
+	std::string rikey_storage;
+	std::string rikeyid_storage;
 
-	// Moonlight structs
+	// Moonlight C structs
 	STREAM_CONFIGURATION stream_config;
 	SERVER_INFORMATION server_info;
 	CONNECTION_LISTENER_CALLBACKS cl_callbacks;
 	DECODER_RENDERER_CALLBACKS dr_callbacks;
 	AUDIO_RENDERER_CALLBACKS ar_callbacks;
 
-	// Video rendering
-	TextureRect *display_rect = nullptr; // 修改为 TextureRect
+	// Video Rendering
+	TextureRect *display_rect = nullptr;
 	Ref<ImageTexture> display_texture;
 	Ref<Image> last_decoded_image;
-	Ref<Mutex> video_mutex; // 修复：使用 Ref<Mutex> 而非直接成员对象
+	Ref<Mutex> video_mutex;
 	bool new_frame_available;
 
-	// Audio handling
+	// Audio
 	Ref<AudioStreamMoonlight> audio_stream;
 
 	// FFmpeg Video Context
+	const AVCodec *v_codec = nullptr;
 	AVCodecContext *v_codec_ctx = nullptr;
 	AVFrame *v_frame = nullptr;
 	AVPacket *v_packet = nullptr;
@@ -127,7 +143,13 @@ private:
 	AVPacket *a_packet = nullptr;
 	SwrContext *swr_ctx = nullptr;
 
-	// Callbacks handlers
+	// Helpers
+	// 更改：返回候选列表而非单个解码器
+	Vector<String> _get_candidate_decoders(int format_mask);
+	// 新增：尝试打开指定名称的解码器，成功返回 0
+	int _try_open_decoder(const String &codec_name, int width, int height);
+
+	// Static Callbacks
 	static void _cl_stage_starting(int stage);
 	static void _cl_connection_started();
 	static void _cl_connection_terminated(int error_code);
@@ -135,16 +157,17 @@ private:
 
 	static int _dr_setup(int video_format, int width, int height, int redraw_rate, void *context, int dr_flags);
 	static void _dr_cleanup(void);
-	static int _dr_submit_decode_unit(PDECODE_UNIT decode_unit);
+	static int _dr_submit_decode_unit(PDECODE_UNIT decode_unit); // Not used in Pull mode
 
 	static int _ar_init(int audio_configuration, const POPUS_MULTISTREAM_CONFIGURATION opus_config, void *context, int ar_flags);
 	static void _ar_cleanup(void);
 	static void _ar_decode_and_play_sample(char *sample_data, int sample_length);
 
-	// Instance implementations
+	// Instance Implementations
 	void _thread_func_start_connection();
+	void _thread_func_video();
+
 	int _handle_dr_setup(int video_format, int width, int height);
-	int _handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit);
 	int _handle_ar_init(int audio_configuration);
 	void _handle_ar_decode_and_play_sample(char *sample_data, int sample_length);
 
@@ -158,11 +181,11 @@ public:
 	void start_play_stream(Dictionary options);
 	void stop_play_stream();
 
-	void set_render_target(TextureRect *target); // 参数类型变更
+	void set_render_target(TextureRect *target);
 	void reset_render_target();
 
 	Ref<AudioStream> get_audio_stream();
-	void reset_audio_stream();
+	void reset_audio_stream(bool free_stream = false);
 
 	virtual void _process(double delta) override;
 
