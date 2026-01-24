@@ -592,7 +592,19 @@ void ComputerManager::_on_launch_serverinfo_completed(int code, PackedByteArray 
 	// 提取 ServerCodecModeSupport 并存入 ctx
 	String scms_str = _extract_xml_value(xml, "ServerCodecModeSupport");
 	if (!scms_str.is_empty()) {
-		ctx["server_codec_mode_support"] = scms_str.to_int();
+		// 关键：将服务端支持的 codec 模式放入 options，供 StreamCore 内部的 Limelight 配置使用
+		if (!ctx.has("options"))
+			ctx["options"] = Dictionary();
+		Dictionary opts = ctx["options"];
+		opts["server_codec_mode_support"] = scms_str.to_int();
+
+		// 同时存入 GfeVersion 和 AppVersion，因为 StreamCore 启动连接时需要这些信息
+		String app_version = _extract_xml_value(xml, "appversion");
+		String gfe_version = _extract_xml_value(xml, "GfeVersion");
+		opts["app_version"] = app_version;
+		opts["gfe_version"] = gfe_version;
+
+		ctx["options"] = opts;
 	}
 
 	// 提取 appversion (修复断言失败的关键)
@@ -619,8 +631,15 @@ void ComputerManager::_perform_launch_request(Dictionary ctx, String command) {
 	int port = ctx["port"];
 	int app_id = ctx["app_id"];
 	Dictionary options = ctx["options"];
+
+	// rikey 和 rikeyid 是在 establish_stream 中生成的，但在 perform_launch 时需要填入 URL
+	// 同时也需要确保它们存在于 options 中，以便最终传递给 StreamCore (因为 StreamCore 也是从 options 读取的)
 	String rikey = ctx["rikey"];
 	int64_t rikeyid = ctx["rikeyid"];
+
+	options["rikey"] = rikey;
+	options["rikeyid"] = rikeyid;
+	options["ip"] = ip; // 确保 IP 也传递
 
 	// 构造基本 URL (Required params)
 	String url = "https://" + ip + ":" + String::num_int64(port) + "/" + command + "?uniqueid=" + unique_id + "&uuid=" + _get_uuid();
@@ -718,6 +737,8 @@ void ComputerManager::_on_launch_request_completed(int code, PackedByteArray bod
 
 			// 平铺 options 到顶层，以便 StreamCore 可以直接读取 width/height 等
 			Dictionary opts = ctx.get("options", Dictionary());
+			opts["session_url"] = session_url; // 确保 session_url 进入 options
+
 			Array keys = opts.keys();
 			for (int i = 0; i < keys.size(); i++) {
 				response[keys[i]] = opts[keys[i]];
@@ -736,6 +757,12 @@ void ComputerManager::_on_launch_request_completed(int code, PackedByteArray bod
 }
 
 void ComputerManager::stop_stream(int host_id, Callable callback) {
+	// 如果缺少 config_manager，则在内部初始化一个默认的
+	if (config_manager == nullptr) {
+		config_manager = memnew(ConfigManager);
+		owns_config_manager = true;
+		// ConfigManager 构造函数应处理加载默认值或空状态
+	}
 	Array hosts = config_manager->get_hosts();
 	String ip;
 	int port = 47984;

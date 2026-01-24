@@ -87,6 +87,7 @@ expand_mode = 1
 stretch_mode = 1
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer"]
+autoplay = true
 
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]

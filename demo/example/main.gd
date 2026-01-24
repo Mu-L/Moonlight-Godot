@@ -89,8 +89,9 @@ func test_establish_stream() -> void:
     }
     moonlightstreamcore.set_render_target($ScrollContainer/GridContainer/Screen)
     $ScrollContainer/GridContainer/AudioStreamPlayer.stream=moonlightstreamcore.get_audio_stream()
-    computermamager.establish_stream(1,1191261554,options,func(info): moonlightstreamcore.start_play_stream(info))
-    #await get_tree().create_timer(2).timeout
+    computermamager.establish_stream(1,1191261554,options,func(info): print(info);moonlightstreamcore.start_play_stream(info))
+    await get_tree().create_timer(2).timeout
+    $ScrollContainer/GridContainer/AudioStreamPlayer.play()
 
 func test_stop_stream() -> void:
     computermamager.stop_stream(1,func(info): print(info);moonlightstreamcore.stop_play_stream();moonlightstreamcore.reset_audio_stream();moonlightstreamcore.reset_render_target())
