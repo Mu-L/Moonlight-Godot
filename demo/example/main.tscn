@@ -53,17 +53,20 @@ layout_mode = 2
 [node name="Button7" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test unpair"
+text = "test 
+unpair"
 
 [node name="Button8" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test get applist"
+text = "test
+ get applist"
 
 [node name="Button9" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test get app texture→"
+text = "test
+ get app texture→"
 
 [node name="TextureRect" type="TextureRect" parent="ScrollContainer/GridContainer"]
 custom_minimum_size = Vector2(60, 80)
@@ -73,18 +76,23 @@ expand_mode = 1
 [node name="Button11" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test establish stream"
+text = "test 
+establish stream"
 
 [node name="Button12" type="Button" parent="ScrollContainer/GridContainer"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test stop stream"
+text = "test
+pause stream"
+
+[node name="Button13" type="Button" parent="ScrollContainer/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+stop stream"
 
 [node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer"]
-custom_minimum_size = Vector2(1280, 720)
 layout_mode = 2
-expand_mode = 1
-stretch_mode = 1
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer"]
 autoplay = true
@@ -99,4 +107,5 @@ autoplay = true
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button8" to="." method="test_get_applist"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button9" to="." method="test_get_app_texture"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button11" to="." method="test_establish_stream"]
-[connection signal="pressed" from="ScrollContainer/GridContainer/Button12" to="." method="test_stop_stream"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button12" to="." method="test_pause_streram"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button13" to="." method="test_stop_stream"]

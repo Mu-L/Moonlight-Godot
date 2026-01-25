@@ -13,6 +13,7 @@
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -102,9 +103,8 @@ class MoonlightStreamCore : public Node {
 private:
 	// --- Threading & State ---
 	Ref<Thread> connection_thread; // Runs LiStartConnection
-	Ref<Thread> video_pull_thread; // Runs LiWaitForNextVideoFrame (Consumer)
 	Ref<Thread> video_decode_thread; // Runs FFmpeg Decode (Processor)
-	bool is_streaming;
+	std::atomic<bool> is_streaming;
 
 	// Global mutex for Limelight
 	static Mutex *lib_global_mutex;
@@ -155,6 +155,9 @@ private:
 	int video_height = 0;
 	int video_format = 0;
 
+	// Optimization: Reusable buffer for decoded data to avoid reallocation every frame
+	PackedByteArray decode_buffer;
+
 	// --- FFmpeg Audio Context ---
 	AVCodecContext *a_codec_ctx = nullptr;
 	AVFrame *a_frame = nullptr;
@@ -184,12 +187,15 @@ private:
 
 	// Instance Handlers
 	int _handle_dr_setup(int video_format, int width, int height);
+	int _handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit);
 	int _handle_ar_init(int audio_configuration);
 	void _handle_ar_decode_and_play_sample(char *sample_data, int sample_length);
 
+	// Internal update method
+	void _update_display_texture();
+
 	// Thread Loops
 	void _thread_func_connection();
-	void _thread_func_video_pull();
 	void _thread_func_video_decode();
 
 public:

@@ -95,3 +95,9 @@ func test_establish_stream() -> void:
 
 func test_stop_stream() -> void:
     computermamager.stop_stream(1,func(info): print(info);moonlightstreamcore.stop_play_stream();moonlightstreamcore.reset_audio_stream();moonlightstreamcore.reset_render_target())
+
+
+func test_pause_streram() -> void:
+    moonlightstreamcore.stop_play_stream()
+    moonlightstreamcore.reset_audio_stream()
+    moonlightstreamcore.reset_render_target()

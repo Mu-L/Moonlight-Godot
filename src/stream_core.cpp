@@ -153,7 +153,8 @@ void AudioStreamMoonlight::_bind_methods() {}
 
 MoonlightStreamCore::MoonlightStreamCore() {
 	singleton_instance = this;
-	is_streaming = false;
+	// set_process removed
+	is_streaming.store(false);
 	new_frame_available = false;
 	selected_codec_config = CODEC_H264;
 
@@ -185,8 +186,8 @@ MoonlightStreamCore::MoonlightStreamCore() {
 
 	dr_callbacks.setup = _dr_setup;
 	dr_callbacks.cleanup = _dr_cleanup;
-	dr_callbacks.submitDecodeUnit = nullptr; // Must be NULL for CAPABILITY_PULL_RENDERER
-	dr_callbacks.capabilities = CAPABILITY_PULL_RENDERER;
+	dr_callbacks.submitDecodeUnit = _dr_submit_decode_unit;
+	dr_callbacks.capabilities = 0; // Default Push Renderer (Removed CAPABILITY_PULL_RENDERER)
 
 	ar_callbacks.init = _ar_init;
 	ar_callbacks.cleanup = _ar_cleanup;
@@ -204,12 +205,18 @@ MoonlightStreamCore::~MoonlightStreamCore() {
 
 void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	// 1. Cleanup previous session thoroughly
-	if (is_streaming || (connection_thread.is_valid() && connection_thread->is_started())) {
+	if (is_streaming.load() || (connection_thread.is_valid() && connection_thread->is_started())) {
 		UtilityFunctions::print(LOG_PREFIX "Stream already running, stopping first...");
 		stop_play_stream();
 		// WAIT: Give underlying C library time to reset global state (winsock, etc)
 		OS::get_singleton()->delay_usec(1000000); // 1.0 second delay
 	}
+
+	// Critical Fix: Re-instantiate sync primitives to ensure no stale state from previous runs
+	decode_sem.instantiate();
+	queue_mutex.instantiate();
+	texture_mutex.instantiate();
+	packet_queue.clear();
 
 	// Ensure audio stream exists and is cleared
 	get_audio_stream();
@@ -222,8 +229,8 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	LiInitializeVideoCallbacks(&dr_callbacks);
 	dr_callbacks.setup = _dr_setup;
 	dr_callbacks.cleanup = _dr_cleanup;
-	dr_callbacks.submitDecodeUnit = nullptr;
-	dr_callbacks.capabilities = CAPABILITY_PULL_RENDERER;
+	dr_callbacks.submitDecodeUnit = _dr_submit_decode_unit;
+	dr_callbacks.capabilities = 0; // Push Renderer
 
 	// 2. Codec Selection
 	String codec_str = options.get("video_codec", "H264");
@@ -284,7 +291,8 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	server_info.serverInfoGfeVersion = gfe_version_storage.c_str();
 	server_info.serverCodecModeSupport = options.get("server_codec_mode_support", 0);
 
-	is_streaming = true;
+	is_streaming.store(true);
+	// set_process removed
 
 	// 5. Start Threads
 	if (connection_thread.is_valid()) {
@@ -294,12 +302,7 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	connection_thread.instantiate();
 	connection_thread->start(callable_mp(this, &MoonlightStreamCore::_thread_func_connection));
 
-	if (video_pull_thread.is_valid()) {
-		video_pull_thread->wait_to_finish();
-		video_pull_thread.unref();
-	}
-	video_pull_thread.instantiate();
-	video_pull_thread->start(callable_mp(this, &MoonlightStreamCore::_thread_func_video_pull));
+	// Removed video_pull_thread start
 
 	if (video_decode_thread.is_valid()) {
 		video_decode_thread->wait_to_finish();
@@ -310,20 +313,21 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 }
 
 void MoonlightStreamCore::stop_play_stream() {
-	if (!is_streaming)
+	if (!is_streaming.load())
 		return;
 
 	UtilityFunctions::print(LOG_PREFIX "Stopping stream...");
 
 	// 1. Set Flag
-	is_streaming = false;
+	is_streaming.store(false);
+	// set_process removed
 
 	// 2. Unblock Decoder Thread
 	decode_sem->post();
 
 	// 3. Break blocking network calls
 	LiInterruptConnection();
-	LiWakeWaitForVideoFrame();
+	// LiWakeWaitForVideoFrame(); // Removed (Pull only)
 
 	// 4. Stop Library
 	LiStopConnection();
@@ -333,10 +337,7 @@ void MoonlightStreamCore::stop_play_stream() {
 		connection_thread->wait_to_finish();
 		connection_thread.unref();
 	}
-	if (video_pull_thread.is_valid()) {
-		video_pull_thread->wait_to_finish();
-		video_pull_thread.unref();
-	}
+	// Removed video_pull_thread join
 	if (video_decode_thread.is_valid()) {
 		video_decode_thread->wait_to_finish();
 		video_decode_thread.unref();
@@ -360,10 +361,10 @@ void MoonlightStreamCore::set_render_target(TextureRect *target) {
 	display_rect = target;
 	if (display_rect) {
 		if (display_texture.is_null()) {
-			display_texture.instantiate();
 			Ref<Image> img = Image::create(1280, 720, false, Image::FORMAT_RGBA8);
 			img->fill(Color(0, 0, 0, 1));
-			display_texture->set_image(img);
+			// FIX: Use create_from_image() static method as required by documentation
+			display_texture = ImageTexture::create_from_image(img);
 		}
 		display_rect->set_texture(display_texture);
 	}
@@ -382,17 +383,35 @@ void MoonlightStreamCore::reset_audio_stream(bool free_stream) {
 	}
 }
 
-void MoonlightStreamCore::_process(double delta) {
-	if (!is_streaming)
+void MoonlightStreamCore::_update_display_texture() {
+	if (!is_streaming.load())
 		return;
+
+	// This method runs on the main thread via call_deferred
 	if (new_frame_available && texture_mutex.is_valid()) {
 		texture_mutex->lock();
 		if (last_decoded_image.is_valid() && display_texture.is_valid()) {
-			display_texture->update(last_decoded_image);
+			// ImageTexture::update() requires exact dimension/format match.
+			int tex_w = display_texture->get_width();
+			int tex_h = display_texture->get_height();
+			int img_w = last_decoded_image->get_width();
+			int img_h = last_decoded_image->get_height();
+
+			if (tex_w != img_w || tex_h != img_h || display_texture->get_format() != last_decoded_image->get_format()) {
+				// Reallocate if changed
+				display_texture->set_image(last_decoded_image);
+			} else {
+				// Fast update if matched
+				display_texture->update(last_decoded_image);
+			}
 		}
 		new_frame_available = false;
 		texture_mutex->unlock();
 	}
+}
+
+void MoonlightStreamCore::_process(double delta) {
+	// Not used intentionally. Using call_deferred mechanism instead to support orphan nodes.
 }
 
 // ============================================================================
@@ -401,59 +420,21 @@ void MoonlightStreamCore::_process(double delta) {
 
 void MoonlightStreamCore::_thread_func_connection() {
 	int res = LiStartConnection(&server_info, &stream_config, &cl_callbacks, &dr_callbacks, &ar_callbacks, this, 0, this, 0);
-	if (res != 0)
-		UtilityFunctions::printerr(LOG_PREFIX "Connection failed: ", res);
-	is_streaming = false;
-	decode_sem->post();
-	LiWakeWaitForVideoFrame();
-}
 
-void MoonlightStreamCore::_thread_func_video_pull() {
-	UtilityFunctions::print(LOG_PREFIX "Video Pull Thread Started");
-	VIDEO_FRAME_HANDLE frame_handle;
-	PDECODE_UNIT decode_unit;
-
-	while (is_streaming) {
-		// BLOCKING: Wait for frame data from network
-		if (LiWaitForNextVideoFrame(&frame_handle, &decode_unit)) {
-			// Create Packet
-			AVPacket *pkt = av_packet_alloc();
-			bool packet_ready = false;
-
-			if (pkt && av_new_packet(pkt, decode_unit->fullLength) >= 0) {
-				int offset = 0;
-				PLENTRY entry = decode_unit->bufferList;
-				while (entry != nullptr) {
-					if (entry->length > 0 && entry->data) {
-						memcpy(pkt->data + offset, entry->data, entry->length);
-						offset += entry->length;
-					}
-					entry = entry->next;
-				}
-				packet_ready = true;
-			}
-
-			// CRITICAL: Release the network buffer immediately
-			LiCompleteVideoFrame(frame_handle, DR_OK);
-
-			if (packet_ready) {
-				queue_mutex->lock();
-				packet_queue.push_back(pkt);
-				queue_mutex->unlock();
-				// Wake up decoder
-				decode_sem->post();
-			} else {
-				if (pkt)
-					av_packet_free(&pkt);
-			}
-		} else {
-			// Interrupt or failure
-			if (is_streaming)
-				OS::get_singleton()->delay_usec(1000);
-		}
+	if (res != 0) {
+		UtilityFunctions::printerr(LOG_PREFIX "Connection failed with error: ", res);
+		// If connection failed to start, we must clean up
+		is_streaming.store(false);
+		decode_sem->post();
+	} else {
+		UtilityFunctions::print(LOG_PREFIX "LiStartConnection returned 0 (Graceful Termination)");
+		// FIX: Do NOT set is_streaming = false here.
+		// LiStartConnection returning 0 might be non-blocking in this context.
+		// We rely on _cl_connection_terminated or stop_play_stream to clear the flag.
 	}
-	UtilityFunctions::print(LOG_PREFIX "Video Pull Thread Exited");
 }
+
+// _thread_func_video_pull removed
 
 void MoonlightStreamCore::_thread_func_video_decode() {
 	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Started");
@@ -461,21 +442,36 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 	if (!v_frame)
 		v_frame = av_frame_alloc();
 
-	while (is_streaming) {
+	while (true) {
 		// Wait for packet
 		decode_sem->wait();
-		if (!is_streaming)
-			break;
 
-		AVPacket *pkt = nullptr;
-		queue_mutex->lock();
-		if (packet_queue.size() > 0) {
-			pkt = packet_queue.front()->get();
-			packet_queue.pop_front();
-		}
-		queue_mutex->unlock();
+		// Drain the queue as much as possible before waiting again
+		// This handles cases where semaphore posts are coalesced or queue fills faster than wakeups
+		while (true) {
+			AVPacket *pkt = nullptr;
+			int queue_size = 0;
 
-		if (pkt) {
+			queue_mutex->lock();
+			queue_size = packet_queue.size();
+			if (queue_size > 0) {
+				pkt = packet_queue.front()->get();
+				packet_queue.pop_front();
+			}
+			queue_mutex->unlock();
+
+			// Exit condition: No streaming AND no data left in queue
+			// We check this inside the inner loop to ensure we drain everything after stop is requested
+			if (!is_streaming.load() && pkt == nullptr) {
+				UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Stopping (Queue empty)");
+				goto end_of_thread;
+			}
+
+			// If no packet but still streaming, break inner loop to wait on semaphore again
+			if (pkt == nullptr) {
+				break;
+			}
+
 			if (v_codec_ctx) {
 				int ret = avcodec_send_packet(v_codec_ctx, pkt);
 				if (ret >= 0) {
@@ -483,41 +479,79 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						ret = avcodec_receive_frame(v_codec_ctx, v_frame);
 						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 							break;
-						if (ret < 0)
+						if (ret < 0) {
+							// Serious decode error, request fresh stream
+							UtilityFunctions::printerr(LOG_PREFIX "Decode error: ", ret);
+							LiRequestIdrFrame();
 							break;
+						}
+
+						// Optimization: Frame Dropping Logic
+						// If queue is piling up (>10 frames), skip rendering (SWS + Texture Update)
+						// to allow the decoder to catch up. We must still decode to keep context valid.
+						// Note: queue_size is a snapshot from before decoding this frame
+						if (queue_size > 10) {
+							continue;
+						}
 
 						// Got Frame -> Convert -> Display
 						int w = v_frame->width;
 						int h = v_frame->height;
+
 						if (w > 0 && h > 0) {
-							if (!sws_ctx || video_width != w || video_height != h) {
+							if (!sws_ctx || video_width != w || video_height != h || video_format != v_frame->format) {
 								if (sws_ctx)
 									sws_freeContext(sws_ctx);
+								// Note: We track video_format to reset SWS if pixel format changes
+								video_format = v_frame->format;
 								sws_ctx = sws_getContext(w, h, (AVPixelFormat)v_frame->format, w, h, AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
 								video_width = w;
 								video_height = h;
 							}
 
-							PackedByteArray img_data;
-							img_data.resize(w * h * 4);
-							uint8_t *dest[4] = { img_data.ptrw(), nullptr, nullptr, nullptr };
-							int dest_linesize[4] = { w * 4, 0, 0, 0 };
+							if (sws_ctx) {
+								// Optimization: Reuse decode_buffer instead of allocating new PackedByteArray every frame
+								int required_size = w * h * 4;
+								if (decode_buffer.size() != required_size) {
+									decode_buffer.resize(required_size);
+								}
 
-							sws_scale(sws_ctx, v_frame->data, v_frame->linesize, 0, h, dest, dest_linesize);
+								uint8_t *dest[4] = { decode_buffer.ptrw(), nullptr, nullptr, nullptr };
+								int dest_linesize[4] = { w * 4, 0, 0, 0 };
 
-							if (texture_mutex.is_valid()) {
-								texture_mutex->lock();
-								last_decoded_image = Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, img_data);
-								new_frame_available = true;
-								texture_mutex->unlock();
+								sws_scale(sws_ctx, v_frame->data, v_frame->linesize, 0, h, dest, dest_linesize);
+
+								if (texture_mutex.is_valid()) {
+									texture_mutex->lock();
+
+									// Optimization: Use set_data to update existing image if dimensions match
+									// This avoids overhead of creating new Ref<Image> and internal allocs
+									if (last_decoded_image.is_valid() && last_decoded_image->get_width() == w && last_decoded_image->get_height() == h) {
+										last_decoded_image->set_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
+									} else {
+										last_decoded_image = Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
+									}
+
+									new_frame_available = true;
+									texture_mutex->unlock();
+
+									// Schedule update on main thread (works even if node is not in scene tree)
+									call_deferred("_update_display_texture");
+								}
 							}
 						}
 					}
+				} else {
+					// Send packet failed, likely corrupt stream
+					UtilityFunctions::printerr(LOG_PREFIX "Send packet failed: ", ret);
+					LiRequestIdrFrame();
 				}
 			}
 			av_packet_free(&pkt);
 		}
 	}
+
+end_of_thread:
 	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Exited");
 }
 
@@ -588,74 +622,9 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 }
 
 Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
-	String platform = OS::get_singleton()->get_name();
-	String adapter = RenderingServer::get_singleton()->get_video_adapter_name().to_lower();
+	// Strictly software decoders only
 	Vector<String> candidates;
 
-	bool is_nvidia = adapter.contains("nvidia") || adapter.contains("geforce") || adapter.contains("quadro");
-	bool is_amd = adapter.contains("amd") || adapter.contains("radeon");
-	bool is_intel = adapter.contains("intel") || adapter.contains("uhd") || adapter.contains("iris") || adapter.contains("arc");
-
-	UtilityFunctions::print(LOG_PREFIX "Detected GPU: ", adapter);
-
-	if (platform == "Windows") {
-		// Hardware wrappers
-		if (is_nvidia) {
-			if (codec_family == CODEC_FAMILY_H264)
-				candidates.push_back("h264_cuvid");
-			else if (codec_family == CODEC_FAMILY_H265)
-				candidates.push_back("hevc_cuvid");
-			else if (codec_family == CODEC_FAMILY_AV1)
-				candidates.push_back("av1_cuvid");
-		}
-		if (is_amd) {
-			if (codec_family == CODEC_FAMILY_H264)
-				candidates.push_back("h264_amf");
-			else if (codec_family == CODEC_FAMILY_H265)
-				candidates.push_back("hevc_amf");
-			else if (codec_family == CODEC_FAMILY_AV1)
-				candidates.push_back("av1_amf");
-		}
-		if (is_intel) {
-			if (codec_family == CODEC_FAMILY_H264)
-				candidates.push_back("h264_qsv");
-			else if (codec_family == CODEC_FAMILY_H265)
-				candidates.push_back("hevc_qsv");
-			else if (codec_family == CODEC_FAMILY_AV1)
-				candidates.push_back("av1_qsv");
-		}
-		// Windows Generic Hardware (Media Foundation)
-		if (codec_family == CODEC_FAMILY_H264)
-			candidates.push_back("h264_mf");
-		else if (codec_family == CODEC_FAMILY_H265)
-			candidates.push_back("hevc_mf");
-	} else if (platform == "Linux" || platform == "FreeBSD") {
-		if (codec_family == CODEC_FAMILY_H264) {
-			candidates.push_back("h264_cuvid");
-			candidates.push_back("h264_vaapi");
-			candidates.push_back("h264_v4l2m2m");
-		} else if (codec_family == CODEC_FAMILY_H265) {
-			candidates.push_back("hevc_cuvid");
-			candidates.push_back("hevc_vaapi");
-		} else if (codec_family == CODEC_FAMILY_AV1) {
-			candidates.push_back("av1_cuvid");
-			candidates.push_back("av1_vaapi");
-		}
-	} else if (platform == "Android") {
-		if (codec_family == CODEC_FAMILY_H264)
-			candidates.push_back("h264_mediacodec");
-		else if (codec_family == CODEC_FAMILY_H265)
-			candidates.push_back("hevc_mediacodec");
-		else if (codec_family == CODEC_FAMILY_AV1)
-			candidates.push_back("av1_mediacodec");
-	} else if (platform == "macOS" || platform == "iOS") {
-		if (codec_family == CODEC_FAMILY_H264)
-			candidates.push_back("h264_videotoolbox");
-		else if (codec_family == CODEC_FAMILY_H265)
-			candidates.push_back("hevc_videotoolbox");
-	}
-
-	// Software Fallback
 	if (codec_family == CODEC_FAMILY_H264)
 		candidates.push_back("h264");
 	else if (codec_family == CODEC_FAMILY_H265)
@@ -678,19 +647,34 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 
 	ctx->width = width;
 	ctx->height = height;
+	// Flags adapted from moonlight-embedded/src/video/ffmpeg.c
 	ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
-	ctx->flags2 |= AV_CODEC_FLAG2_FAST;
+	ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT; // Critical for UDP streaming
+	ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
+	// ctx->flags2 |= AV_CODEC_FLAG2_FAST; // Removed (not in ref)
 
-	int thread_count = OS::get_singleton()->get_processor_count();
-	if (thread_count > 4)
-		thread_count = 4;
-	ctx->thread_count = thread_count;
-	if (codec->capabilities & AV_CODEC_CAP_FRAME_THREADS)
-		ctx->thread_type = FF_THREAD_FRAME;
-	else if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS)
+	// Report decoding errors to allow us to request a key frame
+	ctx->err_recognition = AV_EF_EXPLODE;
+
+	// Request YUV420P. This guides generic decoders.
+	// If HW accel is active, it might be overridden to NV12/CUDA, handled by transfer loop.
+	ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+
+	// Optimization: Match gozen's threading strategy (All cores - 1)
+	int thread_count = OS::get_singleton()->get_processor_count() - 1;
+	if (thread_count < 1)
+		thread_count = 1;
+
+	// Prioritize slice threading for lower latency
+	if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
 		ctx->thread_type = FF_THREAD_SLICE;
-	else
+		ctx->thread_count = thread_count;
+	} else if (codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) {
+		ctx->thread_type = FF_THREAD_FRAME;
+		ctx->thread_count = thread_count;
+	} else {
 		ctx->thread_count = 1;
+	}
 
 	if (avcodec_open2(ctx, codec, nullptr) < 0) {
 		avcodec_free_context(&ctx);
@@ -740,8 +724,57 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name);
 	video_width = width;
 	video_height = height;
-	video_format = video_fmt;
+	video_format = -1; // Force SWS init on first frame
 	return DR_OK;
+}
+
+int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit) {
+	if (!is_streaming.load())
+		return DR_OK;
+
+	// Create Packet
+	AVPacket *pkt = av_packet_alloc();
+	bool packet_ready = false;
+
+	if (pkt && av_new_packet(pkt, decode_unit->fullLength) >= 0) {
+		int offset = 0;
+		PLENTRY entry = decode_unit->bufferList;
+		while (entry != nullptr) {
+			if (entry->length > 0 && entry->data) {
+				memcpy(pkt->data + offset, entry->data, entry->length);
+				offset += entry->length;
+			}
+			entry = entry->next;
+		}
+		packet_ready = true;
+	}
+
+	if (packet_ready) {
+		queue_mutex->lock();
+		if (packet_queue.size() < 120) {
+			packet_queue.push_back(pkt);
+			queue_mutex->unlock();
+			decode_sem->post();
+			return DR_OK;
+		} else {
+			queue_mutex->unlock();
+
+			// Limit log spam for overflows
+			static uint64_t last_log = 0;
+			uint64_t now = Time::get_singleton()->get_ticks_msec();
+			if (now - last_log > 1000) {
+				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 120)");
+				last_log = now;
+			}
+
+			av_packet_free(&pkt);
+			return DR_NEED_IDR;
+		}
+	} else {
+		if (pkt)
+			av_packet_free(&pkt);
+		return DR_OK;
+	}
 }
 
 void MoonlightStreamCore::_cleanup_ffmpeg_video() {
@@ -868,7 +901,16 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 
 void MoonlightStreamCore::_cl_stage_starting(int stage) { UtilityFunctions::print(LOG_PREFIX "Stage Starting: ", LiGetStageName(stage)); }
 void MoonlightStreamCore::_cl_connection_started() { UtilityFunctions::print(LOG_PREFIX "Connection Started"); }
-void MoonlightStreamCore::_cl_connection_terminated(int error_code) { UtilityFunctions::print(LOG_PREFIX "Connection Terminated: ", error_code); }
+void MoonlightStreamCore::_cl_connection_terminated(int error_code) {
+	UtilityFunctions::print(LOG_PREFIX "Connection Terminated: ", error_code);
+	// FIX: Handle termination here to ensure decoder stops only when connection is truly dead
+	if (singleton_instance) {
+		singleton_instance->is_streaming.store(false);
+		if (singleton_instance->decode_sem.is_valid()) {
+			singleton_instance->decode_sem->post();
+		}
+	}
+}
 void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	va_list args;
 	va_start(args, format);
@@ -882,7 +924,12 @@ void MoonlightStreamCore::_dr_cleanup(void) {
 	if (singleton_instance)
 		singleton_instance->_cleanup_ffmpeg_video();
 }
-int MoonlightStreamCore::_dr_submit_decode_unit(PDECODE_UNIT du) { return DR_OK; }
+int MoonlightStreamCore::_dr_submit_decode_unit(PDECODE_UNIT du) {
+	// FIX: Route to instance handler for Push model
+	if (singleton_instance)
+		return singleton_instance->_handle_dr_submit_decode_unit(du);
+	return DR_OK;
+}
 int MoonlightStreamCore::_ar_init(int cfg, const POPUS_MULTISTREAM_CONFIGURATION opus, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_ar_init(cfg); }
 void MoonlightStreamCore::_ar_cleanup(void) {
 	if (singleton_instance)
@@ -900,4 +947,7 @@ void MoonlightStreamCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("reset_render_target"), &MoonlightStreamCore::reset_render_target);
 	ClassDB::bind_method(D_METHOD("get_audio_stream"), &MoonlightStreamCore::get_audio_stream);
 	ClassDB::bind_method(D_METHOD("reset_audio_stream", "free_stream"), &MoonlightStreamCore::reset_audio_stream, DEFVAL(false));
+
+	// Bind internal update method for call_deferred
+	ClassDB::bind_method(D_METHOD("_update_display_texture"), &MoonlightStreamCore::_update_display_texture);
 }
