@@ -142,6 +142,7 @@ private:
 	List<AVPacket *> packet_queue;
 	Ref<Mutex> queue_mutex;
 	Ref<Semaphore> decode_sem;
+	Ref<Mutex> codec_mutex;
 
 	// --- Audio State ---
 	Ref<AudioStreamMoonlight> audio_stream;

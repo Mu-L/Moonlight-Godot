@@ -161,6 +161,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
 	decode_sem.instantiate();
+	codec_mutex.instantiate();
 
 	if (lib_global_mutex == nullptr) {
 		lib_global_mutex = memnew(Mutex);
@@ -195,10 +196,17 @@ MoonlightStreamCore::MoonlightStreamCore() {
 
 	// Critical: Ensure audio stream is created immediately so we don't drop packets
 	get_audio_stream();
+
+	// Allocate reusable frame container once. Persists across resolution changes.
+	v_frame = av_frame_alloc();
 }
 
 MoonlightStreamCore::~MoonlightStreamCore() {
 	stop_play_stream();
+	if (v_frame) {
+		av_frame_free(&v_frame);
+		v_frame = nullptr;
+	}
 	if (singleton_instance == this)
 		singleton_instance = nullptr;
 }
@@ -216,6 +224,7 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	decode_sem.instantiate();
 	queue_mutex.instantiate();
 	texture_mutex.instantiate();
+	codec_mutex.instantiate();
 	packet_queue.clear();
 
 	// Ensure audio stream exists and is cleared
@@ -223,6 +232,12 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	if (audio_stream.is_valid()) {
 		audio_stream->clear_buffer();
 	}
+
+	// Reset frame state
+	if (v_frame)
+		av_frame_unref(v_frame);
+	else
+		v_frame = av_frame_alloc();
 
 	// Reset callbacks again to ensure clean state
 	memset(&dr_callbacks, 0, sizeof(dr_callbacks));
@@ -313,8 +328,11 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 }
 
 void MoonlightStreamCore::stop_play_stream() {
-	if (!is_streaming.load())
-		return;
+	// FIX: Must allow cleanup even if is_streaming is already false.
+	// This happens when the server cancels the stream remotely (error -100).
+	// If we return early here, LiStopConnection() is never called, and the
+	// internal state of the C library (CurrentStage) remains dirty, causing assertions on next start.
+	// if (!is_streaming.load()) return;
 
 	UtilityFunctions::print(LOG_PREFIX "Stopping stream...");
 
@@ -323,13 +341,15 @@ void MoonlightStreamCore::stop_play_stream() {
 	// set_process removed
 
 	// 2. Unblock Decoder Thread
-	decode_sem->post();
+	if (decode_sem.is_valid()) {
+		decode_sem->post();
+	}
 
 	// 3. Break blocking network calls
 	LiInterruptConnection();
 	// LiWakeWaitForVideoFrame(); // Removed (Pull only)
 
-	// 4. Stop Library
+	// 4. Stop Library (Crucial for resetting internal state)
 	LiStopConnection();
 
 	// 5. Join Threads
@@ -344,13 +364,15 @@ void MoonlightStreamCore::stop_play_stream() {
 	}
 
 	// 6. Cleanup FFmpeg & Queue
-	queue_mutex->lock();
-	while (packet_queue.size() > 0) {
-		AVPacket *pkt = packet_queue.front()->get();
-		packet_queue.pop_front();
-		av_packet_free(&pkt);
+	if (queue_mutex.is_valid()) {
+		queue_mutex->lock();
+		while (packet_queue.size() > 0) {
+			AVPacket *pkt = packet_queue.front()->get();
+			packet_queue.pop_front();
+			av_packet_free(&pkt);
+		}
+		queue_mutex->unlock();
 	}
-	queue_mutex->unlock();
 
 	_cleanup_ffmpeg_video();
 	_cleanup_ffmpeg_audio();
@@ -425,7 +447,9 @@ void MoonlightStreamCore::_thread_func_connection() {
 		UtilityFunctions::printerr(LOG_PREFIX "Connection failed with error: ", res);
 		// If connection failed to start, we must clean up
 		is_streaming.store(false);
-		decode_sem->post();
+		if (decode_sem.is_valid()) {
+			decode_sem->post();
+		}
 	} else {
 		UtilityFunctions::print(LOG_PREFIX "LiStartConnection returned 0 (Graceful Termination)");
 		// FIX: Do NOT set is_streaming = false here.
@@ -439,12 +463,15 @@ void MoonlightStreamCore::_thread_func_connection() {
 void MoonlightStreamCore::_thread_func_video_decode() {
 	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Started");
 
-	if (!v_frame)
-		v_frame = av_frame_alloc();
+	// v_frame is now managed by the class instance, not allocated locally here.
 
 	while (true) {
 		// Wait for packet
-		decode_sem->wait();
+		if (decode_sem.is_valid()) {
+			decode_sem->wait();
+		} else {
+			break;
+		}
 
 		// Drain the queue as much as possible before waiting again
 		// This handles cases where semaphore posts are coalesced or queue fills faster than wakeups
@@ -472,10 +499,12 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 				break;
 			}
 
+			codec_mutex->lock(); // LOCK: Protect v_codec_ctx access
 			if (v_codec_ctx) {
 				int ret = avcodec_send_packet(v_codec_ctx, pkt);
 				if (ret >= 0) {
 					while (true) {
+						// v_frame is guaranteed valid (allocated in constructor)
 						ret = avcodec_receive_frame(v_codec_ctx, v_frame);
 						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 							break;
@@ -547,6 +576,7 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 					LiRequestIdrFrame();
 				}
 			}
+			codec_mutex->unlock(); // UNLOCK
 			av_packet_free(&pkt);
 		}
 	}
@@ -658,7 +688,11 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 
 	// Request YUV420P. This guides generic decoders.
 	// If HW accel is active, it might be overridden to NV12/CUDA, handled by transfer loop.
-	ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+	// FIX: Do NOT enforce YUV420P for AV1/libdav1d. It often negotiates its own format (e.g. 10-bit)
+	// forcing it causes failure or SW conversion issues.
+	if (codec_name.find("av1") == -1 && codec_name.find("dav1d") == -1) {
+		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+	}
 
 	// Optimization: Match gozen's threading strategy (All cores - 1)
 	int thread_count = OS::get_singleton()->get_processor_count() - 1;
@@ -683,13 +717,13 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 
 	v_codec = codec;
 	v_codec_ctx = ctx;
-	if (!v_frame)
-		v_frame = av_frame_alloc();
+	// v_frame allocation removed from here (moved to constructor)
 
 	return 0;
 }
 
 int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) {
+	codec_mutex->lock(); // LOCK: Protect reconfiguration
 	_cleanup_ffmpeg_video();
 	UtilityFunctions::print(LOG_PREFIX "Setup Video: Fmt=0x", String::num_int64(video_fmt, 16), " Size=", width, "x", height);
 
@@ -718,6 +752,7 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 
 	if (!opened) {
 		UtilityFunctions::printerr(LOG_PREFIX "No usable decoder found!");
+		codec_mutex->unlock(); // UNLOCK on failure
 		return -1;
 	}
 
@@ -725,6 +760,7 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	video_width = width;
 	video_height = height;
 	video_format = -1; // Force SWS init on first frame
+	codec_mutex->unlock(); // UNLOCK on success
 	return DR_OK;
 }
 
@@ -786,10 +822,8 @@ void MoonlightStreamCore::_cleanup_ffmpeg_video() {
 		avcodec_free_context(&v_codec_ctx);
 		v_codec_ctx = nullptr;
 	}
-	if (v_frame) {
-		av_frame_free(&v_frame);
-		v_frame = nullptr;
-	}
+	// Do NOT free v_frame here. It persists for the lifetime of the core instance
+	// to allow safe reuse across decoder resets (DR_SETUP) and avoid race conditions.
 }
 
 int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
@@ -921,8 +955,14 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 }
 int MoonlightStreamCore::_dr_setup(int fmt, int w, int h, int rate, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_dr_setup(fmt, w, h); }
 void MoonlightStreamCore::_dr_cleanup(void) {
-	if (singleton_instance)
-		singleton_instance->_cleanup_ffmpeg_video();
+	if (singleton_instance) {
+		// FIX: Lock mutex to prevent race with decode thread using the context
+		if (singleton_instance->codec_mutex.is_valid()) {
+			singleton_instance->codec_mutex->lock();
+			singleton_instance->_cleanup_ffmpeg_video();
+			singleton_instance->codec_mutex->unlock();
+		}
+	}
 }
 int MoonlightStreamCore::_dr_submit_decode_unit(PDECODE_UNIT du) {
 	// FIX: Route to instance handler for Push model
