@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Moonlight-Godot"
 run/main_scene="uid://dc1tsui4v3770"
-config/features=PackedStringArray("4.5", "Mobile")
+config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
 
 [dotnet]

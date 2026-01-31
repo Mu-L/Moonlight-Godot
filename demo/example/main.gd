@@ -7,12 +7,17 @@ extends Node
 
 func _ready() -> void:
     computermamager.pair_completed.connect(on_pair_complete)
+    moonlightstreamcore.connection_started.connect(func():print("[Moonlight-Godot-MoonlightStreamCore]","Connect Successfully!"))
+    moonlightstreamcore.connection_terminated.connect(func(_err,msg):push_error("[Moonlight-Godot-MoonlightStreamCore]",msg))
+    @warning_ignore("standalone_ternary")
+    moonlightstreamcore.hdr_mode_changed.connect(func(enable,data):print("[Moonlight-Godot-MoonlightStreamCore-HDR]",data) if enable else push_warning("[Moonlight-Godot-MoonlightStreamCore-HDR]",data))
 
 func on_pair_complete(success,message):
     if success:
         print("[Moonlight-Godot-ComputerManager]",message)
     else:
         push_error("[Moonlight-Godot-ComputerManager]",message)
+
 
 func test_http_requeset() -> void:
     
@@ -71,7 +76,7 @@ func test_get_app_texture() -> void:
 
 
 func test_connect_to_server() -> void:
-    computermamager.connect_to_computer("127.0.0.1",47989,func(info): print(info))
+    computermamager.connect_to_computer("192.168.1.27",47989,func(info): print(info))
     
 
 
@@ -86,10 +91,27 @@ func test_establish_stream() -> void:
         "remoteControllersBitmap": "15",
         "gcmap": "1",
         "gcpersist": "1",
+        "video_codec": moonlightstreamcore.CODEC_H265,
+        "disable_hw_acceleration": false
     }
+# delay(s)
+# WITH CHANGE:
+    # SW decode:
+    #   H264:0.13
+    #   H265:0.13
+    # HW decode:
+    #`  H264:0.27
+    #   H265:0.23
+# WITHOUT CHANGE:
+    # SW decode:
+    #   H264:0.14
+    #   H265:0.09
+    # HW decode:
+    #`  H264:0.27
+    #   H265:0.27
     moonlightstreamcore.set_render_target($ScrollContainer/GridContainer/Screen)
     $ScrollContainer/GridContainer/AudioStreamPlayer.stream=moonlightstreamcore.get_audio_stream()
-    computermamager.establish_stream(1,1191261554,options,func(info): print(info);moonlightstreamcore.start_play_stream(info))
+    computermamager.establish_stream(1,1191261554,options,func(info): print(info);info["bitrate"]=200000;moonlightstreamcore.start_play_stream(info))
     await get_tree().create_timer(2).timeout
     $ScrollContainer/GridContainer/AudioStreamPlayer.play()
 

@@ -28,6 +28,8 @@ struct AVFrame;
 struct AVPacket;
 struct SwsContext;
 struct SwrContext;
+// Add hwcontext include
+#include <libavutil/hwcontext.h>
 }
 
 namespace godot {
@@ -118,13 +120,17 @@ private:
 	STREAM_CONFIGURATION stream_config;
 	SERVER_INFORMATION server_info;
 
+public:
 	enum VideoCodecConfig {
 		CODEC_AUTO = 0,
 		CODEC_H264 = 1,
 		CODEC_H265 = 2,
 		CODEC_AV1 = 3
 	};
+
+private:
 	VideoCodecConfig selected_codec_config;
+	bool disable_hw_decoding;
 
 	// Callbacks
 	CONNECTION_LISTENER_CALLBACKS cl_callbacks;
@@ -151,10 +157,15 @@ private:
 	const AVCodec *v_codec = nullptr;
 	AVCodecContext *v_codec_ctx = nullptr;
 	AVFrame *v_frame = nullptr;
+	AVFrame *sw_frame = nullptr; // Intermediate frame for HW download
 	SwsContext *sws_ctx = nullptr;
 	int video_width = 0;
 	int video_height = 0;
 	int video_format = 0;
+
+	// Hardware Acceleration
+	AVBufferRef *hw_device_ctx = nullptr;
+	AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
 
 	// Optimization: Reusable buffer for decoded data to avoid reallocation every frame
 	PackedByteArray decode_buffer;
@@ -168,7 +179,13 @@ private:
 	// --- Internal Methods ---
 	int _probe_video_format(VideoCodecConfig preference);
 	Vector<String> _get_candidate_decoders(int codec_family);
-	int _try_open_decoder(const String &codec_name, int width, int height);
+
+	// Helper to get platform specific HW priorities
+	Vector<AVHWDeviceType> _get_supported_hw_devices();
+
+	// Updated to support HW type
+	int _try_open_decoder(const String &codec_name, int width, int height, AVHWDeviceType hw_type);
+
 	void _cleanup_ffmpeg_video();
 	void _cleanup_ffmpeg_audio();
 	String _get_error_string(int error_code);
@@ -187,6 +204,9 @@ private:
 	static int _ar_init(int audio_configuration, const POPUS_MULTISTREAM_CONFIGURATION opus_config, void *context, int ar_flags);
 	static void _ar_cleanup(void);
 	static void _ar_decode_and_play_sample(char *sample_data, int sample_length);
+
+	// FFmpeg Callbacks
+	static enum AVPixelFormat _get_hw_format_callback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
 
 	// Instance Handlers
 	int _handle_dr_setup(int video_format, int width, int height);
@@ -221,3 +241,5 @@ protected:
 };
 
 } // namespace godot
+
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::VideoCodecConfig);

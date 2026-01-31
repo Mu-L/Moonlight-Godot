@@ -134,13 +134,13 @@ jobs:
             FEATURES+=("nvcodec")
           fi
 
-          # qsv: ((x86 | x64) & (android | linux)) | (windows & !uwp)
-          if [[ ("$ARCH" == "x86_64" && ("$PLATFORM" == "android" || "$PLATFORM" == "linux")) ]] || [[ "$PLATFORM" == "windows" ]]; then
+          # qsv: ((x86 | x64) & (linux | windows))
+          if [[ ("$ARCH" == "x86_64" && ("$PLATFORM" == "linux" || "$PLATFORM" == "windows")) ]] || [[ "$PLATFORM" == "windows" ]]; then
             FEATURES+=("qsv")
           fi
 
-          # amf: !osx
-          if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" ]]; then
+          # amf: windows | linux
+          if [[ "$PLATFORM" == "windows" || "$PLATFORM" == "linux" ]]; then
             FEATURES+=("amf")
           fi
 
@@ -149,11 +149,16 @@ jobs:
           FEATURES+=("x265")
           fi
           
-          # android
-          if [ "$PLATFORM" == "android" ]; then
-          FEATURES=()
+          # vaapi: linux
+          if [[ "$PLATFORM" == "linux" ]]; then
+          FEATURES+=("vaapi")
           fi
           
+          # vulkan: linux & windows & android
+          if [[ "$PLATFORM" == "linux" || "$PLATFORM" == "windows" || "$PLATFORM" == "android" ]]; then
+            FEATURES+=("vulkan")
+          fi
+
           if [ ${#FEATURES[@]} -gt 0 ]; then
             IFS=','
             FEATURE_STR="${FEATURES[*]}"

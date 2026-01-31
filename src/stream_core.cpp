@@ -14,6 +14,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/hwcontext.h> // Ensure this is included
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
@@ -157,6 +158,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	is_streaming.store(false);
 	new_frame_available = false;
 	selected_codec_config = CODEC_H264;
+	disable_hw_decoding = false;
 
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
@@ -189,7 +191,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	dr_callbacks.setup = _dr_setup;
 	dr_callbacks.cleanup = _dr_cleanup;
 	dr_callbacks.submitDecodeUnit = _dr_submit_decode_unit;
-	dr_callbacks.capabilities = 0; // Default Push Renderer (Removed CAPABILITY_PULL_RENDERER)
+	dr_callbacks.capabilities = 0; // Push Renderer
 
 	ar_callbacks.init = _ar_init;
 	ar_callbacks.cleanup = _ar_cleanup;
@@ -200,6 +202,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 
 	// Allocate reusable frame container once. Persists across resolution changes.
 	v_frame = av_frame_alloc();
+	sw_frame = av_frame_alloc(); // Allocate SW frame
 }
 
 MoonlightStreamCore::~MoonlightStreamCore() {
@@ -207,6 +210,10 @@ MoonlightStreamCore::~MoonlightStreamCore() {
 	if (v_frame) {
 		av_frame_free(&v_frame);
 		v_frame = nullptr;
+	}
+	if (sw_frame) {
+		av_frame_free(&sw_frame);
+		sw_frame = nullptr;
 	}
 	if (singleton_instance == this)
 		singleton_instance = nullptr;
@@ -240,6 +247,11 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	else
 		v_frame = av_frame_alloc();
 
+	if (sw_frame)
+		av_frame_unref(sw_frame);
+	else
+		sw_frame = av_frame_alloc();
+
 	// Reset callbacks again to ensure clean state
 	memset(&dr_callbacks, 0, sizeof(dr_callbacks));
 	LiInitializeVideoCallbacks(&dr_callbacks);
@@ -249,16 +261,32 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	dr_callbacks.capabilities = 0; // Push Renderer
 
 	// 2. Codec Selection
-	String codec_str = options.get("video_codec", "H264");
-	if (codec_str == "H265" || codec_str == "HEVC")
-		selected_codec_config = CODEC_H265;
-	else if (codec_str == "AV1")
-		selected_codec_config = CODEC_AV1;
-	else
-		selected_codec_config = CODEC_H264;
+	disable_hw_decoding = options.get("disable_hw_acceleration", false);
+
+	int codec_val = options.get("video_codec", (int)CODEC_H264);
+	selected_codec_config = (VideoCodecConfig)codec_val;
+
+	String codec_name;
+	switch (selected_codec_config) {
+		case CODEC_AUTO:
+			codec_name = "Auto";
+			break;
+		case CODEC_H264:
+			codec_name = "H.264";
+			break;
+		case CODEC_H265:
+			codec_name = "HEVC";
+			break;
+		case CODEC_AV1:
+			codec_name = "AV1";
+			break;
+		default:
+			codec_name = "Unknown";
+			break;
+	}
 
 	int supported_formats = _probe_video_format(selected_codec_config);
-	UtilityFunctions::print(LOG_PREFIX "Codec Selection: ", codec_str, " | Mask: 0x", String::num_int64(supported_formats, 16));
+	UtilityFunctions::print(LOG_PREFIX "Codec Selection: ", codec_name, " | Mask: 0x", String::num_int64(supported_formats, 16));
 
 	// 3. Configure Stream
 	LiInitializeStreamConfiguration(&stream_config);
@@ -521,6 +549,7 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						if (ret < 0) {
 							// Serious decode error, request fresh stream
 							UtilityFunctions::printerr(LOG_PREFIX "Decode error: ", ret);
+							call_deferred("emit_signal", "warning_message", "DECODE_ERROR", "Error receiving frame from decoder");
 							LiRequestIdrFrame();
 							break;
 						}
@@ -533,17 +562,37 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							continue;
 						}
 
+						AVFrame *display_frame = v_frame;
+
+						// HW Acceleration Handling
+						if (v_frame->format == hw_pix_fmt && hw_device_ctx) {
+							// Transfer data from GPU to CPU
+							if (!sw_frame)
+								sw_frame = av_frame_alloc();
+
+							int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
+							if (err < 0) {
+								UtilityFunctions::printerr(LOG_PREFIX "Error transferring HW frame: ", err);
+								call_deferred("emit_signal", "warning_message", "HW_ACCEL_ERROR", "Failed to transfer frame from GPU");
+								continue;
+							}
+
+							// Copy properties to allow proper handling by SWS
+							av_frame_copy_props(sw_frame, v_frame);
+							display_frame = sw_frame;
+						}
+
 						// Got Frame -> Convert -> Display
-						int w = v_frame->width;
-						int h = v_frame->height;
+						int w = display_frame->width;
+						int h = display_frame->height;
 
 						if (w > 0 && h > 0) {
-							if (!sws_ctx || video_width != w || video_height != h || video_format != v_frame->format) {
+							if (!sws_ctx || video_width != w || video_height != h || video_format != display_frame->format) {
 								if (sws_ctx)
 									sws_freeContext(sws_ctx);
 								// Note: We track video_format to reset SWS if pixel format changes
-								video_format = v_frame->format;
-								sws_ctx = sws_getContext(w, h, (AVPixelFormat)v_frame->format, w, h, AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+								video_format = display_frame->format;
+								sws_ctx = sws_getContext(w, h, (AVPixelFormat)display_frame->format, w, h, AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
 								video_width = w;
 								video_height = h;
 							}
@@ -558,7 +607,7 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 								uint8_t *dest[4] = { decode_buffer.ptrw(), nullptr, nullptr, nullptr };
 								int dest_linesize[4] = { w * 4, 0, 0, 0 };
 
-								sws_scale(sws_ctx, v_frame->data, v_frame->linesize, 0, h, dest, dest_linesize);
+								sws_scale(sws_ctx, display_frame->data, display_frame->linesize, 0, h, dest, dest_linesize);
 
 								if (texture_mutex.is_valid()) {
 									texture_mutex->lock();
@@ -579,10 +628,16 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 								}
 							}
 						}
+
+						// If we used the intermediate SW frame, unref it
+						if (display_frame == sw_frame) {
+							av_frame_unref(sw_frame);
+						}
 					}
 				} else {
 					// Send packet failed, likely corrupt stream
 					UtilityFunctions::printerr(LOG_PREFIX "Send packet failed: ", ret);
+					call_deferred("emit_signal", "warning_message", "PACKET_ERROR", "Failed to send packet to decoder");
 					LiRequestIdrFrame();
 				}
 			}
@@ -599,43 +654,67 @@ end_of_thread:
 // FFmpeg Helper Methods
 // ============================================================================
 
+Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
+	Vector<AVHWDeviceType> types;
+
+	// Priority list based on Platform
+#if defined(_WIN32)
+	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
+	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
+	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
+	types.push_back(AV_HWDEVICE_TYPE_QSV);
+	types.push_back(AV_HWDEVICE_TYPE_CUDA);
+#elif defined(__APPLE__)
+	types.push_back(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
+#elif defined(__linux__)
+	types.push_back(AV_HWDEVICE_TYPE_VAAPI);
+	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
+	types.push_back(AV_HWDEVICE_TYPE_QSV);
+	types.push_back(AV_HWDEVICE_TYPE_CUDA);
+#elif defined(__ANDROID__)
+	types.push_back(AV_HWDEVICE_TYPE_MEDIACODEC);
+	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
+#endif
+
+	return types;
+}
+
 int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 	int supported_mask = 0;
 	int test_w = 1280;
 	int test_h = 720;
 
-	bool h264_ok = false;
-	Vector<String> h264_candidates = _get_candidate_decoders(CODEC_FAMILY_H264);
-	for (int i = 0; i < h264_candidates.size(); i++) {
-		if (_try_open_decoder(h264_candidates[i], test_w, test_h) == 0) {
-			h264_ok = true;
-			_cleanup_ffmpeg_video();
-			break;
-		}
+	Vector<AVHWDeviceType> hw_devices;
+	if (!disable_hw_decoding) {
+		hw_devices = _get_supported_hw_devices();
 	}
+	// Always test software last
+	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE);
+
+	// Helper lambda to test a family
+	auto test_family = [&](int family, int mask_bit) -> bool {
+		Vector<String> candidates = _get_candidate_decoders(family);
+		for (int i = 0; i < candidates.size(); i++) {
+			for (int j = 0; j < hw_devices.size(); j++) {
+				if (_try_open_decoder(candidates[i], test_w, test_h, hw_devices[j]) == 0) {
+					_cleanup_ffmpeg_video();
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+
+	bool h264_ok = test_family(CODEC_FAMILY_H264, VIDEO_FORMAT_MASK_H264);
 
 	bool hevc_ok = false;
 	if (preference == CODEC_H265 || preference == CODEC_AUTO) {
-		Vector<String> hevc_candidates = _get_candidate_decoders(CODEC_FAMILY_H265);
-		for (int i = 0; i < hevc_candidates.size(); i++) {
-			if (_try_open_decoder(hevc_candidates[i], test_w, test_h) == 0) {
-				hevc_ok = true;
-				_cleanup_ffmpeg_video();
-				break;
-			}
-		}
+		hevc_ok = test_family(CODEC_FAMILY_H265, VIDEO_FORMAT_MASK_H265);
 	}
 
 	bool av1_ok = false;
 	if (preference == CODEC_AV1 || preference == CODEC_AUTO) {
-		Vector<String> av1_candidates = _get_candidate_decoders(CODEC_FAMILY_AV1);
-		for (int i = 0; i < av1_candidates.size(); i++) {
-			if (_try_open_decoder(av1_candidates[i], test_w, test_h) == 0) {
-				av1_ok = true;
-				_cleanup_ffmpeg_video();
-				break;
-			}
-		}
+		av1_ok = test_family(CODEC_FAMILY_AV1, VIDEO_FORMAT_MASK_AV1);
 	}
 
 	if (preference == CODEC_AV1 && av1_ok)
@@ -676,10 +755,32 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	return candidates;
 }
 
-int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, int height) {
+AVPixelFormat MoonlightStreamCore::_get_hw_format_callback(AVCodecContext *ctx, const AVPixelFormat *pix_fmts) {
+	if (singleton_instance && singleton_instance->hw_pix_fmt != AV_PIX_FMT_NONE) {
+		const AVPixelFormat *p;
+		for (p = pix_fmts; *p != -1; p++) {
+			if (*p == singleton_instance->hw_pix_fmt) {
+				return *p;
+			}
+		}
+		UtilityFunctions::printerr(LOG_PREFIX "Failed to get HW surface format, falling back to SW");
+	}
+	// Fallback to software format (usually the first entry)
+	return avcodec_default_get_format(ctx, pix_fmts);
+}
+
+int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, int height, AVHWDeviceType hw_type) {
 	const AVCodec *codec = avcodec_find_decoder_by_name(codec_name.utf8().get_data());
 	if (!codec)
 		return -1;
+
+	// Check if HW device is supported by libavutil build
+	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
+		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(hw_type)) == AV_HWDEVICE_TYPE_NONE) {
+			// HW device not compiled in or not found
+			return -1;
+		}
+	}
 
 	AVCodecContext *ctx = avcodec_alloc_context3(codec);
 	if (!ctx)
@@ -691,7 +792,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
 	ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT; // Critical for UDP streaming
 	ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
-	// ctx->flags2 |= AV_CODEC_FLAG2_FAST; // Removed (not in ref)
+	ctx->flags2 |= AV_CODEC_FLAG2_FAST; // Allow non-spec compliant speedups
 
 	// Report decoding errors to allow us to request a key frame
 	ctx->err_recognition = AV_EF_EXPLODE;
@@ -704,6 +805,46 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	}
 
+	// HW Acceleration Setup
+	hw_pix_fmt = AV_PIX_FMT_NONE;
+	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
+		int err = av_hwdevice_ctx_create(&hw_device_ctx, hw_type, nullptr, nullptr, 0);
+		if (err < 0) {
+			// HW init failed
+			avcodec_free_context(&ctx);
+			return -1;
+		}
+		ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
+		ctx->get_format = _get_hw_format_callback;
+
+		// Find the corresponding pixel format for this HW type
+		// This is a simplification; ideally we iterate codec configs, but typically:
+		if (hw_type == AV_HWDEVICE_TYPE_D3D11VA)
+			hw_pix_fmt = AV_PIX_FMT_D3D11;
+		else if (hw_type == AV_HWDEVICE_TYPE_DXVA2)
+			hw_pix_fmt = AV_PIX_FMT_DXVA2_VLD;
+		else if (hw_type == AV_HWDEVICE_TYPE_VAAPI)
+			hw_pix_fmt = AV_PIX_FMT_VAAPI;
+		else if (hw_type == AV_HWDEVICE_TYPE_CUDA)
+			hw_pix_fmt = AV_PIX_FMT_CUDA;
+		else if (hw_type == AV_HWDEVICE_TYPE_QSV)
+			hw_pix_fmt = AV_PIX_FMT_QSV;
+		else if (hw_type == AV_HWDEVICE_TYPE_VIDEOTOOLBOX)
+			hw_pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
+		else if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC)
+			hw_pix_fmt = AV_PIX_FMT_MEDIACODEC;
+		else if (hw_type == AV_HWDEVICE_TYPE_VULKAN)
+			hw_pix_fmt = AV_PIX_FMT_VULKAN;
+		// Note: AMF typically doesn't have a distinct surface format for decode output in standard FFmpeg paths,
+		// or it maps to D3D11/Vulkan. Leaving hw_pix_fmt as NONE for AMF might cause fallback to SW
+		// if _get_hw_format_callback relies on exact match.
+		// However, without a specific AV_PIX_FMT_AMF_SURFACE symbol available in all versions, we skip assignment.
+
+		UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(hw_type));
+	} else {
+		UtilityFunctions::print(LOG_PREFIX "Attempting SW Decoder: ", codec_name);
+	}
+
 	// Optimization: Match gozen's threading strategy (All cores - 1)
 	int thread_count = OS::get_singleton()->get_processor_count() - 1;
 	if (thread_count < 1)
@@ -713,21 +854,24 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
 		ctx->thread_type = FF_THREAD_SLICE;
 		ctx->thread_count = thread_count;
-	} else if (codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) {
-		ctx->thread_type = FF_THREAD_FRAME;
-		ctx->thread_count = thread_count;
 	} else {
+		// Fallback to 1 thread if slice threading is not supported.
+		// We deliberately avoid FF_THREAD_FRAME because it introduces latency proportional to the thread count.
 		ctx->thread_count = 1;
 	}
 
 	if (avcodec_open2(ctx, codec, nullptr) < 0) {
+		// Cleanup HW context if opened
+		if (hw_device_ctx) {
+			av_buffer_unref(&hw_device_ctx);
+			hw_device_ctx = nullptr;
+		}
 		avcodec_free_context(&ctx);
 		return -1;
 	}
 
 	v_codec = codec;
 	v_codec_ctx = ctx;
-	// v_frame allocation removed from here (moved to constructor)
 
 	return 0;
 }
@@ -745,28 +889,47 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	else if (video_fmt & VIDEO_FORMAT_MASK_AV1)
 		family = CODEC_FAMILY_AV1;
 
-	if (family == -1)
+	if (family == -1) {
+		codec_mutex->unlock();
 		return -1;
+	}
 
 	Vector<String> candidates = _get_candidate_decoders(family);
+	Vector<AVHWDeviceType> hw_devices;
+	if (!disable_hw_decoding) {
+		hw_devices = _get_supported_hw_devices();
+	}
+	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE); // Fallback to SW
+
 	bool opened = false;
 	String opened_name = "";
+	String opened_hw = "Software";
 
 	for (int i = 0; i < candidates.size(); i++) {
-		if (_try_open_decoder(candidates[i], width, height) == 0) {
-			opened_name = candidates[i];
-			opened = true;
-			break;
+		for (int j = 0; j < hw_devices.size(); j++) {
+			if (_try_open_decoder(candidates[i], width, height, hw_devices[j]) == 0) {
+				opened_name = candidates[i];
+				if (hw_devices[j] != AV_HWDEVICE_TYPE_NONE) {
+					opened_hw = String(av_hwdevice_get_type_name(hw_devices[j]));
+				}
+				opened = true;
+				break;
+			}
 		}
+		if (opened)
+			break;
 	}
 
 	if (!opened) {
 		UtilityFunctions::printerr(LOG_PREFIX "No usable decoder found!");
+		call_deferred("emit_signal", "warning_message", "INIT_ERROR", "Failed to initialize any decoder");
 		codec_mutex->unlock(); // UNLOCK on failure
 		return -1;
 	}
 
-	UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name);
+	UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name, " (", opened_hw, ")");
+	call_deferred("emit_signal", "log_message", "Decoder initialized: " + opened_name + " (" + opened_hw + ")");
+
 	video_width = width;
 	video_height = height;
 	video_format = -1; // Force SWS init on first frame
@@ -824,6 +987,12 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 }
 
 void MoonlightStreamCore::_cleanup_ffmpeg_video() {
+	if (hw_device_ctx) {
+		av_buffer_unref(&hw_device_ctx);
+		hw_device_ctx = nullptr;
+	}
+	hw_pix_fmt = AV_PIX_FMT_NONE;
+
 	if (sws_ctx) {
 		sws_freeContext(sws_ctx);
 		sws_ctx = nullptr;
@@ -833,8 +1002,11 @@ void MoonlightStreamCore::_cleanup_ffmpeg_video() {
 		v_codec_ctx = nullptr;
 	}
 	// Do NOT free v_frame here. It persists for the lifetime of the core instance
-	// to allow safe reuse across decoder resets (DR_SETUP) and avoid race conditions.
 }
+
+// ============================================================================
+// Audio Handling
+// ============================================================================
 
 int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 	_cleanup_ffmpeg_audio();
@@ -969,7 +1141,11 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	char buffer[2048];
 	vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
-	UtilityFunctions::print(LOG_PREFIX "Log from lib: ", String(buffer));
+	String msg = String(buffer);
+	UtilityFunctions::print(LOG_PREFIX "Log from lib: ", msg);
+	if (singleton_instance) {
+		singleton_instance->call_deferred("emit_signal", "log_message", msg);
+	}
 }
 
 void MoonlightStreamCore::_cl_set_hdr_mode(bool enabled) {
@@ -1068,4 +1244,11 @@ void MoonlightStreamCore::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("connection_started"));
 	ADD_SIGNAL(MethodInfo("connection_terminated", PropertyInfo(Variant::INT, "error_code"), PropertyInfo(Variant::STRING, "message")));
 	ADD_SIGNAL(MethodInfo("hdr_mode_changed", PropertyInfo(Variant::BOOL, "enabled"), PropertyInfo(Variant::DICTIONARY, "metadata")));
+	ADD_SIGNAL(MethodInfo("log_message", PropertyInfo(Variant::STRING, "message")));
+	ADD_SIGNAL(MethodInfo("warning_message", PropertyInfo(Variant::STRING, "type"), PropertyInfo(Variant::STRING, "message")));
+
+	BIND_ENUM_CONSTANT(CODEC_AUTO);
+	BIND_ENUM_CONSTANT(CODEC_H264);
+	BIND_ENUM_CONSTANT(CODEC_H265);
+	BIND_ENUM_CONSTANT(CODEC_AV1);
 }

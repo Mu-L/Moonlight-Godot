@@ -1,101 +1,98 @@
-[gd_scene load_steps=2 format=3 uid="uid://dc1tsui4v3770"]
+[gd_scene format=3 uid="uid://dc1tsui4v3770"]
 
 [ext_resource type="Script" uid="uid://bd0uy7cwied51" path="res://example/main.gd" id="1_iyjup"]
 
-[node name="Main" type="Node"]
+[node name="Main" type="Node" unique_id=858242487]
 script = ExtResource("1_iyjup")
 
-[node name="ScrollContainer" type="ScrollContainer" parent="."]
+[node name="ScrollContainer" type="ScrollContainer" parent="." unique_id=423980097]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="GridContainer" type="HFlowContainer" parent="ScrollContainer"]
+[node name="GridContainer" type="HFlowContainer" parent="ScrollContainer" unique_id=1567672290]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="Button" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button" type="Button" parent="ScrollContainer/GridContainer" unique_id=330310015]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test http request"
 
-[node name="Button2" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button2" type="Button" parent="ScrollContainer/GridContainer" unique_id=1873826582]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "!test cert create"
 
-[node name="Button3" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button3" type="Button" parent="ScrollContainer/GridContainer" unique_id=523297050]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test get host info"
 
-[node name="Button4" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button4" type="Button" parent="ScrollContainer/GridContainer" unique_id=1676248367]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "!test remove host info"
 
-[node name="Button5" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button5" type="Button" parent="ScrollContainer/GridContainer" unique_id=1251294166]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test start pair"
 
-[node name="Button10" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button10" type="Button" parent="ScrollContainer/GridContainer" unique_id=1545997416]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test connect to server"
 
-[node name="GridContainer" type="GridContainer" parent="ScrollContainer/GridContainer"]
-layout_mode = 2
-
-[node name="Button7" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button7" type="Button" parent="ScrollContainer/GridContainer" unique_id=672315278]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test 
 unpair"
 
-[node name="Button8" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button8" type="Button" parent="ScrollContainer/GridContainer" unique_id=2039621653]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test
  get applist"
 
-[node name="Button9" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button9" type="Button" parent="ScrollContainer/GridContainer" unique_id=2137848920]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test
  get app texture→"
 
-[node name="TextureRect" type="TextureRect" parent="ScrollContainer/GridContainer"]
+[node name="TextureRect" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=1765905250]
 custom_minimum_size = Vector2(60, 80)
 layout_mode = 2
 expand_mode = 1
 
-[node name="Button11" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button11" type="Button" parent="ScrollContainer/GridContainer" unique_id=1019568175]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test 
 establish stream"
 
-[node name="Button12" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button12" type="Button" parent="ScrollContainer/GridContainer" unique_id=1751002351]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test
 pause stream"
 
-[node name="Button13" type="Button" parent="ScrollContainer/GridContainer"]
+[node name="Button13" type="Button" parent="ScrollContainer/GridContainer" unique_id=1725083854]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "test 
 stop stream"
 
-[node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer"]
-layout_mode = 2
-
-[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer"]
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer" unique_id=1243422997]
 autoplay = true
+
+[node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=428695045]
+layout_mode = 2
 
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
