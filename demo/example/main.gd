@@ -92,7 +92,7 @@ func test_establish_stream() -> void:
         "gcmap": "1",
         "gcpersist": "1",
         "video_codec": moonlightstreamcore.CODEC_H265,
-        "disable_hw_acceleration": false
+        "disable_hw_acceleration": true
     }
 # delay(s)
 # WITH CHANGE:

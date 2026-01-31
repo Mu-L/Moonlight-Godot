@@ -17,10 +17,10 @@
 #include <string>
 #include <vector>
 
-// Include the C API
+// 包含C API
 #include "Limelight.h"
 
-// Forward declare FFmpeg structs
+// 前向声明 FFmpeg 结构体
 extern "C" {
 struct AVCodec;
 struct AVCodecContext;
@@ -28,7 +28,6 @@ struct AVFrame;
 struct AVPacket;
 struct SwsContext;
 struct SwrContext;
-// Add hwcontext include
 #include <libavutil/hwcontext.h>
 }
 
@@ -37,7 +36,7 @@ namespace godot {
 class AudioStreamMoonlight;
 
 // ============================================================================
-// Custom Audio Playback
+// 自定义音频播放
 // ============================================================================
 class AudioStreamPlaybackMoonlight : public AudioStreamPlaybackResampled {
 	GDCLASS(AudioStreamPlaybackMoonlight, AudioStreamPlaybackResampled);
@@ -65,7 +64,7 @@ protected:
 };
 
 // ============================================================================
-// Custom Audio Stream
+// 自定义音频流
 // ============================================================================
 class AudioStreamMoonlight : public AudioStream {
 	GDCLASS(AudioStreamMoonlight, AudioStream);
@@ -97,28 +96,10 @@ protected:
 };
 
 // ============================================================================
-// Moonlight Core Node
+// moonlight核心节点
 // ============================================================================
 class MoonlightStreamCore : public Node {
 	GDCLASS(MoonlightStreamCore, Node);
-
-private:
-	// --- Threading & State ---
-	Ref<Thread> connection_thread; // Runs LiStartConnection
-	Ref<Thread> video_decode_thread; // Runs FFmpeg Decode (Processor)
-	std::atomic<bool> is_streaming;
-
-	// Global mutex for Limelight
-	static Mutex *lib_global_mutex;
-
-	// --- Configuration Data ---
-	std::string ip_storage;
-	std::string session_url_storage;
-	std::string app_version_storage;
-	std::string gfe_version_storage;
-
-	STREAM_CONFIGURATION stream_config;
-	SERVER_INFORMATION server_info;
 
 public:
 	enum VideoCodecConfig {
@@ -128,69 +109,98 @@ public:
 		CODEC_AV1 = 3
 	};
 
+	MoonlightStreamCore();
+	~MoonlightStreamCore();
+
+	void start_play_stream(Dictionary options);
+	void stop_play_stream();
+
+	void set_render_target(TextureRect *target);
+	void reset_render_target();
+	Ref<AudioStream> get_audio_stream();
+	void reset_audio_stream(bool free_stream = false);
+
+protected:
+	static void _bind_methods();
+
 private:
+	// --- 线程与状态 ---
+	Ref<Thread> connection_thread; // 运行 LiStartConnection
+	Ref<Thread> video_decode_thread; // 运行 FFmpeg 解码（处理器）
+	std::atomic<bool> is_streaming;
+
+	// 用于Limelight的全局互斥锁
+	static Mutex *lib_global_mutex;
+
+	// --- 配置数据 ---
+	std::string ip_storage;
+	std::string session_url_storage;
+	std::string app_version_storage;
+	std::string gfe_version_storage;
+
+	STREAM_CONFIGURATION stream_config;
+	SERVER_INFORMATION server_info;
+
 	VideoCodecConfig selected_codec_config;
 	bool disable_hw_decoding;
 
-	// Callbacks
+	// 回调
 	CONNECTION_LISTENER_CALLBACKS cl_callbacks;
 	DECODER_RENDERER_CALLBACKS dr_callbacks;
 	AUDIO_RENDERER_CALLBACKS ar_callbacks;
 
-	// --- Video Rendering State ---
+	// --- 视频渲染状态 ---
 	TextureRect *display_rect = nullptr;
 	Ref<ImageTexture> display_texture;
 	Ref<Image> last_decoded_image;
 	Ref<Mutex> texture_mutex;
 	bool new_frame_available;
 
-	// --- Packet Queue (Buffer between Pull and Decode) ---
+	// --- 数据包队列（Pull 与 Decode 之间的缓冲区） ---
 	List<AVPacket *> packet_queue;
 	Ref<Mutex> queue_mutex;
 	Ref<Semaphore> decode_sem;
 	Ref<Mutex> codec_mutex;
 
-	// --- Audio State ---
+	// --- 音频状态 ---
 	Ref<AudioStreamMoonlight> audio_stream;
 
-	// --- FFmpeg Video Context ---
+	// --- FFmpeg 视频上下文 ---
 	const AVCodec *v_codec = nullptr;
 	AVCodecContext *v_codec_ctx = nullptr;
 	AVFrame *v_frame = nullptr;
-	AVFrame *sw_frame = nullptr; // Intermediate frame for HW download
+	AVFrame *sw_frame = nullptr; // 用于硬件下载的中间帧
 	SwsContext *sws_ctx = nullptr;
 	int video_width = 0;
 	int video_height = 0;
 	int video_format = 0;
 
-	// Hardware Acceleration
+	// 硬件加速
 	AVBufferRef *hw_device_ctx = nullptr;
 	AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
 
-	// Optimization: Reusable buffer for decoded data to avoid reallocation every frame
+	// 优化：使用可重用缓冲区存储解码数据以避免每帧重新分配
 	PackedByteArray decode_buffer;
 
-	// --- FFmpeg Audio Context ---
+	// --- FFmpeg 音频上下文 ---
 	AVCodecContext *a_codec_ctx = nullptr;
 	AVFrame *a_frame = nullptr;
 	AVPacket *a_packet = nullptr;
 	SwrContext *swr_ctx = nullptr;
 
-	// --- Internal Methods ---
+	// --- 内部方法 ---
 	int _probe_video_format(VideoCodecConfig preference);
 	Vector<String> _get_candidate_decoders(int codec_family);
 
-	// Helper to get platform specific HW priorities
+	// 帮助获取特定平台的硬件优先级
 	Vector<AVHWDeviceType> _get_supported_hw_devices();
-
-	// Updated to support HW type
 	int _try_open_decoder(const String &codec_name, int width, int height, AVHWDeviceType hw_type);
 
 	void _cleanup_ffmpeg_video();
 	void _cleanup_ffmpeg_audio();
 	String _get_error_string(int error_code);
 
-	// Limelight Static Wrappers
+	// limelight回调静态封装器
 	static void _cl_stage_starting(int stage);
 	static void _cl_connection_started();
 	static void _cl_connection_terminated(int error_code);
@@ -205,41 +215,24 @@ private:
 	static void _ar_cleanup(void);
 	static void _ar_decode_and_play_sample(char *sample_data, int sample_length);
 
-	// FFmpeg Callbacks
+	// FFmpeg 回调
 	static enum AVPixelFormat _get_hw_format_callback(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts);
 
-	// Instance Handlers
+	// 实例处理器
 	int _handle_dr_setup(int video_format, int width, int height);
 	int _handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit);
 	int _handle_ar_init(int audio_configuration);
 	void _handle_ar_decode_and_play_sample(char *sample_data, int sample_length);
 	void _handle_set_hdr_mode(bool enabled);
 
-	// Internal update method
+	// 内部更新方法
 	void _update_display_texture();
 
-	// Thread Loops
+	// 线程循环
 	void _thread_func_connection();
 	void _thread_func_video_decode();
-
-public:
-	MoonlightStreamCore();
-	~MoonlightStreamCore();
-
-	void start_play_stream(Dictionary options);
-	void stop_play_stream();
-
-	void set_render_target(TextureRect *target);
-	void reset_render_target();
-	Ref<AudioStream> get_audio_stream();
-	void reset_audio_stream(bool free_stream = false);
-
-	virtual void _process(double delta) override;
-
-protected:
-	static void _bind_methods();
 };
 
-} // namespace godot
+} //namespace godot
 
 VARIANT_ENUM_CAST(godot::MoonlightStreamCore::VideoCodecConfig);

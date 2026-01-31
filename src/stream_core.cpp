@@ -9,12 +9,12 @@
 #include <cstdarg>
 #include <cstdio>
 
-// FFmpeg Includes
+// FFmpeg 包含的内容
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
-#include <libavutil/hwcontext.h> // Ensure this is included
+#include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
@@ -23,7 +23,7 @@ extern "C" {
 
 #define LOG_PREFIX "[Moonlight-StreamCore] "
 
-// Codec Families
+// 编解码器系列
 #define CODEC_FAMILY_H264 0
 #define CODEC_FAMILY_H265 1
 #define CODEC_FAMILY_AV1 2
@@ -34,127 +34,12 @@ static MoonlightStreamCore *singleton_instance = nullptr;
 Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 
 // ============================================================================
-// AudioStreamPlaybackMoonlight
-// ============================================================================
-
-AudioStreamPlaybackMoonlight::AudioStreamPlaybackMoonlight() : active(false) {}
-AudioStreamPlaybackMoonlight::~AudioStreamPlaybackMoonlight() {}
-
-void AudioStreamPlaybackMoonlight::_start(double p_from_pos) { active = true; }
-void AudioStreamPlaybackMoonlight::_stop() { active = false; }
-bool AudioStreamPlaybackMoonlight::_is_playing() const { return active; }
-int32_t AudioStreamPlaybackMoonlight::_get_loop_count() const { return 0; }
-double AudioStreamPlaybackMoonlight::_get_playback_position() const { return 0.0; }
-void AudioStreamPlaybackMoonlight::_seek(double p_time) {}
-
-int32_t AudioStreamPlaybackMoonlight::_mix_resampled(AudioFrame *p_buffer, int32_t p_frames) {
-	if (!active || base.is_null())
-		return 0;
-	return base->read_samples(p_buffer, p_frames);
-}
-
-float AudioStreamPlaybackMoonlight::_get_stream_sampling_rate() const {
-	if (base.is_valid())
-		return (float)base->mix_rate;
-	return 48000.0f;
-}
-
-void AudioStreamPlaybackMoonlight::_bind_methods() {}
-
-// ============================================================================
-// AudioStreamMoonlight
-// ============================================================================
-
-AudioStreamMoonlight::AudioStreamMoonlight() : mix_rate(48000) {
-	buffer_mutex.instantiate();
-	rb_capacity = 48000 * 2 * 0.2; // 200ms buffer
-	ring_buffer.resize(rb_capacity);
-	ring_buffer.fill(0);
-}
-
-Ref<AudioStreamPlayback> AudioStreamMoonlight::_instantiate_playback() const {
-	Ref<AudioStreamPlaybackMoonlight> playback;
-	playback.instantiate();
-	playback->base = Ref<AudioStreamMoonlight>(this);
-	return playback;
-}
-
-String AudioStreamMoonlight::_get_stream_name() const { return "Moonlight Audio"; }
-
-void AudioStreamMoonlight::push_audio(const float *samples, int count) {
-	buffer_mutex->lock();
-
-	int free_space = rb_capacity - rb_used;
-	if (count > free_space) {
-		int overflow = count - free_space;
-		rb_read_pos = (rb_read_pos + overflow) % rb_capacity;
-		rb_used -= overflow;
-	}
-
-	int first_chunk = MIN(count, rb_capacity - rb_write_pos);
-	int second_chunk = count - first_chunk;
-
-	float *ptr = ring_buffer.ptrw();
-	memcpy(ptr + rb_write_pos, samples, first_chunk * sizeof(float));
-	if (second_chunk > 0)
-		memcpy(ptr, samples + first_chunk, second_chunk * sizeof(float));
-
-	rb_write_pos = (rb_write_pos + count) % rb_capacity;
-	rb_used += count;
-
-	buffer_mutex->unlock();
-}
-
-int AudioStreamMoonlight::read_samples(AudioFrame *dst_buffer, int frame_count) {
-	buffer_mutex->lock();
-
-	int available_frames = rb_used / 2;
-	int frames_to_read = MIN(frame_count, available_frames);
-
-	const float *ptr = ring_buffer.ptr();
-	int current_pos = rb_read_pos;
-
-	for (int i = 0; i < frames_to_read; i++) {
-		float l = ptr[current_pos];
-		current_pos = (current_pos + 1) % rb_capacity;
-		float r = ptr[current_pos];
-		current_pos = (current_pos + 1) % rb_capacity;
-		dst_buffer[i].left = l;
-		dst_buffer[i].right = r;
-	}
-
-	rb_read_pos = current_pos;
-	rb_used -= (frames_to_read * 2);
-
-	buffer_mutex->unlock();
-
-	// Fill silence if underrun
-	if (frames_to_read < frame_count) {
-		for (int i = frames_to_read; i < frame_count; i++) {
-			dst_buffer[i].left = 0.0f;
-			dst_buffer[i].right = 0.0f;
-		}
-	}
-	return frame_count;
-}
-
-void AudioStreamMoonlight::clear_buffer() {
-	buffer_mutex->lock();
-	rb_write_pos = 0;
-	rb_read_pos = 0;
-	rb_used = 0;
-	buffer_mutex->unlock();
-}
-
-void AudioStreamMoonlight::_bind_methods() {}
-
-// ============================================================================
-// MoonlightStreamCore
+// moonlight流核心
 // ============================================================================
 
 MoonlightStreamCore::MoonlightStreamCore() {
+	// 默认参数设定
 	singleton_instance = this;
-	// set_process removed
 	is_streaming.store(false);
 	new_frame_available = false;
 	selected_codec_config = CODEC_H264;
@@ -169,7 +54,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 		lib_global_mutex = memnew(Mutex);
 	}
 
-	// Initialize all callbacks to zero to prevent garbage pointers
+	// 将所有回调初始化为零以防止垃圾指针
 	memset(&stream_config, 0, sizeof(stream_config));
 	memset(&server_info, 0, sizeof(server_info));
 	memset(&cl_callbacks, 0, sizeof(cl_callbacks));
@@ -191,18 +76,17 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	dr_callbacks.setup = _dr_setup;
 	dr_callbacks.cleanup = _dr_cleanup;
 	dr_callbacks.submitDecodeUnit = _dr_submit_decode_unit;
-	dr_callbacks.capabilities = 0; // Push Renderer
+	dr_callbacks.capabilities = 0; // 推送渲染器
 
 	ar_callbacks.init = _ar_init;
 	ar_callbacks.cleanup = _ar_cleanup;
 	ar_callbacks.decodeAndPlaySample = _ar_decode_and_play_sample;
 
-	// Critical: Ensure audio stream is created immediately so we don't drop packets
 	get_audio_stream();
 
-	// Allocate reusable frame container once. Persists across resolution changes.
+	// 一次分配可重用的框架容器。可跨分辨率更改保持。
 	v_frame = av_frame_alloc();
-	sw_frame = av_frame_alloc(); // Allocate SW frame
+	sw_frame = av_frame_alloc(); // 分配SW帧
 }
 
 MoonlightStreamCore::~MoonlightStreamCore() {
@@ -220,28 +104,24 @@ MoonlightStreamCore::~MoonlightStreamCore() {
 }
 
 void MoonlightStreamCore::start_play_stream(Dictionary options) {
-	// 1. Cleanup previous session thoroughly
+	// 1.彻底清理上一次会话
 	if (is_streaming.load() || (connection_thread.is_valid() && connection_thread->is_started())) {
 		UtilityFunctions::print(LOG_PREFIX "Stream already running, stopping first...");
 		stop_play_stream();
-		// WAIT: Give underlying C library time to reset global state (winsock, etc)
-		OS::get_singleton()->delay_usec(1000000); // 1.0 second delay
+		// 等待：给底层C库时间重置全局状态（winsock等）
+		OS::get_singleton()->delay_usec(1000000);
 	}
-
-	// Critical Fix: Re-instantiate sync primitives to ensure no stale state from previous runs
 	decode_sem.instantiate();
 	queue_mutex.instantiate();
 	texture_mutex.instantiate();
 	codec_mutex.instantiate();
 	packet_queue.clear();
-
-	// Ensure audio stream exists and is cleared
+	// 确保音频流存在并已清空
 	get_audio_stream();
 	if (audio_stream.is_valid()) {
 		audio_stream->clear_buffer();
 	}
-
-	// Reset frame state
+	// 重置帧状态
 	if (v_frame)
 		av_frame_unref(v_frame);
 	else
@@ -251,21 +131,17 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 		av_frame_unref(sw_frame);
 	else
 		sw_frame = av_frame_alloc();
-
-	// Reset callbacks again to ensure clean state
 	memset(&dr_callbacks, 0, sizeof(dr_callbacks));
 	LiInitializeVideoCallbacks(&dr_callbacks);
 	dr_callbacks.setup = _dr_setup;
 	dr_callbacks.cleanup = _dr_cleanup;
 	dr_callbacks.submitDecodeUnit = _dr_submit_decode_unit;
-	dr_callbacks.capabilities = 0; // Push Renderer
+	dr_callbacks.capabilities = 0; // 推送渲染器
 
-	// 2. Codec Selection
+	// 2. 编解码器选择
 	disable_hw_decoding = options.get("disable_hw_acceleration", false);
-
 	int codec_val = options.get("video_codec", (int)CODEC_H264);
 	selected_codec_config = (VideoCodecConfig)codec_val;
-
 	String codec_name;
 	switch (selected_codec_config) {
 		case CODEC_AUTO:
@@ -284,11 +160,10 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 			codec_name = "Unknown";
 			break;
 	}
-
 	int supported_formats = _probe_video_format(selected_codec_config);
 	UtilityFunctions::print(LOG_PREFIX "Codec Selection: ", codec_name, " | Mask: 0x", String::num_int64(supported_formats, 16));
 
-	// 3. Configure Stream
+	// 3. 配置流
 	LiInitializeStreamConfiguration(&stream_config);
 	stream_config.width = options.get("width", 1280);
 	stream_config.height = options.get("height", 720);
@@ -298,15 +173,18 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	stream_config.streamingRemotely = STREAM_CFG_AUTO;
 	stream_config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
 	stream_config.supportedVideoFormats = supported_formats;
-
-	// Enable HDR (10-bit) support if requested and codec supports it
+	// 如果有请求且编解码器支持，则启用HDR（10bit）支持
 	if (options.get("enable_hdr", false)) {
-		// Check if we are using a codec that supports 10-bit (HEVC or AV1)
+		// 检查我们是否使用支持10bit的编解码器（HEVC或AV1）
 		if (supported_formats & (VIDEO_FORMAT_MASK_H265 | VIDEO_FORMAT_MASK_AV1)) {
 			stream_config.supportedVideoFormats |= VIDEO_FORMAT_MASK_10BIT;
 			UtilityFunctions::print(LOG_PREFIX "HDR (10-bit) capability enabled");
 		}
 	}
+	if (options.has("color_space"))
+		stream_config.colorSpace = options["color_space"];
+	if (options.has("color_range"))
+		stream_config.colorRange = options["color_range"];
 
 	if (options.has("surround_audio_info")) {
 		int surround_info = options["surround_audio_info"];
@@ -317,11 +195,7 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 			stream_config.audioConfiguration = AUDIO_CONFIGURATION_71_SURROUND;
 	}
 
-	if (options.has("color_space"))
-		stream_config.colorSpace = options["color_space"];
-	if (options.has("color_range"))
-		stream_config.colorRange = options["color_range"];
-
+	// 配置流密钥
 	String rikey = options.get("rikey", "");
 	if (!rikey.is_empty()) {
 		PackedByteArray key_bytes = rikey.hex_decode();
@@ -332,31 +206,25 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 		stream_config.encryptionFlags = ENCFLG_NONE;
 	}
 
-	// 4. Server Info
+	// 4. 服务器信息
 	ip_storage = String(options.get("ip", "")).utf8().get_data();
 	session_url_storage = String(options.get("session_url", "")).utf8().get_data();
 	app_version_storage = String(options.get("app_version", "0.0.0.0")).utf8().get_data();
 	gfe_version_storage = String(options.get("gfe_version", "")).utf8().get_data();
-
 	server_info.address = ip_storage.c_str();
 	server_info.rtspSessionUrl = session_url_storage.c_str();
 	server_info.serverInfoAppVersion = app_version_storage.c_str();
 	server_info.serverInfoGfeVersion = gfe_version_storage.c_str();
 	server_info.serverCodecModeSupport = options.get("server_codec_mode_support", 0);
-
 	is_streaming.store(true);
-	// set_process removed
 
-	// 5. Start Threads
+	// 5. 启动线程
 	if (connection_thread.is_valid()) {
 		connection_thread->wait_to_finish();
 		connection_thread.unref();
 	}
 	connection_thread.instantiate();
 	connection_thread->start(callable_mp(this, &MoonlightStreamCore::_thread_func_connection));
-
-	// Removed video_pull_thread start
-
 	if (video_decode_thread.is_valid()) {
 		video_decode_thread->wait_to_finish();
 		video_decode_thread.unref();
@@ -366,42 +234,36 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 }
 
 void MoonlightStreamCore::stop_play_stream() {
-	// FIX: Must allow cleanup even if is_streaming is already false.
-	// This happens when the server cancels the stream remotely (error -100).
-	// If we return early here, LiStopConnection() is never called, and the
-	// internal state of the C library (CurrentStage) remains dirty, causing assertions on next start.
-	// if (!is_streaming.load()) return;
-
+	// 0. 停止流
+	// 即使 is_streaming 已经为 false，也必须允许清理。当服务器远程取消流时会发生这种情况（错误 - 100）。
+	// 如果我们在这里提前返回，LiStopConnection() 永远不会被调用，而 C 库的内部状态（CurrentStage）将保持脏状态，导致下一次启动时出现断言。
 	UtilityFunctions::print(LOG_PREFIX "Stopping stream...");
 
-	// 1. Set Flag
+	// 1. 设置标志
 	is_streaming.store(false);
-	// set_process removed
 
-	// 2. Unblock Decoder Thread
+	// 2. 解锁解码器线程
 	if (decode_sem.is_valid()) {
 		decode_sem->post();
 	}
 
-	// 3. Break blocking network calls
+	// 3. 打破阻塞的网络调用
 	LiInterruptConnection();
-	// LiWakeWaitForVideoFrame(); // Removed (Pull only)
 
-	// 4. Stop Library (Crucial for resetting internal state)
+	// 4. 停止库（对重置内部状态至关重要）
 	LiStopConnection();
 
-	// 5. Join Threads
+	// 5. 等待线程停止
 	if (connection_thread.is_valid()) {
 		connection_thread->wait_to_finish();
 		connection_thread.unref();
 	}
-	// Removed video_pull_thread join
 	if (video_decode_thread.is_valid()) {
 		video_decode_thread->wait_to_finish();
 		video_decode_thread.unref();
 	}
 
-	// 6. Cleanup FFmpeg & Queue
+	// 6. 清理FFmpeg和队列
 	if (queue_mutex.is_valid()) {
 		queue_mutex->lock();
 		while (packet_queue.size() > 0) {
@@ -411,7 +273,6 @@ void MoonlightStreamCore::stop_play_stream() {
 		}
 		queue_mutex->unlock();
 	}
-
 	_cleanup_ffmpeg_video();
 	_cleanup_ffmpeg_audio();
 	reset_render_target();
@@ -423,7 +284,6 @@ void MoonlightStreamCore::set_render_target(TextureRect *target) {
 		if (display_texture.is_null()) {
 			Ref<Image> img = Image::create(1280, 720, false, Image::FORMAT_RGBA8);
 			img->fill(Color(0, 0, 0, 1));
-			// FIX: Use create_from_image() static method as required by documentation
 			display_texture = ImageTexture::create_from_image(img);
 		}
 		display_rect->set_texture(display_texture);
@@ -446,22 +306,19 @@ void MoonlightStreamCore::reset_audio_stream(bool free_stream) {
 void MoonlightStreamCore::_update_display_texture() {
 	if (!is_streaming.load())
 		return;
-
-	// This method runs on the main thread via call_deferred
 	if (new_frame_available && texture_mutex.is_valid()) {
 		texture_mutex->lock();
 		if (last_decoded_image.is_valid() && display_texture.is_valid()) {
-			// ImageTexture::update() requires exact dimension/format match.
+			// ImageTexture::update() 需要精确的尺寸/格式匹配。
 			int tex_w = display_texture->get_width();
 			int tex_h = display_texture->get_height();
 			int img_w = last_decoded_image->get_width();
 			int img_h = last_decoded_image->get_height();
-
 			if (tex_w != img_w || tex_h != img_h || display_texture->get_format() != last_decoded_image->get_format()) {
-				// Reallocate if changed
+				// 如果纹理分辨率有变动，重新设置纹理
 				display_texture->set_image(last_decoded_image);
 			} else {
-				// Fast update if matched
+				// 否则直接快速更新
 				display_texture->update(last_decoded_image);
 			}
 		}
@@ -470,53 +327,38 @@ void MoonlightStreamCore::_update_display_texture() {
 	}
 }
 
-void MoonlightStreamCore::_process(double delta) {
-	// Not used intentionally. Using call_deferred mechanism instead to support orphan nodes.
-}
-
 // ============================================================================
-// Thread Logic
+// 线程逻辑
 // ============================================================================
 
 void MoonlightStreamCore::_thread_func_connection() {
 	int res = LiStartConnection(&server_info, &stream_config, &cl_callbacks, &dr_callbacks, &ar_callbacks, this, 0, this, 0);
-
 	if (res != 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Connection failed with error: ", res);
-		// If connection failed to start, we must clean up
+		// 如果连接无法启动，我们必须进行清理
 		is_streaming.store(false);
 		if (decode_sem.is_valid()) {
 			decode_sem->post();
 		}
 	} else {
 		UtilityFunctions::print(LOG_PREFIX "LiStartConnection returned 0 (Graceful Termination)");
-		// FIX: Do NOT set is_streaming = false here.
-		// LiStartConnection returning 0 might be non-blocking in this context.
-		// We rely on _cl_connection_terminated or stop_play_stream to clear the flag.
+		// 修复：不要在这里将 is_streaming 设置为 false。LiStartConnection 返回 0 在此上下文中可能是非阻塞的。我们依赖 _cl_connection_terminated 或 stop_play_stream 来清除标志。
 	}
 }
 
-// _thread_func_video_pull removed
-
 void MoonlightStreamCore::_thread_func_video_decode() {
 	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Started");
-
-	// v_frame is now managed by the class instance, not allocated locally here.
-
 	while (true) {
-		// Wait for packet
+		// 等待数据包
 		if (decode_sem.is_valid()) {
 			decode_sem->wait();
 		} else {
 			break;
 		}
-
-		// Drain the queue as much as possible before waiting again
-		// This handles cases where semaphore posts are coalesced or queue fills faster than wakeups
+		// 尽可能排空队列，处理信号量发布合并或队列填充速度快于唤醒的情况
 		while (true) {
 			AVPacket *pkt = nullptr;
 			int queue_size = 0;
-
 			queue_mutex->lock();
 			queue_size = packet_queue.size();
 			if (queue_size > 0) {
@@ -524,140 +366,117 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 				packet_queue.pop_front();
 			}
 			queue_mutex->unlock();
-
-			// Exit condition: No streaming AND no data left in queue
-			// We check this inside the inner loop to ensure we drain everything after stop is requested
+			// 退出条件：没有正在正常运行的流媒体连接且队列中没有数据
+			// 我们在内部循环中检查这一点，以确保在请求停止后清空所有内容
 			if (!is_streaming.load() && pkt == nullptr) {
 				UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Stopping (Queue empty)");
-				goto end_of_thread;
+				UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Exited");
 			}
-
-			// If no packet but still streaming, break inner loop to wait on semaphore again
+			// 如果没有数据包但仍在流式传输，跳出内循环以再次等待信号量
 			if (pkt == nullptr) {
 				break;
 			}
-
-			codec_mutex->lock(); // LOCK: Protect v_codec_ctx access
+			codec_mutex->lock(); // 锁：保护 v_codec_ctx 访问
 			if (v_codec_ctx) {
 				int ret = avcodec_send_packet(v_codec_ctx, pkt);
 				if (ret >= 0) {
 					while (true) {
-						// v_frame is guaranteed valid (allocated in constructor)
+						// v_frame 保证有效（在构造函数中分配）
 						ret = avcodec_receive_frame(v_codec_ctx, v_frame);
 						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 							break;
 						if (ret < 0) {
-							// Serious decode error, request fresh stream
+							// 严重解码错误，请求新的数据流
 							UtilityFunctions::printerr(LOG_PREFIX "Decode error: ", ret);
 							call_deferred("emit_signal", "warning_message", "DECODE_ERROR", "Error receiving frame from decoder");
 							LiRequestIdrFrame();
 							break;
 						}
-
-						// Optimization: Frame Dropping Logic
-						// If queue is piling up (>10 frames), skip rendering (SWS + Texture Update)
-						// to allow the decoder to catch up. We must still decode to keep context valid.
-						// Note: queue_size is a snapshot from before decoding this frame
+						// 优化：帧丢弃逻辑如果队列堆积（ > 10帧），跳过渲染（SWS + 纹理更新）以允许解码器跟上。我们仍然必须解码以保持上下文有效。注意：queue_size 是解码此帧前的快照
 						if (queue_size > 10) {
 							continue;
 						}
 
 						AVFrame *display_frame = v_frame;
 
-						// HW Acceleration Handling
+						// 硬件加速处理
 						if (v_frame->format == hw_pix_fmt && hw_device_ctx) {
-							// Transfer data from GPU to CPU
+							// 将数据从GPU传输到CPU
 							if (!sw_frame)
 								sw_frame = av_frame_alloc();
-
 							int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
 							if (err < 0) {
 								UtilityFunctions::printerr(LOG_PREFIX "Error transferring HW frame: ", err);
 								call_deferred("emit_signal", "warning_message", "HW_ACCEL_ERROR", "Failed to transfer frame from GPU");
 								continue;
 							}
-
-							// Copy properties to allow proper handling by SWS
+							// 复制属性以允许SWS正确处理
 							av_frame_copy_props(sw_frame, v_frame);
 							display_frame = sw_frame;
 						}
 
-						// Got Frame -> Convert -> Display
+						// 获取帧 -> 转换 -> 显示
 						int w = display_frame->width;
 						int h = display_frame->height;
-
 						if (w > 0 && h > 0) {
 							if (!sws_ctx || video_width != w || video_height != h || video_format != display_frame->format) {
 								if (sws_ctx)
 									sws_freeContext(sws_ctx);
-								// Note: We track video_format to reset SWS if pixel format changes
+								// 注意：如果像素格式发生变化，我们会跟踪video_format以重置SWS
 								video_format = display_frame->format;
 								sws_ctx = sws_getContext(w, h, (AVPixelFormat)display_frame->format, w, h, AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
 								video_width = w;
 								video_height = h;
 							}
-
 							if (sws_ctx) {
-								// Optimization: Reuse decode_buffer instead of allocating new PackedByteArray every frame
+								// 优化：重用 decode_buffer，而不是每帧分配新的 PackedByteArray
 								int required_size = w * h * 4;
 								if (decode_buffer.size() != required_size) {
 									decode_buffer.resize(required_size);
 								}
-
 								uint8_t *dest[4] = { decode_buffer.ptrw(), nullptr, nullptr, nullptr };
 								int dest_linesize[4] = { w * 4, 0, 0, 0 };
-
 								sws_scale(sws_ctx, display_frame->data, display_frame->linesize, 0, h, dest, dest_linesize);
-
 								if (texture_mutex.is_valid()) {
 									texture_mutex->lock();
-
-									// Optimization: Use set_data to update existing image if dimensions match
-									// This avoids overhead of creating new Ref<Image> and internal allocs
+									// 优化：如果尺寸匹配，使用 set_data 更新现有图像这避免了创建新的 Ref<Image> 和内部分配的开销
 									if (last_decoded_image.is_valid() && last_decoded_image->get_width() == w && last_decoded_image->get_height() == h) {
 										last_decoded_image->set_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
 									} else {
 										last_decoded_image = Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
 									}
-
 									new_frame_available = true;
 									texture_mutex->unlock();
-
-									// Schedule update on main thread (works even if node is not in scene tree)
+									// 在主线程上更新调度（即使节点不在场景树中也有效）
 									call_deferred("_update_display_texture");
 								}
 							}
 						}
-
-						// If we used the intermediate SW frame, unref it
+						// 如果我们使用了中间的SW帧，取消引用它
 						if (display_frame == sw_frame) {
 							av_frame_unref(sw_frame);
 						}
 					}
 				} else {
-					// Send packet failed, likely corrupt stream
+					// 发送数据包失败，可能是数据流损坏
 					UtilityFunctions::printerr(LOG_PREFIX "Send packet failed: ", ret);
 					call_deferred("emit_signal", "warning_message", "PACKET_ERROR", "Failed to send packet to decoder");
 					LiRequestIdrFrame();
 				}
 			}
-			codec_mutex->unlock(); // UNLOCK
+			codec_mutex->unlock(); // 解锁
 			av_packet_free(&pkt);
 		}
 	}
-
-end_of_thread:
-	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Exited");
 }
 
 // ============================================================================
-// FFmpeg Helper Methods
+// FFmpeg 辅助方法+AVPacket解码
 // ============================================================================
 
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
-
-	// Priority list based on Platform
+// 基于平台的优先级列表
 #if defined(_WIN32)
 	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
 	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
@@ -675,7 +494,6 @@ Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	types.push_back(AV_HWDEVICE_TYPE_MEDIACODEC);
 	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
 #endif
-
 	return types;
 }
 
@@ -688,10 +506,9 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 	if (!disable_hw_decoding) {
 		hw_devices = _get_supported_hw_devices();
 	}
-	// Always test software last
+	// 总是最后测试软件解码器
 	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE);
-
-	// Helper lambda to test a family
+	// 辅助 lambda 用于测试一个解码器组
 	auto test_family = [&](int family, int mask_bit) -> bool {
 		Vector<String> candidates = _get_candidate_decoders(family);
 		for (int i = 0; i < candidates.size(); i++) {
@@ -704,19 +521,15 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 		}
 		return false;
 	};
-
 	bool h264_ok = test_family(CODEC_FAMILY_H264, VIDEO_FORMAT_MASK_H264);
-
 	bool hevc_ok = false;
 	if (preference == CODEC_H265 || preference == CODEC_AUTO) {
 		hevc_ok = test_family(CODEC_FAMILY_H265, VIDEO_FORMAT_MASK_H265);
 	}
-
 	bool av1_ok = false;
 	if (preference == CODEC_AV1 || preference == CODEC_AUTO) {
 		av1_ok = test_family(CODEC_FAMILY_AV1, VIDEO_FORMAT_MASK_AV1);
 	}
-
 	if (preference == CODEC_AV1 && av1_ok)
 		supported_mask |= VIDEO_FORMAT_MASK_AV1;
 	else if (preference == CODEC_H265 && hevc_ok)
@@ -732,7 +545,6 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 		if (av1_ok)
 			supported_mask |= VIDEO_FORMAT_MASK_AV1;
 	}
-
 	if (supported_mask == 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Warning: No supported decoders found, forcing H.264");
 		supported_mask = VIDEO_FORMAT_MASK_H264;
@@ -741,7 +553,7 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 }
 
 Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
-	// Strictly software decoders only
+	// 仅限严格的软件解码器
 	Vector<String> candidates;
 
 	if (codec_family == CODEC_FAMILY_H264)
@@ -765,7 +577,7 @@ AVPixelFormat MoonlightStreamCore::_get_hw_format_callback(AVCodecContext *ctx, 
 		}
 		UtilityFunctions::printerr(LOG_PREFIX "Failed to get HW surface format, falling back to SW");
 	}
-	// Fallback to software format (usually the first entry)
+	// 回退到软件格式（通常为第一个选项）
 	return avcodec_default_get_format(ctx, pix_fmts);
 }
 
@@ -773,52 +585,39 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	const AVCodec *codec = avcodec_find_decoder_by_name(codec_name.utf8().get_data());
 	if (!codec)
 		return -1;
-
-	// Check if HW device is supported by libavutil build
+	// 检查硬件设备是否被libavutil构建支持
 	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
 		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(hw_type)) == AV_HWDEVICE_TYPE_NONE) {
-			// HW device not compiled in or not found
+			// 硬件设备未编译或未找到
 			return -1;
 		}
 	}
-
 	AVCodecContext *ctx = avcodec_alloc_context3(codec);
 	if (!ctx)
 		return -1;
-
 	ctx->width = width;
 	ctx->height = height;
-	// Flags adapted from moonlight-embedded/src/video/ffmpeg.c
 	ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
-	ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT; // Critical for UDP streaming
+	ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT; // 对UDP流至关重要
 	ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
-	ctx->flags2 |= AV_CODEC_FLAG2_FAST; // Allow non-spec compliant speedups
-
-	// Report decoding errors to allow us to request a key frame
+	ctx->flags2 |= AV_CODEC_FLAG2_FAST; // 允许非规范兼容的加速
+	// 报告解码错误以便我们请求关键帧
 	ctx->err_recognition = AV_EF_EXPLODE;
-
-	// Request YUV420P. This guides generic decoders.
-	// If HW accel is active, it might be overridden to NV12/CUDA, handled by transfer loop.
-	// FIX: Do NOT enforce YUV420P for AV1/libdav1d. It often negotiates its own format (e.g. 10-bit)
-	// forcing it causes failure or SW conversion issues.
 	if (codec_name.find("av1") == -1 && codec_name.find("dav1d") == -1) {
 		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	}
-
-	// HW Acceleration Setup
+	// 硬件加速设置
 	hw_pix_fmt = AV_PIX_FMT_NONE;
 	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
 		int err = av_hwdevice_ctx_create(&hw_device_ctx, hw_type, nullptr, nullptr, 0);
 		if (err < 0) {
-			// HW init failed
+			// 硬件初始化失败
 			avcodec_free_context(&ctx);
 			return -1;
 		}
 		ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
 		ctx->get_format = _get_hw_format_callback;
-
-		// Find the corresponding pixel format for this HW type
-		// This is a simplification; ideally we iterate codec configs, but typically:
+		// 找到此硬件类型对应的像素格式
 		if (hw_type == AV_HWDEVICE_TYPE_D3D11VA)
 			hw_pix_fmt = AV_PIX_FMT_D3D11;
 		else if (hw_type == AV_HWDEVICE_TYPE_DXVA2)
@@ -835,33 +634,23 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 			hw_pix_fmt = AV_PIX_FMT_MEDIACODEC;
 		else if (hw_type == AV_HWDEVICE_TYPE_VULKAN)
 			hw_pix_fmt = AV_PIX_FMT_VULKAN;
-		// Note: AMF typically doesn't have a distinct surface format for decode output in standard FFmpeg paths,
-		// or it maps to D3D11/Vulkan. Leaving hw_pix_fmt as NONE for AMF might cause fallback to SW
-		// if _get_hw_format_callback relies on exact match.
-		// However, without a specific AV_PIX_FMT_AMF_SURFACE symbol available in all versions, we skip assignment.
-
 		UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(hw_type));
 	} else {
 		UtilityFunctions::print(LOG_PREFIX "Attempting SW Decoder: ", codec_name);
 	}
-
-	// Optimization: Match gozen's threading strategy (All cores - 1)
 	int thread_count = OS::get_singleton()->get_processor_count() - 1;
 	if (thread_count < 1)
 		thread_count = 1;
-
-	// Prioritize slice threading for lower latency
+	// 优先使用切片线程以降低延迟
 	if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
 		ctx->thread_type = FF_THREAD_SLICE;
 		ctx->thread_count = thread_count;
 	} else {
-		// Fallback to 1 thread if slice threading is not supported.
-		// We deliberately avoid FF_THREAD_FRAME because it introduces latency proportional to the thread count.
+		// 如果不支持切片多线程，则回退到1个线程。我们故意避免使用FF_THREAD_FRAME，因为它会引入与线程数量成正比的延迟。
 		ctx->thread_count = 1;
 	}
-
 	if (avcodec_open2(ctx, codec, nullptr) < 0) {
-		// Cleanup HW context if opened
+		// 如果已打开，则清理硬件上下文
 		if (hw_device_ctx) {
 			av_buffer_unref(&hw_device_ctx);
 			hw_device_ctx = nullptr;
@@ -869,18 +658,15 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		avcodec_free_context(&ctx);
 		return -1;
 	}
-
 	v_codec = codec;
 	v_codec_ctx = ctx;
-
 	return 0;
 }
 
 int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) {
-	codec_mutex->lock(); // LOCK: Protect reconfiguration
+	codec_mutex->lock(); // 锁定
 	_cleanup_ffmpeg_video();
 	UtilityFunctions::print(LOG_PREFIX "Setup Video: Fmt=0x", String::num_int64(video_fmt, 16), " Size=", width, "x", height);
-
 	int family = -1;
 	if (video_fmt & VIDEO_FORMAT_MASK_H264)
 		family = CODEC_FAMILY_H264;
@@ -888,23 +674,19 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 		family = CODEC_FAMILY_H265;
 	else if (video_fmt & VIDEO_FORMAT_MASK_AV1)
 		family = CODEC_FAMILY_AV1;
-
 	if (family == -1) {
 		codec_mutex->unlock();
 		return -1;
 	}
-
 	Vector<String> candidates = _get_candidate_decoders(family);
 	Vector<AVHWDeviceType> hw_devices;
 	if (!disable_hw_decoding) {
 		hw_devices = _get_supported_hw_devices();
 	}
-	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE); // Fallback to SW
-
+	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE); // 回退到SW
 	bool opened = false;
 	String opened_name = "";
 	String opened_hw = "Software";
-
 	for (int i = 0; i < candidates.size(); i++) {
 		for (int j = 0; j < hw_devices.size(); j++) {
 			if (_try_open_decoder(candidates[i], width, height, hw_devices[j]) == 0) {
@@ -919,32 +701,27 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 		if (opened)
 			break;
 	}
-
 	if (!opened) {
 		UtilityFunctions::printerr(LOG_PREFIX "No usable decoder found!");
 		call_deferred("emit_signal", "warning_message", "INIT_ERROR", "Failed to initialize any decoder");
-		codec_mutex->unlock(); // UNLOCK on failure
+		codec_mutex->unlock(); // 失败时解锁
 		return -1;
 	}
-
 	UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name, " (", opened_hw, ")");
 	call_deferred("emit_signal", "log_message", "Decoder initialized: " + opened_name + " (" + opened_hw + ")");
-
 	video_width = width;
 	video_height = height;
-	video_format = -1; // Force SWS init on first frame
-	codec_mutex->unlock(); // UNLOCK on success
+	video_format = -1; // 在第一帧强制初始化SWS
+	codec_mutex->unlock(); // 成功时解锁
 	return DR_OK;
 }
 
 int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit) {
 	if (!is_streaming.load())
 		return DR_OK;
-
-	// Create Packet
+	// 创建数据包
 	AVPacket *pkt = av_packet_alloc();
 	bool packet_ready = false;
-
 	if (pkt && av_new_packet(pkt, decode_unit->fullLength) >= 0) {
 		int offset = 0;
 		PLENTRY entry = decode_unit->bufferList;
@@ -957,7 +734,6 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 		}
 		packet_ready = true;
 	}
-
 	if (packet_ready) {
 		queue_mutex->lock();
 		if (packet_queue.size() < 120) {
@@ -967,8 +743,7 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 			return DR_OK;
 		} else {
 			queue_mutex->unlock();
-
-			// Limit log spam for overflows
+			// 限制因溢出导致的日志泛滥
 			static uint64_t last_log = 0;
 			uint64_t now = Time::get_singleton()->get_ticks_msec();
 			if (now - last_log > 1000) {
@@ -1001,11 +776,113 @@ void MoonlightStreamCore::_cleanup_ffmpeg_video() {
 		avcodec_free_context(&v_codec_ctx);
 		v_codec_ctx = nullptr;
 	}
-	// Do NOT free v_frame here. It persists for the lifetime of the core instance
+	// 不要在这里释放 v_frame。它在核心实例的整个生命周期中都会存在
 }
 
 // ============================================================================
-// Audio Handling
+// moonlight音频流playback
+// ============================================================================
+
+AudioStreamPlaybackMoonlight::AudioStreamPlaybackMoonlight() : active(false) {}
+AudioStreamPlaybackMoonlight::~AudioStreamPlaybackMoonlight() {}
+
+void AudioStreamPlaybackMoonlight::_start(double p_from_pos) { active = true; }
+void AudioStreamPlaybackMoonlight::_stop() { active = false; }
+bool AudioStreamPlaybackMoonlight::_is_playing() const { return active; }
+int32_t AudioStreamPlaybackMoonlight::_get_loop_count() const { return 0; }
+double AudioStreamPlaybackMoonlight::_get_playback_position() const { return 0.0; }
+void AudioStreamPlaybackMoonlight::_seek(double p_time) {}
+
+int32_t AudioStreamPlaybackMoonlight::_mix_resampled(AudioFrame *p_buffer, int32_t p_frames) {
+	if (!active || base.is_null())
+		return 0;
+	return base->read_samples(p_buffer, p_frames);
+}
+
+float AudioStreamPlaybackMoonlight::_get_stream_sampling_rate() const {
+	if (base.is_valid())
+		return (float)base->mix_rate;
+	return 48000.0f;
+}
+
+void AudioStreamPlaybackMoonlight::_bind_methods() {}
+
+// ============================================================================
+// moonlight音频流
+// ============================================================================
+
+AudioStreamMoonlight::AudioStreamMoonlight() : mix_rate(48000) {
+	buffer_mutex.instantiate();
+	rb_capacity = 48000 * 2 * 0.2; // 200毫秒缓冲
+	ring_buffer.resize(rb_capacity);
+	ring_buffer.fill(0);
+}
+
+Ref<AudioStreamPlayback> AudioStreamMoonlight::_instantiate_playback() const {
+	Ref<AudioStreamPlaybackMoonlight> playback;
+	playback.instantiate();
+	playback->base = Ref<AudioStreamMoonlight>(this);
+	return playback;
+}
+
+String AudioStreamMoonlight::_get_stream_name() const { return "Moonlight Audio"; }
+
+void AudioStreamMoonlight::push_audio(const float *samples, int count) {
+	buffer_mutex->lock();
+	int free_space = rb_capacity - rb_used;
+	if (count > free_space) {
+		int overflow = count - free_space;
+		rb_read_pos = (rb_read_pos + overflow) % rb_capacity;
+		rb_used -= overflow;
+	}
+	int first_chunk = MIN(count, rb_capacity - rb_write_pos);
+	int second_chunk = count - first_chunk;
+	float *ptr = ring_buffer.ptrw();
+	memcpy(ptr + rb_write_pos, samples, first_chunk * sizeof(float));
+	if (second_chunk > 0)
+		memcpy(ptr, samples + first_chunk, second_chunk * sizeof(float));
+	rb_write_pos = (rb_write_pos + count) % rb_capacity;
+	rb_used += count;
+	buffer_mutex->unlock();
+}
+
+int AudioStreamMoonlight::read_samples(AudioFrame *dst_buffer, int frame_count) {
+	buffer_mutex->lock();
+	int available_frames = rb_used / 2;
+	int frames_to_read = MIN(frame_count, available_frames);
+	const float *ptr = ring_buffer.ptr();
+	int current_pos = rb_read_pos;
+	for (int i = 0; i < frames_to_read; i++) {
+		float l = ptr[current_pos];
+		current_pos = (current_pos + 1) % rb_capacity;
+		float r = ptr[current_pos];
+		current_pos = (current_pos + 1) % rb_capacity;
+		dst_buffer[i].left = l;
+		dst_buffer[i].right = r;
+	}
+	rb_read_pos = current_pos;
+	rb_used -= (frames_to_read * 2);
+	buffer_mutex->unlock();
+	// 如不足则填充静音
+	if (frames_to_read < frame_count) {
+		for (int i = frames_to_read; i < frame_count; i++) {
+			dst_buffer[i].left = 0.0f;
+			dst_buffer[i].right = 0.0f;
+		}
+	}
+	return frame_count;
+}
+
+void AudioStreamMoonlight::clear_buffer() {
+	buffer_mutex->lock();
+	rb_write_pos = 0;
+	rb_read_pos = 0;
+	rb_used = 0;
+	buffer_mutex->unlock();
+}
+
+// ============================================================================
+// 音频流核心
 // ============================================================================
 
 int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
@@ -1015,79 +892,72 @@ int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 		UtilityFunctions::printerr(LOG_PREFIX "Opus decoder not found");
 		return -1;
 	}
-
 	a_codec_ctx = avcodec_alloc_context3(codec);
-	if (!a_codec_ctx) return -1;
-
-	// Force standard stereo configuration for Opus as expected by Moonlight/GameStream
+	if (!a_codec_ctx)
+		return -1;
+	// 强制使用 Moonlight/GameStream 预期的 Opus 标准立体声配置
 	av_channel_layout_default(&a_codec_ctx->ch_layout, 2);
 	a_codec_ctx->sample_rate = 48000;
-	
 	if (avcodec_open2(a_codec_ctx, codec, nullptr) < 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Failed to open Opus codec");
 		return -1;
 	}
-
 	a_frame = av_frame_alloc();
 	a_packet = av_packet_alloc();
 	swr_ctx = swr_alloc();
-	
-	AVChannelLayout stereo; av_channel_layout_default(&stereo, 2);
-	
-	// Configure Resampler: Input (Opus Decoder) -> Output (Godot Float Stereo)
+	AVChannelLayout stereo;
+	av_channel_layout_default(&stereo, 2);
+	// 配置重采样器：输入（Opus 解码器）-> 输出（Godot 浮点立体声）
 	av_opt_set_chlayout(swr_ctx, "in_chlayout", &a_codec_ctx->ch_layout, 0);
 	av_opt_set_int(swr_ctx, "in_sample_rate", 48000, 0);
 	av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", a_codec_ctx->sample_fmt, 0);
-	
 	av_opt_set_chlayout(swr_ctx, "out_chlayout", &stereo, 0);
 	av_opt_set_int(swr_ctx, "out_sample_rate", 48000, 0);
-	av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0); // Godot uses Float
-	
+	av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0); // Godot 使用浮点数
 	if (swr_init(swr_ctx) < 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Failed to init Audio Resampler");
 		return -1;
 	}
-	
 	UtilityFunctions::print(LOG_PREFIX "Audio Initialized: Opus 48kHz Stereo");
 	return 0;
 }
 
 void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len) {
-	if (!a_codec_ctx || audio_stream.is_null()) return;
-
-	// Prepare packet
+	if (!a_codec_ctx || audio_stream.is_null())
+		return;
+	// 准备包裹
 	av_packet_unref(a_packet);
-	if (av_new_packet(a_packet, len) < 0) return;
+	if (av_new_packet(a_packet, len) < 0)
+		return;
 	memcpy(a_packet->data, data, len);
 
 	int ret = avcodec_send_packet(a_codec_ctx, a_packet);
-	av_packet_unref(a_packet); // Data copied to decoder, unref packet
-	if (ret < 0) return;
-
+	av_packet_unref(a_packet); // 数据已复制到解码器，取消引用包
+	if (ret < 0)
+		return;
 	while (ret >= 0) {
 		ret = avcodec_receive_frame(a_codec_ctx, a_frame);
-		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
-		if (ret < 0) break;
-
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+			break;
+		if (ret < 0)
+			break;
 		int max_out_samples = swr_get_out_samples(swr_ctx, a_frame->nb_samples);
 		if (max_out_samples > 0) {
-			// Use stack buffer for common small frames (~10ms opus = 480 samples)
-			// 480 samples * 2 channels * 4 bytes = ~3.8KB. 16KB is plenty.
+			// 对于常见的小帧（约10毫秒 opus = 480 个样本）使用堆栈缓冲区
+			// 480 个样本 * 2 通道 * 4 字节 = 约 3.8KB。16KB 已经绰绰有余。
 			uint8_t stack_buf[16384];
 			float *out_buf = (float *)stack_buf;
-			
-			// 2 channels * sizeof(float) = 8 bytes per sample
+			// 2个通道 * float大小 = 每个样本8字节
 			bool huge_frame = (size_t)(max_out_samples * 8) > sizeof(stack_buf);
-			if (huge_frame) out_buf = (float *)av_malloc(max_out_samples * 8);
-
+			if (huge_frame)
+				out_buf = (float *)av_malloc(max_out_samples * 8);
 			int out_samples = swr_convert(swr_ctx, (uint8_t **)&out_buf, max_out_samples, (const uint8_t **)a_frame->data, a_frame->nb_samples);
-			
 			if (out_samples > 0) {
-				// Push interleaved float stereo samples
+				// 推送交错的浮点立体声样本
 				audio_stream->push_audio(out_buf, out_samples * 2);
 			}
-
-			if (huge_frame) av_free(out_buf);
+			if (huge_frame)
+				av_free(out_buf);
 		}
 	}
 }
@@ -1112,7 +982,7 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 }
 
 // ============================================================================
-// Static Callbacks & Bindings
+// 静态回调与绑定
 // ============================================================================
 
 void MoonlightStreamCore::_cl_stage_starting(int stage) { UtilityFunctions::print(LOG_PREFIX "Stage Starting: ", LiGetStageName(stage)); }
@@ -1124,13 +994,13 @@ void MoonlightStreamCore::_cl_connection_started() {
 }
 void MoonlightStreamCore::_cl_connection_terminated(int error_code) {
 	UtilityFunctions::print(LOG_PREFIX "Connection Terminated: ", error_code);
-	// FIX: Handle termination here to ensure decoder stops only when connection is truly dead
+	// 修复：在此处处理终止以确保解码器仅在连接真正断开时停止
 	if (singleton_instance) {
 		singleton_instance->is_streaming.store(false);
 		if (singleton_instance->decode_sem.is_valid()) {
 			singleton_instance->decode_sem->post();
 		}
-		// Emit signal with error details for the caller
+		// 向调用者发送包含错误详细信息的信号
 		String msg = singleton_instance->_get_error_string(error_code);
 		singleton_instance->call_deferred("emit_signal", "connection_terminated", error_code, msg);
 	}
@@ -1206,7 +1076,7 @@ String MoonlightStreamCore::_get_error_string(int error_code) {
 int MoonlightStreamCore::_dr_setup(int fmt, int w, int h, int rate, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_dr_setup(fmt, w, h); }
 void MoonlightStreamCore::_dr_cleanup(void) {
 	if (singleton_instance) {
-		// FIX: Lock mutex to prevent race with decode thread using the context
+		// 修复：锁定互斥锁以防止与使用该上下文的解码线程发生竞争
 		if (singleton_instance->codec_mutex.is_valid()) {
 			singleton_instance->codec_mutex->lock();
 			singleton_instance->_cleanup_ffmpeg_video();
@@ -1215,7 +1085,7 @@ void MoonlightStreamCore::_dr_cleanup(void) {
 	}
 }
 int MoonlightStreamCore::_dr_submit_decode_unit(PDECODE_UNIT du) {
-	// FIX: Route to instance handler for Push model
+	// 修复：为推送模型路由到实例处理程序
 	if (singleton_instance)
 		return singleton_instance->_handle_dr_submit_decode_unit(du);
 	return DR_OK;
@@ -1238,7 +1108,7 @@ void MoonlightStreamCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_audio_stream"), &MoonlightStreamCore::get_audio_stream);
 	ClassDB::bind_method(D_METHOD("reset_audio_stream", "free_stream"), &MoonlightStreamCore::reset_audio_stream, DEFVAL(false));
 
-	// Bind internal update method for call_deferred
+	// 绑定内部更新方法以进行延迟调用
 	ClassDB::bind_method(D_METHOD("_update_display_texture"), &MoonlightStreamCore::_update_display_texture);
 
 	ADD_SIGNAL(MethodInfo("connection_started"));
