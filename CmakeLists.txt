@@ -16,7 +16,7 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     endif()
 endif()
 
-set(CMAKE_MAKE_PROGRAM ninja)
+# set(CMAKE_MAKE_PROGRAM ninja)
 
 project(${LIBNAME} LANGUAGES CXX)
 
