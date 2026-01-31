@@ -171,12 +171,14 @@ private:
 	int _try_open_decoder(const String &codec_name, int width, int height);
 	void _cleanup_ffmpeg_video();
 	void _cleanup_ffmpeg_audio();
+	String _get_error_string(int error_code);
 
 	// Limelight Static Wrappers
 	static void _cl_stage_starting(int stage);
 	static void _cl_connection_started();
 	static void _cl_connection_terminated(int error_code);
 	static void _cl_log_message(const char *format, ...);
+	static void _cl_set_hdr_mode(bool enabled);
 
 	static int _dr_setup(int video_format, int width, int height, int redraw_rate, void *context, int dr_flags);
 	static void _dr_cleanup(void);
@@ -191,6 +193,7 @@ private:
 	int _handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit);
 	int _handle_ar_init(int audio_configuration);
 	void _handle_ar_decode_and_play_sample(char *sample_data, int sample_length);
+	void _handle_set_hdr_mode(bool enabled);
 
 	// Internal update method
 	void _update_display_texture();

@@ -184,6 +184,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	cl_callbacks.connectionStarted = _cl_connection_started;
 	cl_callbacks.connectionTerminated = _cl_connection_terminated;
 	cl_callbacks.logMessage = _cl_log_message;
+	cl_callbacks.setHdrMode = _cl_set_hdr_mode;
 
 	dr_callbacks.setup = _dr_setup;
 	dr_callbacks.cleanup = _dr_cleanup;
@@ -269,6 +270,15 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	stream_config.streamingRemotely = STREAM_CFG_AUTO;
 	stream_config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
 	stream_config.supportedVideoFormats = supported_formats;
+
+	// Enable HDR (10-bit) support if requested and codec supports it
+	if (options.get("enable_hdr", false)) {
+		// Check if we are using a codec that supports 10-bit (HEVC or AV1)
+		if (supported_formats & (VIDEO_FORMAT_MASK_H265 | VIDEO_FORMAT_MASK_AV1)) {
+			stream_config.supportedVideoFormats |= VIDEO_FORMAT_MASK_10BIT;
+			UtilityFunctions::print(LOG_PREFIX "HDR (10-bit) capability enabled");
+		}
+	}
 
 	if (options.has("surround_audio_info")) {
 		int surround_info = options["surround_audio_info"];
@@ -934,7 +944,12 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 // ============================================================================
 
 void MoonlightStreamCore::_cl_stage_starting(int stage) { UtilityFunctions::print(LOG_PREFIX "Stage Starting: ", LiGetStageName(stage)); }
-void MoonlightStreamCore::_cl_connection_started() { UtilityFunctions::print(LOG_PREFIX "Connection Started"); }
+void MoonlightStreamCore::_cl_connection_started() {
+	UtilityFunctions::print(LOG_PREFIX "Connection Started");
+	if (singleton_instance) {
+		singleton_instance->call_deferred("emit_signal", "connection_started");
+	}
+}
 void MoonlightStreamCore::_cl_connection_terminated(int error_code) {
 	UtilityFunctions::print(LOG_PREFIX "Connection Terminated: ", error_code);
 	// FIX: Handle termination here to ensure decoder stops only when connection is truly dead
@@ -943,6 +958,9 @@ void MoonlightStreamCore::_cl_connection_terminated(int error_code) {
 		if (singleton_instance->decode_sem.is_valid()) {
 			singleton_instance->decode_sem->post();
 		}
+		// Emit signal with error details for the caller
+		String msg = singleton_instance->_get_error_string(error_code);
+		singleton_instance->call_deferred("emit_signal", "connection_terminated", error_code, msg);
 	}
 }
 void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
@@ -953,6 +971,62 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	va_end(args);
 	UtilityFunctions::print(LOG_PREFIX "Log from lib: ", String(buffer));
 }
+
+void MoonlightStreamCore::_cl_set_hdr_mode(bool enabled) {
+	if (singleton_instance) {
+		singleton_instance->_handle_set_hdr_mode(enabled);
+	}
+}
+
+void MoonlightStreamCore::_handle_set_hdr_mode(bool enabled) {
+	Dictionary metadata;
+	if (enabled) {
+		SS_HDR_METADATA hdr_data;
+		if (LiGetHdrMetadata(&hdr_data)) {
+			Array primaries_x;
+			primaries_x.push_back(hdr_data.displayPrimaries[0].x);
+			primaries_x.push_back(hdr_data.displayPrimaries[1].x);
+			primaries_x.push_back(hdr_data.displayPrimaries[2].x);
+
+			Array primaries_y;
+			primaries_y.push_back(hdr_data.displayPrimaries[0].y);
+			primaries_y.push_back(hdr_data.displayPrimaries[1].y);
+			primaries_y.push_back(hdr_data.displayPrimaries[2].y);
+
+			metadata["display_primaries_x"] = primaries_x;
+			metadata["display_primaries_y"] = primaries_y;
+			metadata["white_point_x"] = hdr_data.whitePoint.x;
+			metadata["white_point_y"] = hdr_data.whitePoint.y;
+			metadata["min_display_luminance"] = hdr_data.minDisplayLuminance;
+			metadata["max_display_luminance"] = hdr_data.maxDisplayLuminance;
+			metadata["max_content_light_level"] = hdr_data.maxContentLightLevel;
+			metadata["max_frame_average_light_level"] = hdr_data.maxFrameAverageLightLevel;
+		}
+	}
+	call_deferred("emit_signal", "hdr_mode_changed", enabled, metadata);
+}
+
+String MoonlightStreamCore::_get_error_string(int error_code) {
+	switch (error_code) {
+		case ML_ERROR_GRACEFUL_TERMINATION:
+			return "Connection terminated gracefully";
+		case ML_ERROR_NO_VIDEO_TRAFFIC:
+			return "Terminating connection due to lack of video traffic";
+		case ML_ERROR_NO_VIDEO_FRAME:
+			return "No video frame received";
+		case ML_ERROR_UNEXPECTED_EARLY_TERMINATION:
+			return "Unexpected early termination";
+		case ML_ERROR_PROTECTED_CONTENT:
+			return "Protected content detected";
+		case ML_ERROR_FRAME_CONVERSION:
+			return "Frame conversion error";
+		default:
+			if (error_code > 0)
+				return "Connection error: " + String::num_int64(error_code);
+			return "Unknown error (" + String::num_int64(error_code) + ")";
+	}
+}
+
 int MoonlightStreamCore::_dr_setup(int fmt, int w, int h, int rate, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_dr_setup(fmt, w, h); }
 void MoonlightStreamCore::_dr_cleanup(void) {
 	if (singleton_instance) {
@@ -990,4 +1064,8 @@ void MoonlightStreamCore::_bind_methods() {
 
 	// Bind internal update method for call_deferred
 	ClassDB::bind_method(D_METHOD("_update_display_texture"), &MoonlightStreamCore::_update_display_texture);
+
+	ADD_SIGNAL(MethodInfo("connection_started"));
+	ADD_SIGNAL(MethodInfo("connection_terminated", PropertyInfo(Variant::INT, "error_code"), PropertyInfo(Variant::STRING, "message")));
+	ADD_SIGNAL(MethodInfo("hdr_mode_changed", PropertyInfo(Variant::BOOL, "enabled"), PropertyInfo(Variant::DICTIONARY, "metadata")));
 }
