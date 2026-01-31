@@ -21,11 +21,6 @@ project(${LIBNAME} LANGUAGES CXX)
 # 修复 Linux (特别是 ARM64) 下链接静态库 (如 ffmpeg) 到共享库时的重定位错误 (relocation R_AARCH64_ADR_PREL_PG_HI21)
 # 强制所有目标（包括 vcpkg 构建的依赖项）使用位置无关代码 (PIC)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-# 添加 -fPIC 编译选项
-if(LINUX)
-    set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-Bsymbolic")
-endif()
-
 
 # 2. 平台与架构识别
 if(ANDROID)
@@ -39,6 +34,12 @@ elseif(APPLE)
 else()
     set(TARGET_PLATFORM "linux")
 endif()
+
+# 添加 -fPIC 编译选项
+if(TARGET_PLATFORM STREQUAL "linux")
+    set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-Bsymbolic")
+endif()
+
 # 统一处理器架构名称
 if(ANDROID)
     if(ANDROID_ABI STREQUAL "arm64-v8a")
