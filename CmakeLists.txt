@@ -16,6 +16,8 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     endif()
 endif()
 
+set(CMAKE_MAKE_PROGRAM Ninja)
+
 project(${LIBNAME} LANGUAGES CXX)
 
 # 修复 Linux (特别是 ARM64) 下链接静态库 (如 ffmpeg) 到共享库时的重定位错误 (relocation R_AARCH64_ADR_PREL_PG_HI21)
