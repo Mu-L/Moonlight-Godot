@@ -4,67 +4,153 @@
 		负责处理 Moonlight 串流协议的核心逻辑，包括音视频解码与渲染。
 	</brief_description>
 	<description>
-		[MoonlightStreamCore] 是对[url=https://github.com/moonlight-stream/moonlight-common-c]Moonlight-common-c[/url] 库的封装。它使用 FFmpeg 库对接收到的视频流（H.264/HEVC/AV1）和音频流（Opus）进行解码。
-		
+		[MoonlightStreamCore] 是对 [url=https://github.com/moonlight-stream/moonlight-common-c]Moonlight-common-c[/url] 库的封装。它使用 FFmpeg 库对接收到的视频流（H.264/HEVC/AV1）和音频流（Opus）进行解码，并在 Godot 中进行渲染。
+
 		主要功能：
 		1. [b]连接管理[/b]：通过 [method start_play_stream] 建立与 Moonlight 主机的 RTSP 连接。
-		2. [b]视频渲染[/b]：将解码后的 YUV 视频数据转换为 RGBA 纹理，并自动更新到指定的 [TextureRect] 上。
-		3. [b]音频处理[/b]：解码 Opus 音频数据并填充到内部的 [AudioStreamMoonlight] 缓冲区中，供音频播放节点使用。
-		
-		注意：此类依赖于底层的 [code]moonlight-common-c[/code] 库和 FFmpeg 运行时库。
+		2. [b]视频解码与渲染[/b]：使用 FFmpeg（可选硬件加速）解码视频流，将 YUV 数据转换为 RGBA 纹理，并自动更新到指定的 [TextureRect] 上。
+		3. [b]音频处理[/b]：解码 Opus 音频数据并填充到内部的 [AudioStreamMoonlight] 缓冲区中，供 Godot 音频系统播放。
+		4. [b]错误处理与状态反馈[/b]：通过信号机制报告连接状态、解码错误、HDR 模式变更等。
+
+		注意：此类依赖于底层的 [code]moonlight-common-c[/code] 库和 FFmpeg 运行时库。视频解码支持硬件加速（根据平台不同支持 D3D11VA、VAAPI、VideoToolbox 等）。
+
+		该类内部使用多线程架构：
+		● 一个连接线程运行 LiStartConnection。
+		● 一个视频解码线程处理数据包队列和解码。
+		音频解码在主线程中间接处理。
 	</description>
 	<methods>
 		<method name="start_play_stream">
 			<return type="void" />
 			<argument index="0" name="options" type="Dictionary" />
 			<description>
-				使用提供的配置（通常来自于[method ComputerManager.establish_stream]返回的options字典）选项启动流媒体播放。这将在后台线程中建立连接。
-				
+				使用提供的配置启动流媒体播放。此方法将启动后台线程以建立 RTSP 连接并开始接收音视频数据。
+
 				[param options] 字典应包含以下键：
-				- [code]"ip"[/code]: (String) 主机 IP 地址。
-				- [code]"session_url"[/code]: (String) 从 [method ComputerManager.establish_stream] 获取的 RTSP 会话 URL。
-				- [code]"rikey"[/code]: (String) 128位 AES 密钥的十六进制字符串（通常由 ComputerManager 生成）。
-				- [code]"width"[/code]: (int) 视频宽度，默认 1280。
-				- [code]"height"[/code]: (int) 视频高度，默认 720。
-				- [code]"fps"[/code]: (int) 帧率，默认 60。
-				- [code]"bitrate"[/code]: (int) 比特率（kbps），默认 10000。
-				- [code]"packet_size"[/code]: (int) 网络包大小，默认 1024。
+				● [code]"ip"[/code]: (String) 主机 IP 地址。
+				● [code]"session_url"[/code]: (String) 从 [method ComputerManager.establish_stream] 获取的 RTSP 会话 URL。
+				● [code]"rikey"[/code]: (String) 128位 AES 密钥的十六进制字符串（通常由 ComputerManager 生成）。
+				● [code]"width"[/code]: (int) 视频宽度，默认 1280。
+				● [code]"height"[/code]: (int) 视频高度，默认 720。
+				● [code]"fps"[/code]: (int) 帧率，默认 60。
+				● [code]"bitrate"[/code]: (int) 比特率（kbps），默认 10000。
+				● [code]"packet_size"[/code]: (int) 网络包大小，默认 1024。
+				● [code]"video_codec"[/code]: (int) 视频编解码器偏好，可选值见 [enum VideoCodecConfig]，默认 [constant CODEC_H264]。
+				● [code]"disable_hw_acceleration"[/code]: (bool) 是否禁用硬件解码，默认 false。
+					● 下面列出了测试时的平均延迟供参考（1080p 60fps，200000kbps）：
+						● 硬件解码：0.13s
+						● 软件解码：0.27s
+				● [code]"enable_hdr"[/code]: (bool) 是否启用 HDR 支持（若编解码器支持），默认 false。
+				以及其他可选流配置参数。
+
+				启动成功后，将通过 [signal connection_started] 信号通知。若启动失败，将通过 [signal connection_terminated] 报告错误。
 			</description>
 		</method>
 		<method name="stop_play_stream">
 			<return type="void" />
 			<description>
-				停止当前的流媒体播放连接，并终止后台线程。
+				停止当前的流媒体播放连接，终止后台线程，并清理所有 FFmpeg 解码器上下文。
+				此方法会中断网络连接、清空数据包队列，并重置内部状态。
+				停止完成后，将通过 [signal connection_terminated] 信号通知。
 			</description>
 		</method>
 		<method name="set_render_target">
 			<return type="void" />
 			<argument index="0" name="texture_rect" type="TextureRect" />
 			<description>
-				设置用于显示视频画面的 [TextureRect]。
-				
-				MoonlightStreamCore 会自动创建和更新该节点的纹理（Texture）。如果传入 null，则停止视频渲染更新。
+				设置用于显示视频画面的 [TextureRect] 节点。
+				传入有效的 [TextureRect] 后，MoonlightStreamCore 会自动创建和更新该节点的纹理（Texture），将解码后的视频帧渲染到该控件上。
+				如果传入 null 或调用 [method reset_render_target]，则停止视频渲染更新。
 			</description>
 		</method>
 		<method name="reset_render_target">
 			<return type="void" />
 			<description>
 				重置渲染目标，停止向之前设置的 TextureRect 更新画面。
+				不会销毁现有的纹理资源，但会断开与显示控件的关联。
 			</description>
 		</method>
 		<method name="get_audio_stream">
 			<return type="AudioStream" />
 			<description>
 				获取用于播放接收到的音频数据的 [AudioStreamMoonlight] 实例。
-				
+				此音频流内部维护一个环形缓冲区，接收 Opus 解码后的 PCM 数据。
 				通常应将此返回值赋给 [AudioStreamPlayer] 节点的 [member AudioStreamPlayer.stream] 属性以播放声音。
+				注意：每次调用此方法将返回同一个音频流实例（单例模式）。
 			</description>
 		</method>
 		<method name="reset_audio_stream">
 			<return type="void" />
+			<argument index="0" name="free_stream" type="bool" default="false" />
 			<description>
 				清空并重置当前的音频流缓冲区。
+				如果 [param free_stream] 为 true，则会释放当前的音频流实例，下次调用 [method get_audio_stream] 时将创建新的实例。
+				通常在停止流媒体会话后调用此方法以清除残留音频数据。
 			</description>
 		</method>
 	</methods>
+	<signals>
+		<signal name="connection_started">
+			<description>
+				当流媒体连接成功建立并开始时发出。
+				此信号表明 LiStartConnection 已成功进入流媒体阶段，音视频数据即将开始传输。
+			</description>
+		</signal>
+		<signal name="connection_terminated">
+			<argument index="0" name="error_code" type="int" />
+			<argument index="1" name="message" type="String" />
+			<description>
+				当流媒体连接终止时发出。终止可能是正常的（用户停止）或错误的（网络中断、解码失败等）。
+				[param error_code] 为错误代码，0 通常表示正常终止，其他值表示错误（参见 moonlight-common-c 的错误码定义）。
+				[param message] 为人类可读的错误描述，由内部方法 [method _get_error_string] 生成。
+			</description>
+		</signal>
+		<signal name="hdr_mode_changed" expirimental="未经过实际测试，可能存在问题">
+			<argument index="0" name="enabled" type="bool" />
+			<argument index="1" name="metadata" type="Dictionary" />
+			<description>
+				当 HDR 模式变更时发出。仅在支持 HDR 的流（HEVC/AV1 10-bit）中可能触发。
+				[param enabled] 指示 HDR 是否已启用。
+				[param metadata] 包含 HDR 元数据的字典，可能包含以下键（如果可用）：
+				● [code]"display_primaries_x"[/code]: Array[3] 三原色 x 坐标。
+				● [code]"display_primaries_y"[/code]: Array[3] 三原色 y 坐标。
+				● [code]"white_point_x"[/code]: float 白点 x 坐标。
+				● [code]"white_point_y"[/code]: float 白点 y 坐标。
+				● [code]"min_display_luminance"[/code]: float 最小显示亮度。
+				● [code]"max_display_luminance"[/code]: float 最大显示亮度。
+				● [code]"max_content_light_level"[/code]: float 最大内容光亮度。
+				● [code]"max_frame_average_light_level"[/code]: float 最大帧平均光亮度。
+			</description>
+		</signal>
+		<signal name="log_message">
+			<argument index="0" name="message" type="String" />
+			<description>
+				当底层库（moonlight-common-c）输出日志消息时发出。
+				[param message] 为日志文本，可用于调试和状态监控。
+			</description>
+		</signal>
+		<signal name="warning_message">
+			<argument index="0" name="type" type="String" />
+			<argument index="1" name="message" type="String" />
+			<description>
+				当发生非致命但需要注意的问题时发出，例如解码错误、队列溢出等。
+				[param type] 为警告类型标识符，如 "DECODE_ERROR"、"PACKET_ERROR"、"HW_ACCEL_ERROR"、"INIT_ERROR" 等。
+				[param message] 为详细的警告描述。
+			</description>
+		</signal>
+	</signals>
+	<constants>
+		<constant name="CODEC_AUTO" value="0" enum="VideoCodecConfig">
+			自动选择编解码器。将根据平台支持情况优先选择 H.264、HEVC 或 AV1。
+		</constant>
+		<constant name="CODEC_H264" value="1" enum="VideoCodecConfig">
+			强制使用 H.264/AVC 编解码器。
+		</constant>
+		<constant name="CODEC_H265" value="2" enum="VideoCodecConfig">
+			强制使用 HEVC (H.265) 编解码器。
+		</constant>
+		<constant name="CODEC_AV1" value="3" enum="VideoCodecConfig" expirimental="该解码器未经过实际测试，可能存在问题">
+			强制使用 AV1 编解码器。
+		</constant>
+	</constants>
 </class>

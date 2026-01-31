@@ -1,33 +1,5 @@
 #include "stream_core.h"
 
-#include <godot_cpp/classes/os.hpp>
-#include <godot_cpp/classes/rendering_server.hpp>
-#include <godot_cpp/classes/time.hpp>
-#include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/variant/utility_functions.hpp>
-
-#include <cstdarg>
-#include <cstdio>
-
-// FFmpeg 包含的内容
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/hwcontext.h>
-#include <libavutil/imgutils.h>
-#include <libavutil/opt.h>
-#include <libswresample/swresample.h>
-#include <libswscale/swscale.h>
-}
-
-#define LOG_PREFIX "[Moonlight-StreamCore] "
-
-// 编解码器系列
-#define CODEC_FAMILY_H264 0
-#define CODEC_FAMILY_H265 1
-#define CODEC_FAMILY_AV1 2
-
 using namespace godot;
 
 static MoonlightStreamCore *singleton_instance = nullptr;
@@ -880,6 +852,8 @@ void AudioStreamMoonlight::clear_buffer() {
 	rb_used = 0;
 	buffer_mutex->unlock();
 }
+
+void AudioStreamMoonlight::_bind_methods() {}
 
 // ============================================================================
 // 音频流核心

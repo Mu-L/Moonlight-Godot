@@ -12,10 +12,16 @@
 #include <godot_cpp/classes/thread.hpp>
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 #include <atomic>
 #include <string>
 #include <vector>
+#include <cstdarg>
+#include <cstdio>
 
 // 包含C API
 #include "Limelight.h"
@@ -28,8 +34,22 @@ struct AVFrame;
 struct AVPacket;
 struct SwsContext;
 struct SwrContext;
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/channel_layout.h>
 #include <libavutil/hwcontext.h>
+#include <libavutil/imgutils.h>
+#include <libavutil/opt.h>
+#include <libswresample/swresample.h>
+#include <libswscale/swscale.h>
 }
+
+#define LOG_PREFIX "[Moonlight-StreamCore] "
+
+// 编解码器系列
+#define CODEC_FAMILY_H264 0
+#define CODEC_FAMILY_H265 1
+#define CODEC_FAMILY_AV1 2
 
 namespace godot {
 
