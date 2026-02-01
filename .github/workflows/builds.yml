@@ -154,6 +154,10 @@ jobs:
           FEATURES+=("vaapi")
           fi
           
+          if [[ "$PLATFORM" == "android" ]]; then
+            FEATURES=()
+          fi
+
           # vulkan: linux & windows & android
           if [[ "$PLATFORM" == "linux" || "$PLATFORM" == "windows" || "$PLATFORM" == "android" ]]; then
             FEATURES+=("vulkan")
@@ -171,7 +175,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/workflows/cacheVer.txt') }}
 
       - name: Run CMake
         uses: lukka/run-cmake@v10
@@ -188,7 +192,7 @@ jobs:
         if: always() && matrix.target-type== 'template_debug'
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/workflows/cacheVer.txt') }}
 
       # ——产物处理——
       - name: Windows - Cleanup
