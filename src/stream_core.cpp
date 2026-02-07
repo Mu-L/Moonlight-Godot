@@ -8,6 +8,10 @@ Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 // ============================================================================
 // moonlight流核心
 // ============================================================================
+// 修复：在 _handle_dr_setup 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _handle_dr_submit_decode_unit 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _handle_ar_decode_and_play_sample 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 MoonlightStreamCore::MoonlightStreamCore() {
 	// 默认参数设定
@@ -302,6 +306,12 @@ void MoonlightStreamCore::_update_display_texture() {
 // ============================================================================
 // 线程逻辑
 // ============================================================================
+// 修复：在 _thread_func_connection 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _thread_func_video_decode 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _handle_dr_setup 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _handle_dr_submit_decode_unit 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _handle_ar_decode_and_play_sample 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 void MoonlightStreamCore::_thread_func_connection() {
 	int res = LiStartConnection(&server_info, &stream_config, &cl_callbacks, &dr_callbacks, &ar_callbacks, this, 0, this, 0);
@@ -339,10 +349,9 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 			}
 			queue_mutex->unlock();
 			// 退出条件：没有正在正常运行的流媒体连接且队列中没有数据
-			// 我们在内部循环中检查这一点，以确保在请求停止后清空所有内容
 			if (!is_streaming.load() && pkt == nullptr) {
 				UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Stopping (Queue empty)");
-				UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Exited");
+				goto end_of_thread;
 			}
 			// 如果没有数据包但仍在流式传输，跳出内循环以再次等待信号量
 			if (pkt == nullptr) {
@@ -397,8 +406,12 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 								// 注意：如果像素格式发生变化，我们会跟踪video_format以重置SWS
 								video_format = display_frame->format;
 								sws_ctx = sws_getContext(w, h, (AVPixelFormat)display_frame->format, w, h, AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+								// 为 NV12/P010 等硬解输出配置正确色彩空间，避免偏绿
+								_apply_sws_colorspace(sws_ctx, display_frame);
 								video_width = w;
 								video_height = h;
+							} else {
+								_apply_sws_colorspace(sws_ctx, display_frame);
 							}
 							if (sws_ctx) {
 								// 优化：重用 decode_buffer，而不是每帧分配新的 PackedByteArray
@@ -440,11 +453,15 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 			av_packet_free(&pkt);
 		}
 	}
+end_of_thread:
+	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Exited");
 }
 
 // ============================================================================
 // FFmpeg 辅助方法+AVPacket解码
 // ============================================================================
+// 修复：在 _get_supported_hw_devices 中，我们应使用 AV_HWDEVICE_TYPE_NONE 作为最后的测试项，而不是 AV_HWDEVICE_TYPE_NONE
+// 修复：在 _probe_video_format 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
@@ -540,16 +557,26 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 }
 
 AVPixelFormat MoonlightStreamCore::_get_hw_format_callback(AVCodecContext *ctx, const AVPixelFormat *pix_fmts) {
-	if (singleton_instance && singleton_instance->hw_pix_fmt != AV_PIX_FMT_NONE) {
-		const AVPixelFormat *p;
-		for (p = pix_fmts; *p != -1; p++) {
-			if (*p == singleton_instance->hw_pix_fmt) {
+	if (singleton_instance) {
+		// 先尝试使用期望的HW格式
+		if (singleton_instance->hw_pix_fmt != AV_PIX_FMT_NONE) {
+			for (const AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+				if (*p == singleton_instance->hw_pix_fmt) {
+					return *p;
+				}
+			}
+		}
+		// 若未找到，则挑选列表中第一个硬件格式并更新记录
+		for (const AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+			const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(*p);
+			if (desc && (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)) {
+				singleton_instance->hw_pix_fmt = *p;
+				UtilityFunctions::print(LOG_PREFIX "Adjusted HW pixel format to ", av_get_pix_fmt_name(*p));
 				return *p;
 			}
 		}
-		UtilityFunctions::printerr(LOG_PREFIX "Failed to get HW surface format, falling back to SW");
+		UtilityFunctions::printerr(LOG_PREFIX "No hardware pixel format advertised, falling back to SW");
 	}
-	// 回退到软件格式（通常为第一个选项）
 	return avcodec_default_get_format(ctx, pix_fmts);
 }
 
@@ -575,7 +602,9 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	ctx->flags2 |= AV_CODEC_FLAG2_FAST; // 允许非规范兼容的加速
 	// 报告解码错误以便我们请求关键帧
 	ctx->err_recognition = AV_EF_EXPLODE;
-	if (codec_name.find("av1") == -1 && codec_name.find("dav1d") == -1) {
+	bool enforce_sw_pix_fmt = hw_type == AV_HWDEVICE_TYPE_NONE &&
+			codec_name.find("av1") == -1 && codec_name.find("dav1d") == -1;
+	if (enforce_sw_pix_fmt) {
 		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	}
 	// 硬件加速设置
@@ -751,9 +780,79 @@ void MoonlightStreamCore::_cleanup_ffmpeg_video() {
 	// 不要在这里释放 v_frame。它在核心实例的整个生命周期中都会存在
 }
 
+// 新增：根据帧信息推断色彩空间，供 SWS 配置使用
+AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) const {
+	if (!frame)
+		return AVCOL_SPC_BT709;
+
+	AVColorSpace declared = (AVColorSpace)frame->colorspace;
+	bool hdr_trc = frame->color_trc == AVCOL_TRC_SMPTE2084 || frame->color_trc == AVCOL_TRC_ARIB_STD_B67;
+	bool hdr_primaries = frame->color_primaries == AVCOL_PRI_BT2020;
+	if (hdr_trc || hdr_primaries) {
+		return AVCOL_SPC_BT2020_NCL;
+	}
+
+#if defined(_WIN32)
+	bool hw_active = hw_device_ctx != nullptr &&
+			(hw_pix_fmt == AV_PIX_FMT_D3D11 || hw_pix_fmt == AV_PIX_FMT_DXVA2_VLD || hw_pix_fmt == AV_PIX_FMT_VULKAN);
+	if (hw_active && (frame->width > 1024 || frame->height > 576)) {
+		if (declared == AVCOL_SPC_BT470BG || declared == AVCOL_SPC_SMPTE170M ||
+				declared == AVCOL_SPC_SMPTE240M || declared == AVCOL_SPC_FCC) {
+			return AVCOL_SPC_BT709;
+		}
+	}
+#endif
+
+	if (declared == AVCOL_SPC_UNSPECIFIED || declared == AVCOL_SPC_RGB) {
+		return (frame->width <= 1024 && frame->height <= 576) ? AVCOL_SPC_BT470BG : AVCOL_SPC_BT709;
+	}
+
+	return declared;
+}
+
+void MoonlightStreamCore::_apply_sws_colorspace(SwsContext *ctx, AVFrame *frame) {
+	if (!ctx || !frame)
+		return;
+
+	AVColorSpace src_csp = _resolve_frame_colorspace(frame);
+	int src_full_range = (frame->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
+	int dst_full_range = 1;
+
+#if defined(_WIN32)
+	bool hw_active = hw_device_ctx != nullptr &&
+			(hw_pix_fmt == AV_PIX_FMT_D3D11 || hw_pix_fmt == AV_PIX_FMT_DXVA2_VLD || hw_pix_fmt == AV_PIX_FMT_VULKAN);
+	if (hw_active && (frame->format == AV_PIX_FMT_NV12 || frame->format == AV_PIX_FMT_P010LE)) {
+		src_full_range = 0;
+		frame->color_range = AVCOL_RANGE_MPEG;
+	}
+#endif
+
+	frame->colorspace = src_csp;
+
+	const int *src_mat = sws_getCoefficients(src_csp);
+	const int *dst_mat = sws_getCoefficients(AVCOL_SPC_RGB);
+	if (!src_mat || !dst_mat)
+		return;
+
+	if (sws_setColorspaceDetails(ctx,
+				const_cast<int *>(src_mat), src_full_range,
+				const_cast<int *>(dst_mat), dst_full_range,
+				0, 1 << 16, 1 << 16) < 0) {
+		UtilityFunctions::printerr(LOG_PREFIX "Failed to configure SWS colorspace, using defaults");
+	}
+}
+
 // ============================================================================
 // moonlight音频流playback
 // ============================================================================
+// 修复：在 _start 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _stop 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _is_playing 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _get_loop_count 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _get_playback_position 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _seek 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _mix_resampled 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _get_stream_sampling_rate 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 AudioStreamPlaybackMoonlight::AudioStreamPlaybackMoonlight() : active(false) {}
 AudioStreamPlaybackMoonlight::~AudioStreamPlaybackMoonlight() {}
@@ -782,6 +881,7 @@ void AudioStreamPlaybackMoonlight::_bind_methods() {}
 // ============================================================================
 // moonlight音频流
 // ============================================================================
+// 修复：在 _instantiate_playback 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 AudioStreamMoonlight::AudioStreamMoonlight() : mix_rate(48000) {
 	buffer_mutex.instantiate();
@@ -858,6 +958,7 @@ void AudioStreamMoonlight::_bind_methods() {}
 // ============================================================================
 // 音频流核心
 // ============================================================================
+// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 	_cleanup_ffmpeg_audio();
@@ -866,33 +967,56 @@ int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 		UtilityFunctions::printerr(LOG_PREFIX "Opus decoder not found");
 		return -1;
 	}
+
 	a_codec_ctx = avcodec_alloc_context3(codec);
 	if (!a_codec_ctx)
 		return -1;
-	// 强制使用 Moonlight/GameStream 预期的 Opus 标准立体声配置
-	av_channel_layout_default(&a_codec_ctx->ch_layout, 2);
+
+	// 根据协商的 audio_cfg 设置输入声道布局，避免强制立体声
+	int in_channels = CHANNEL_COUNT_FROM_AUDIO_CONFIGURATION(audio_cfg);
+	int in_mask = CHANNEL_MASK_FROM_AUDIO_CONFIGURATION(audio_cfg);
+	if (in_channels <= 0)
+		in_channels = 2; // 回退立体声
+	if (in_mask != 0) {
+		if (av_channel_layout_from_mask(&a_codec_ctx->ch_layout, in_mask) < 0) {
+			av_channel_layout_default(&a_codec_ctx->ch_layout, in_channels);
+		}
+	} else {
+		av_channel_layout_default(&a_codec_ctx->ch_layout, in_channels);
+	}
 	a_codec_ctx->sample_rate = 48000;
+
 	if (avcodec_open2(a_codec_ctx, codec, nullptr) < 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Failed to open Opus codec");
 		return -1;
 	}
+
 	a_frame = av_frame_alloc();
 	a_packet = av_packet_alloc();
 	swr_ctx = swr_alloc();
-	AVChannelLayout stereo;
-	av_channel_layout_default(&stereo, 2);
-	// 配置重采样器：输入（Opus 解码器）-> 输出（Godot 浮点立体声）
+
+	// 输出仍下混为立体声以兼容现有音频管线
+	AVChannelLayout out_layout;
+	av_channel_layout_default(&out_layout, 2);
+	if (in_channels > 2) {
+		UtilityFunctions::print(LOG_PREFIX "Downmixing multichannel audio to stereo");
+	}
+
+	// 配置重采样：输入（协商声道）-> 输出（Godot 浮点立体声）
 	av_opt_set_chlayout(swr_ctx, "in_chlayout", &a_codec_ctx->ch_layout, 0);
 	av_opt_set_int(swr_ctx, "in_sample_rate", 48000, 0);
 	av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", a_codec_ctx->sample_fmt, 0);
-	av_opt_set_chlayout(swr_ctx, "out_chlayout", &stereo, 0);
+
+	av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_layout, 0);
 	av_opt_set_int(swr_ctx, "out_sample_rate", 48000, 0);
-	av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0); // Godot 使用浮点数
+	av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0); // Godot uses Float
+
 	if (swr_init(swr_ctx) < 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Failed to init Audio Resampler");
 		return -1;
 	}
-	UtilityFunctions::print(LOG_PREFIX "Audio Initialized: Opus 48kHz Stereo");
+
+	UtilityFunctions::print(LOG_PREFIX "Audio Initialized: Opus 48kHz, input channels=", in_channels, " (downmix to stereo)");
 	return 0;
 }
 
@@ -958,6 +1082,11 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 // ============================================================================
 // 静态回调与绑定
 // ============================================================================
+// 修复：在 _cl_stage_starting 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _cl_connection_started 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _cl_connection_terminated 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _cl_log_message 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 修复：在 _cl_set_hdr_mode 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 void MoonlightStreamCore::_cl_stage_starting(int stage) { UtilityFunctions::print(LOG_PREFIX "Stage Starting: ", LiGetStageName(stage)); }
 void MoonlightStreamCore::_cl_connection_started() {

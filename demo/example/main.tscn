@@ -17,35 +17,68 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
+[node name="LineEdit" type="LineEdit" parent="ScrollContainer/GridContainer" unique_id=292676391]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "192.168.10.27"
+placeholder_text = "input host IP"
+context_menu_enabled = false
+emoji_menu_enabled = false
+clear_button_enabled = true
+
+[node name="CheckButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=940442173]
+layout_mode = 2
+text = "Hardware 
+Decode"
+
+[node name="OptionButton" type="OptionButton" parent="ScrollContainer/GridContainer" unique_id=679843856]
+layout_mode = 2
+selected = 1
+item_count = 4
+popup/item_0/text = "AUTO"
+popup/item_0/id = 0
+popup/item_1/text = "H264"
+popup/item_1/id = 1
+popup/item_2/text = "H265"
+popup/item_2/id = 2
+popup/item_3/text = "AV1"
+popup/item_3/id = 3
+
 [node name="Button" type="Button" parent="ScrollContainer/GridContainer" unique_id=330310015]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test http request"
+text = "test 
+http request"
 
 [node name="Button2" type="Button" parent="ScrollContainer/GridContainer" unique_id=1873826582]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "!test cert create"
+text = "!test 
+cert create"
 
 [node name="Button3" type="Button" parent="ScrollContainer/GridContainer" unique_id=523297050]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test get host info"
+text = "test 
+get host info"
 
 [node name="Button4" type="Button" parent="ScrollContainer/GridContainer" unique_id=1676248367]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "!test remove host info"
+text = "!test remove 
+host info"
 
 [node name="Button5" type="Button" parent="ScrollContainer/GridContainer" unique_id=1251294166]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test start pair"
+text = "test 
+start pair"
 
 [node name="Button10" type="Button" parent="ScrollContainer/GridContainer" unique_id=1545997416]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test connect to server"
+text = "test connect 
+to server"
 
 [node name="Button7" type="Button" parent="ScrollContainer/GridContainer" unique_id=672315278]
 layout_mode = 2
@@ -88,11 +121,25 @@ theme_override_font_sizes/font_size = 21
 text = "test 
 stop stream"
 
+[node name="Button14" type="Button" parent="ScrollContainer/GridContainer" unique_id=1266637515]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "view 
+appdata"
+
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer" unique_id=1243422997]
 autoplay = true
 
 [node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=428695045]
 layout_mode = 2
+
+[node name="FileDialog" type="FileDialog" parent="ScrollContainer" unique_id=1291668764]
+oversampling_override = 1.0
+title = "Open a File or Directory"
+initial_position = 1
+size = Vector2i(640, 480)
+file_mode = 3
+access = 1
 
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
@@ -106,3 +153,4 @@ layout_mode = 2
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button11" to="." method="test_establish_stream"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button12" to="." method="test_pause_streram"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button13" to="." method="test_stop_stream"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button14" to="." method="view_data"]

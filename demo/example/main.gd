@@ -58,7 +58,7 @@ func test_remove_host_info() -> void:
 
 
 func test_start_pair() -> void:
-    var pin = computermamager.start_pair("127.0.0.1")
+    var pin = computermamager.start_pair($ScrollContainer/GridContainer/LineEdit.text)
     print("pin:",pin)
 
 func test_cancel_pair() -> void:
@@ -76,7 +76,7 @@ func test_get_app_texture() -> void:
 
 
 func test_connect_to_server() -> void:
-    computermamager.connect_to_computer("192.168.1.27",47989,func(info): print(info))
+    computermamager.connect_to_computer($ScrollContainer/GridContainer/LineEdit.text,47989,func(info): print(info))
     
 
 
@@ -91,8 +91,8 @@ func test_establish_stream() -> void:
         "remoteControllersBitmap": "15",
         "gcmap": "1",
         "gcpersist": "1",
-        "video_codec": moonlightstreamcore.CODEC_H265,
-        "disable_hw_acceleration": true
+        "video_codec": $ScrollContainer/GridContainer/OptionButton.get_selected_id(),
+        "disable_hw_acceleration": not $ScrollContainer/GridContainer/CheckButton.button_pressed
     }
 # delay(s)
 # WITH CHANGE:
@@ -123,3 +123,7 @@ func test_pause_streram() -> void:
     moonlightstreamcore.stop_play_stream()
     moonlightstreamcore.reset_audio_stream()
     moonlightstreamcore.reset_render_target()
+
+
+func view_data() -> void:
+    $ScrollContainer/FileDialog.visible = true

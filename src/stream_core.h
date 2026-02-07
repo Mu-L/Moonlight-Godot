@@ -40,6 +40,8 @@ struct SwrContext;
 #include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
+#include <libavutil/pixfmt.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 }
@@ -219,6 +221,8 @@ private:
 	void _cleanup_ffmpeg_video();
 	void _cleanup_ffmpeg_audio();
 	String _get_error_string(int error_code);
+	void _apply_sws_colorspace(struct SwsContext *ctx, AVFrame *frame);
+	AVColorSpace _resolve_frame_colorspace(AVFrame *frame) const;
 
 	// limelight回调静态封装器
 	static void _cl_stage_starting(int stage);
