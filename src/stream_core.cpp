@@ -465,7 +465,6 @@ end_of_thread:
 
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
-// 基于平台的优先级列表
 #if defined(_WIN32)
 	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
 	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
@@ -480,8 +479,7 @@ Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	types.push_back(AV_HWDEVICE_TYPE_QSV);
 	types.push_back(AV_HWDEVICE_TYPE_CUDA);
 #elif defined(__ANDROID__)
-	types.push_back(AV_HWDEVICE_TYPE_MEDIACODEC);
-	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
+	types.push_back(AV_HWDEVICE_TYPE_MEDIACODEC); // Vulkan 不可用时仍保持硬解
 #endif
 	return types;
 }
@@ -795,11 +793,8 @@ AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) cons
 #if defined(_WIN32)
 	bool hw_active = hw_device_ctx != nullptr &&
 			(hw_pix_fmt == AV_PIX_FMT_D3D11 || hw_pix_fmt == AV_PIX_FMT_DXVA2_VLD || hw_pix_fmt == AV_PIX_FMT_VULKAN);
-	if (hw_active && (frame->width > 1024 || frame->height > 576)) {
-		if (declared == AVCOL_SPC_BT470BG || declared == AVCOL_SPC_SMPTE170M ||
-				declared == AVCOL_SPC_SMPTE240M || declared == AVCOL_SPC_FCC) {
-			return AVCOL_SPC_BT709;
-		}
+	if (hw_active && !hdr_trc && !hdr_primaries) {
+		return AVCOL_SPC_BT709;
 	}
 #endif
 
@@ -819,11 +814,15 @@ void MoonlightStreamCore::_apply_sws_colorspace(SwsContext *ctx, AVFrame *frame)
 	int dst_full_range = 1;
 
 #if defined(_WIN32)
-	bool hw_active = hw_device_ctx != nullptr &&
-			(hw_pix_fmt == AV_PIX_FMT_D3D11 || hw_pix_fmt == AV_PIX_FMT_DXVA2_VLD || hw_pix_fmt == AV_PIX_FMT_VULKAN);
-	if (hw_active && (frame->format == AV_PIX_FMT_NV12 || frame->format == AV_PIX_FMT_P010LE)) {
-		src_full_range = 0;
+	bool hw_dx = hw_device_ctx != nullptr &&
+			(hw_pix_fmt == AV_PIX_FMT_D3D11 || hw_pix_fmt == AV_PIX_FMT_DXVA2_VLD);
+	if (hw_dx && (frame->format == AV_PIX_FMT_NV12 || frame->format == AV_PIX_FMT_P010LE)) {
+		// 强制使用 BT.709 + 限制级范围，避免偏绿
+		frame->color_primaries = AVCOL_PRI_BT709;
+		frame->color_trc = AVCOL_TRC_BT709;
 		frame->color_range = AVCOL_RANGE_MPEG;
+		src_full_range = 0;
+		src_csp = AVCOL_SPC_BT709;
 	}
 #endif
 
