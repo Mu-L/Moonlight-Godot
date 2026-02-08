@@ -545,11 +545,11 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 
 #if defined(__ANDROID__)
 	if (codec_family == CODEC_FAMILY_H264) {
-		candidates.push_front("h264_mediacodec"); // 硬件优先
+		candidates.insert(0, "h264_mediacodec"); // 硬件优先
 	} else if (codec_family == CODEC_FAMILY_H265) {
-		candidates.push_front("hevc_mediacodec");
+		candidates.insert(0, "hevc_mediacodec");
 	} else if (codec_family == CODEC_FAMILY_AV1) {
-		candidates.push_front("av1_mediacodec");
+		candidates.insert(0, "av1_mediacodec");
 	}
 #endif
 
