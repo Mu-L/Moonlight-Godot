@@ -1,12 +1,6 @@
 [gd_scene format=3 uid="uid://dc1tsui4v3770"]
 
 [ext_resource type="Script" uid="uid://bd0uy7cwied51" path="res://example/main.gd" id="1_iyjup"]
-[ext_resource type="Shader" uid="uid://dr7x4iy3vboe2" path="res://example/yuvtorgb.gdshader" id="2_hwn3c"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_ca0d4"]
-shader = ExtResource("2_hwn3c")
-shader_parameter/color_space = 0
-shader_parameter/is_hdr = false
 
 [node name="Main" type="Node" unique_id=858242487]
 script = ExtResource("1_iyjup")
@@ -137,7 +131,6 @@ appdata"
 autoplay = true
 
 [node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=428695045]
-material = SubResource("ShaderMaterial_ca0d4")
 layout_mode = 2
 
 [node name="FileDialog" type="FileDialog" parent="ScrollContainer" unique_id=1291668764]

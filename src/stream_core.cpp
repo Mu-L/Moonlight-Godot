@@ -380,61 +380,63 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 
 						AVFrame *display_frame = v_frame;
 
-						// 硬件加速处理
+						// 1. 硬件帧下载到 CPU
 						if (v_frame->format == hw_pix_fmt && hw_device_ctx) {
-							// 将数据从GPU传输到CPU
 							if (!sw_frame)
 								sw_frame = av_frame_alloc();
 							int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
 							if (err < 0) {
-								UtilityFunctions::printerr(LOG_PREFIX "Error transferring HW frame: ", err);
-								call_deferred("emit_signal", "warning_message", "HW_ACCEL_ERROR", "Failed to transfer frame from GPU");
 								continue;
 							}
-							// 复制属性以允许SWS正确处理
 							av_frame_copy_props(sw_frame, v_frame);
 							display_frame = sw_frame;
 						}
 
-						// 获取帧 -> 转换 -> 显示
+						// 2. 确保 SWS 上下文正确初始化
 						int w = display_frame->width;
 						int h = display_frame->height;
-						if (w > 0 && h > 0) {
-							if (!sws_ctx || video_width != w || video_height != h || video_format != display_frame->format) {
-								if (sws_ctx)
-									sws_freeContext(sws_ctx);
-								// 注意：如果像素格式发生变化，我们会跟踪video_format以重置SWS
-								video_format = display_frame->format;
-								sws_ctx = sws_getContext(w, h, (AVPixelFormat)display_frame->format, w, h, AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
-								// 为 NV12/P010 等硬解输出配置正确色彩空间，避免偏绿
-								_apply_sws_colorspace(sws_ctx, display_frame);
-								video_width = w;
-								video_height = h;
-							} else {
-								_apply_sws_colorspace(sws_ctx, display_frame);
+						AVPixelFormat src_fmt = (AVPixelFormat)display_frame->format;
+
+						if (!sws_ctx || video_width != w || video_height != h || video_format != src_fmt) {
+							if (sws_ctx)
+								sws_freeContext(sws_ctx);
+
+							// 关键点：显式指定转换 SWS_ACCURATE_RND 保证精度
+							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, SWS_BICUBIC, nullptr, nullptr, nullptr);
+
+							// 设置色彩空间细节（防止偏绿的核心步骤）
+							_apply_sws_colorspace(sws_ctx, display_frame);
+
+							video_width = w;
+							video_height = h;
+							video_format = src_fmt;
+						}
+
+						if (sws_ctx) {
+							int required_size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, w, h, 1);
+							if (decode_buffer.size() != required_size) {
+								decode_buffer.resize(required_size);
 							}
-							if (sws_ctx) {
-								// 优化：重用 decode_buffer，而不是每帧分配新的 PackedByteArray
-								int required_size = w * h * 4;
-								if (decode_buffer.size() != required_size) {
-									decode_buffer.resize(required_size);
+
+							// 关键修复：使用 av_image_fill_arrays 来自动计算正确的 linesize 和指针偏移
+							uint8_t *dest_data[4];
+							int dest_linesizes[4];
+							av_image_fill_arrays(dest_data, dest_linesizes, decode_buffer.ptrw(), AV_PIX_FMT_RGBA, w, h, 1);
+
+							// 执行转换
+							sws_scale(sws_ctx, display_frame->data, display_frame->linesize, 0, h, dest_data, dest_linesizes);
+
+							if (texture_mutex.is_valid()) {
+								texture_mutex->lock();
+								// 确保使用正确的格式上传
+								if (last_decoded_image.is_null() || last_decoded_image->get_width() != w || last_decoded_image->get_height() != h) {
+									last_decoded_image = Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
+								} else {
+									last_decoded_image->set_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
 								}
-								uint8_t *dest[4] = { decode_buffer.ptrw(), nullptr, nullptr, nullptr };
-								int dest_linesize[4] = { w * 4, 0, 0, 0 };
-								sws_scale(sws_ctx, display_frame->data, display_frame->linesize, 0, h, dest, dest_linesize);
-								if (texture_mutex.is_valid()) {
-									texture_mutex->lock();
-									// 优化：如果尺寸匹配，使用 set_data 更新现有图像这避免了创建新的 Ref<Image> 和内部分配的开销
-									if (last_decoded_image.is_valid() && last_decoded_image->get_width() == w && last_decoded_image->get_height() == h) {
-										last_decoded_image->set_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
-									} else {
-										last_decoded_image = Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
-									}
-									new_frame_available = true;
-									texture_mutex->unlock();
-									// 在主线程上更新调度（即使节点不在场景树中也有效）
-									call_deferred("_update_display_texture");
-								}
+								new_frame_available = true;
+								texture_mutex->unlock();
+								call_deferred("_update_display_texture");
 							}
 						}
 						// 如果我们使用了中间的SW帧，取消引用它
