@@ -543,6 +543,16 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	// 仅限严格的软件解码器
 	Vector<String> candidates;
 
+#if defined(__ANDROID__)
+	if (codec_family == CODEC_FAMILY_H264) {
+		candidates.push_front("h264_mediacodec"); // 硬件优先
+	} else if (codec_family == CODEC_FAMILY_H265) {
+		candidates.push_front("hevc_mediacodec");
+	} else if (codec_family == CODEC_FAMILY_AV1) {
+		candidates.push_front("av1_mediacodec");
+	}
+#endif
+
 	if (codec_family == CODEC_FAMILY_H264)
 		candidates.push_back("h264");
 	else if (codec_family == CODEC_FAMILY_H265)
@@ -643,7 +653,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	// 优先使用切片线程以降低延迟
 	if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
 		ctx->thread_type = FF_THREAD_SLICE;
-		ctx->thread_count = thread_count;
+		ctx->thread_count = (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) ? 1 : thread_count;
 	} else {
 		// 如果不支持切片多线程，则回退到1个线程。我们故意避免使用FF_THREAD_FRAME，因为它会引入与线程数量成正比的延迟。
 		ctx->thread_count = 1;
@@ -749,9 +759,9 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 120)");
 				last_log = now;
 			}
-
 			av_packet_free(&pkt);
-			return DR_NEED_IDR;
+			// 丢帧但不请求 IDR，避免循环请求
+			return DR_OK;
 		}
 	} else {
 		if (pkt)

@@ -11,7 +11,7 @@ func _ready() -> void:
     moonlightstreamcore.connection_terminated.connect(func(_err,msg):push_error("[Moonlight-Godot-MoonlightStreamCore]",msg))
     @warning_ignore("standalone_ternary")
     moonlightstreamcore.hdr_mode_changed.connect(func(enable,data):print("[Moonlight-Godot-MoonlightStreamCore-HDR]",data) if enable else push_warning("[Moonlight-Godot-MoonlightStreamCore-HDR]",data))
-
+    $ScrollContainer/GridContainer/LineEdit.text = configmanager.get_hosts()[0].localaddress
 func on_pair_complete(success,message):
     if success:
         print("[Moonlight-Godot-ComputerManager]",message)
@@ -127,3 +127,9 @@ func test_pause_streram() -> void:
 
 func view_data() -> void:
     $ScrollContainer/FileDialog.visible = true
+
+
+func _on_line_edit_editing_toggled(toggled_on: bool) -> void:
+    if toggled_on:
+        return
+    configmanager.update_host(1,{"localaddress":$ScrollContainer/GridContainer/LineEdit.text})

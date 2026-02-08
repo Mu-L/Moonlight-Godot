@@ -141,6 +141,7 @@ size = Vector2i(640, 480)
 file_mode = 3
 access = 1
 
+[connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit" to="." method="_on_line_edit_editing_toggled"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]
