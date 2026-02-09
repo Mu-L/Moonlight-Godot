@@ -355,6 +355,8 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 				if (ret >= 0) {
 					while (true) {
 						// v_frame 保证有效（在构造函数中分配）
+						// Android MediaCodec 注意：avcodec_receive_frame 会输出软件格式的 YUV 数据 (如果未配置 Surface 输出)
+						// 或者 AV_PIX_FMT_MEDIACODEC (如果配置了)。目前我们没有绑定到 Android Surface，所以预期是 YUV 数据。
 						ret = avcodec_receive_frame(v_codec_ctx, v_frame);
 						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 							break;
@@ -367,16 +369,17 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						}
 						
 #if defined(__ANDROID__)
-						// Android优化：动态调整丢帧阈值
-						// MediaCodec 有内部缓冲，允许更大的队列
-						int drop_threshold = (hw_pix_fmt == AV_PIX_FMT_MEDIACODEC) ? 30 : 10;
+						// Android优化：放宽丢帧阈值
+						// MediaCodec 内部可能有多个帧正在处理，队列大是正常的
+						int drop_threshold = (hw_pix_fmt == AV_PIX_FMT_MEDIACODEC) ? 60 : 20; 
 #else
 						int drop_threshold = 10;
 #endif
 						// 优化：帧丢弃逻辑
 						if (queue_size > drop_threshold) {
-							// Android MediaCodec: 仅在极端情况下丢帧
-							if (queue_size > 60) {
+							// Android: 只有在严重堆积时才丢弃，并且要确保解码流程不被打断
+							// 注意：丢弃已解码帧只节省渲染时间，不节省解码时间
+							if (queue_size > (drop_threshold * 2)) {
 								av_frame_unref(v_frame);
 								continue;
 							}
@@ -384,7 +387,7 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 
 						AVFrame *display_frame = v_frame;
 
-						// 1. 硬件帧下载到 CPU
+						// 1. 硬件帧下载到 CPU (通用路径)
 						if (v_frame->format == hw_pix_fmt && hw_device_ctx) {
 							if (!sw_frame)
 								sw_frame = av_frame_alloc();
@@ -397,11 +400,27 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						}
 						
 #if defined(__ANDROID__)
-						// Android MediaCodec 直接输出 YUV 数据，无需额外下载
+						// Android MediaCodec 特殊处理
+						// 如果格式是 AV_PIX_FMT_MEDIACODEC，这是一个不透明的硬件表面引用，
+						// 必须通过 av_hwframe_transfer_data 下载回 CPU 或者是通过 Java 层渲染。
+						// 但由于我们没有绑定 Java Surface，FFmpeg MediaCodec Wrapper 通常会输出
+						// 软件像素格式 (如 AV_PIX_FMT_NV12) 而不是 AV_PIX_FMT_MEDIACODEC。
+						// 如果确实得到了 AV_PIX_FMT_MEDIACODEC，即使没有 hw_device_ctx，我们也尝试传输。
 						if (v_frame->format == AV_PIX_FMT_MEDIACODEC) {
-							// MediaCodec 返回的帧已经在 CPU 可访问内存中
-							display_frame = v_frame;
+							// 这表明 decoder 工作在 Surface 模式，但我们没有传入 Surface。
+							// 这通常是因为初始化时的配置问题。
+							// 尝试 fallback：复制数据 (如果可能)
+							if (!sw_frame) sw_frame = av_frame_alloc();
+							if (av_hwframe_transfer_data(sw_frame, v_frame, 0) >= 0) {
+								av_frame_copy_props(sw_frame, v_frame);
+								display_frame = sw_frame;
+							} else {
+								// 无法获取图像数据，必须丢弃
+								av_frame_unref(v_frame);
+								continue;
+							}
 						}
+						// 如果 v_frame->format 已经是 NV12/YUV420P，则直接使用 display_frame = v_frame
 #endif
 
 						// 2. 确保 SWS 上下文正确初始化
@@ -414,11 +433,13 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 								sws_freeContext(sws_ctx);
 
 #if defined(__ANDROID__)
-							// Android: 使用更快的缩放算法
+							// Android: 使用 SWS_FAST_BILINEAR 兼顾性能和色彩转换
+							// 保持色彩转换逻辑以解决偏绿问题
 							int sws_flags = SWS_FAST_BILINEAR;
 #else
 							int sws_flags = SWS_BICUBIC;
 #endif
+							// 目标格式必须是 RGBA 以供 Godot 纹理使用
 							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, sws_flags, nullptr, nullptr, nullptr);
 
 							// 设置色彩空间细节（防止偏绿的核心步骤）
@@ -462,10 +483,12 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						}
 					}
 				} else {
-					// 发送数据包失败，可能是数据流损坏
+					// 发送数据包失败
 					UtilityFunctions::printerr(LOG_PREFIX "Send packet failed: ", ret);
-					call_deferred("emit_signal", "warning_message", "PACKET_ERROR", "Failed to send packet to decoder");
-					LiRequestIdrFrame();
+					// 不要因为单次发送失败就请求 IDR，容易造成风暴
+					// 只有连续失败才处理 (这里简化处理，仅打印日志)
+					// call_deferred("emit_signal", "warning_message", "PACKET_ERROR", "Failed to send packet to decoder");
+					// LiRequestIdrFrame(); 
 				}
 			}
 			codec_mutex->unlock(); // 解锁
@@ -634,20 +657,20 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 #if defined(__ANDROID__)
 	// Android MediaCodec专属低延迟配置
 	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC && codec_name.find("mediacodec") != -1) {
-		// 启用低延迟模式
+		// 启用低延迟模式 (保留最基础的标志)
+		// 注意：delay_flush=1 在某些设备上可能导致崩溃或卡顿，如果遇到问题可尝试注释
 		av_opt_set_int(ctx, "delay_flush", 1, 0);
-		// MediaCodec 的 lowlatency 选项在某些设备上可能不稳定，移除它
-		// av_opt_set_int(ctx, "lowlatency", 1, 0);
 		
 		// 禁用B帧以降低延迟
 		ctx->max_b_frames = 0;
 		
-		// 关键：设置输出格式为 Surface (Android特有)
-		// 这避免了 CPU 复制，直接渲染到 Surface
-		av_opt_set_int(ctx, "output_format", 2, 0); // OMX_COLOR_FormatAndroidOpaque
+		// 关键修复：移除 output_format 设置。
+		// 让 FFmpeg 自动协商格式 (通常是 AV_PIX_FMT_MEDIACODEC 或由硬件决定的 YUV 格式)
+		// 强制 output_format 可能会中断 FFmpeg 的内部状态管理，导致 avcodec_receive_frame 返回 EAGAIN
+		// av_opt_set_int(ctx, "output_format", 2, 0); // REMOVED
 		
-		// 启用操作模式为异步以降低延迟
-		av_opt_set_int(ctx, "operating_rate", 0x7FFFFFFF, 0); // 最大处理速率
+		// 移除 operating_rate 设置，H.264 解码器在某些芯片上不支持此特定值会导致初始化失败
+		// av_opt_set_int(ctx, "operating_rate", 0x7FFFFFFF, 0); // REMOVED
 	}
 #endif
 
@@ -663,7 +686,8 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
 		hw_pix_fmt = AV_PIX_FMT_MEDIACODEC;
 		UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(hw_type));
-		// 不设置 get_format 回调，让 MediaCodec 自动处理
+		// 必须设置 get_format 回调，FFmpeg 需要它来协商硬件像素格式 (surface vs buffer)
+		ctx->get_format = _get_hw_format_callback;
 	} else
 #endif
 	{
@@ -822,8 +846,8 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 	if (packet_ready) {
 		queue_mutex->lock();
 #if defined(__ANDROID__)
-		// Android: 增加队列容量以适应 MediaCodec 的内部缓冲
-		int max_queue = (hw_pix_fmt == AV_PIX_FMT_MEDIACODEC) ? 200 : 120;
+		// Android: 显著增加队列容量，避免因 MediaCodec 异步处理导致的暂时性堆积误判为卡死
+		int max_queue = 300;
 #else
 		int max_queue = 120;
 #endif
