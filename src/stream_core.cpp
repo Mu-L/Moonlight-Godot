@@ -364,10 +364,13 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							// 严重解码错误，请求新的数据流
 							UtilityFunctions::printerr(LOG_PREFIX "Decode error: ", ret);
 							call_deferred("emit_signal", "warning_message", "DECODE_ERROR", "Error receiving frame from decoder");
+
+							// 修复：遇到解码错误时，不仅请求IDR，还要刷新缓冲防止花屏延续
+							avcodec_flush_buffers(v_codec_ctx); 
 							LiRequestIdrFrame();
 							break;
 						}
-						
+
 #if defined(__ANDROID__)
 						// Android优化：放宽丢帧阈值
 						// MediaCodec 内部可能有多个帧正在处理，队列大是正常的
@@ -379,7 +382,16 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						if (queue_size > drop_threshold) {
 							// Android: 只有在严重堆积时才丢弃，并且要确保解码流程不被打断
 							// 注意：丢弃已解码帧只节省渲染时间，不节省解码时间
+							// 修复：对于软件解码器，丢帧非常危险，会导致画面撕裂和乱码（因为它是基于前一帧增量更新的）
+							// 仅当使用硬件解码器（通常有更好的错误恢复）或确定可以安全丢弃时才丢弃
+							bool is_sw_decoding = (hw_pix_fmt == AV_PIX_FMT_NONE);
+
+							// 只有队列极度拥堵时才在软解模式下丢帧，并请求关键帧重置画面
 							if (queue_size > (drop_threshold * 2)) {
+								if (is_sw_decoding) {
+									// 软解丢帧会导致花屏，必须配合 IDR 请求
+									LiRequestIdrFrame();
+								}
 								av_frame_unref(v_frame);
 								continue;
 							}
@@ -398,7 +410,7 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							av_frame_copy_props(sw_frame, v_frame);
 							display_frame = sw_frame;
 						}
-						
+
 #if defined(__ANDROID__)
 						// Android MediaCodec 特殊处理
 						// 如果格式是 AV_PIX_FMT_MEDIACODEC，这是一个不透明的硬件表面引用，
@@ -660,15 +672,15 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		// 启用低延迟模式 (保留最基础的标志)
 		// 注意：delay_flush=1 在某些设备上可能导致崩溃或卡顿，如果遇到问题可尝试注释
 		av_opt_set_int(ctx, "delay_flush", 1, 0);
-		
+
 		// 禁用B帧以降低延迟
 		ctx->max_b_frames = 0;
-		
+
 		// 关键修复：移除 output_format 设置。
 		// 让 FFmpeg 自动协商格式 (通常是 AV_PIX_FMT_MEDIACODEC 或由硬件决定的 YUV 格式)
 		// 强制 output_format 可能会中断 FFmpeg 的内部状态管理，导致 avcodec_receive_frame 返回 EAGAIN
 		// av_opt_set_int(ctx, "output_format", 2, 0); // REMOVED
-		
+
 		// 移除 operating_rate 设置，H.264 解码器在某些芯片上不支持此特定值会导致初始化失败
 		// av_opt_set_int(ctx, "operating_rate", 0x7FFFFFFF, 0); // REMOVED
 	}
@@ -679,7 +691,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	if (enforce_sw_pix_fmt) {
 		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	}
-	
+
 #if defined(__ANDROID__)
 	// Android MediaCodec：不需要手动创建 hw_device_ctx
 	// MediaCodec 会自动管理硬件资源
@@ -722,7 +734,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 			UtilityFunctions::print(LOG_PREFIX "Attempting SW Decoder: ", codec_name);
 		}
 	}
-	
+
 	int thread_count = OS::get_singleton()->get_processor_count() - 1;
 	if (thread_count < 1)
 		thread_count = 1;
@@ -754,7 +766,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		avcodec_free_context(&ctx);
 		return -1;
 	}
-	
+
 #if defined(__ANDROID__)
 	// 验证 MediaCodec 是否成功初始化了硬件加速
 	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
@@ -766,7 +778,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		UtilityFunctions::print(LOG_PREFIX "MediaCodec successfully initialized with format: ", av_get_pix_fmt_name(ctx->pix_fmt));
 	}
 #endif
-	
+
 	v_codec = codec;
 	v_codec_ctx = ctx;
 	return 0;
