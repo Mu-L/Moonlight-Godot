@@ -13,20 +13,16 @@
       "name": "ffmpeg",
       "default-features": false,
       "features": [
-        "aom",
         "avcodec",
-        "avfilter",
         "avformat",
-        "dav1d",
-        "gpl",
-        "nvcodec",
-        "opus",
-        "qsv",
         "swresample",
         "swscale",
-        "vulkan",
+        "avfilter",
+        "gpl",
         "x264",
-        "x265"
+        "aom",
+        "dav1d",
+        "opus"
       ]
     },
     "godot-cpp",
