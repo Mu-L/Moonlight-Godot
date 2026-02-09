@@ -158,8 +158,8 @@ jobs:
             FEATURES=()
           fi
 
-          # vulkan: linux & windows & android
-          if [[ "$PLATFORM" == "linux" || "$PLATFORM" == "windows" || "$PLATFORM" == "android" ]]; then
+          # vulkan: linux & windows
+          if [[ "$PLATFORM" == "linux" || "$PLATFORM" == "windows"]]; then
             FEATURES+=("vulkan")
           fi
 

@@ -22,7 +22,6 @@
         "x264",
         "aom",
         "dav1d",
-        "vulkan",
         "opus"
       ]
     },

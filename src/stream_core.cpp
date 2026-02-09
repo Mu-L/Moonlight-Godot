@@ -456,6 +456,7 @@ end_of_thread:
 // ============================================================================
 // 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
+
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
 #if defined(_WIN32)
@@ -466,13 +467,14 @@ Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	types.push_back(AV_HWDEVICE_TYPE_CUDA);
 #elif defined(__APPLE__)
 	types.push_back(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
-#elif defined(__linux__)
+#elif defined(__linux__) && !defined(__ANDROID__)
 	types.push_back(AV_HWDEVICE_TYPE_VAAPI);
 	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
 	types.push_back(AV_HWDEVICE_TYPE_QSV);
 	types.push_back(AV_HWDEVICE_TYPE_CUDA);
 #elif defined(__ANDROID__)
-	types.push_back(AV_HWDEVICE_TYPE_MEDIACODEC); // Vulkan 不可用时仍保持硬解
+	// Android平台仅使用MediaCodec，不使用Vulkan
+	types.push_back(AV_HWDEVICE_TYPE_MEDIACODEC);
 #endif
 	return types;
 }
@@ -488,24 +490,11 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 	}
 	// 总是最后测试软件解码器
 	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE);
-
 	// 辅助 lambda 用于测试一个解码器组
 	auto test_family = [&](int family, int mask_bit) -> bool {
 		Vector<String> candidates = _get_candidate_decoders(family);
 		for (int i = 0; i < candidates.size(); i++) {
-			bool is_mediacodec = candidates[i].contains("_mediacodec");
-			
 			for (int j = 0; j < hw_devices.size(); j++) {
-#if defined(__ANDROID__)
-				// MediaCodec解码器跳过非MEDIACODEC和NONE的硬件类型
-				if (is_mediacodec && hw_devices[j] != AV_HWDEVICE_TYPE_MEDIACODEC && hw_devices[j] != AV_HWDEVICE_TYPE_NONE) {
-					continue;
-				}
-				// 非MediaCodec解码器跳过MEDIACODEC硬件类型
-				if (!is_mediacodec && hw_devices[j] == AV_HWDEVICE_TYPE_MEDIACODEC) {
-					continue;
-				}
-#endif
 				if (_try_open_decoder(candidates[i], test_w, test_h, hw_devices[j]) == 0) {
 					_cleanup_ffmpeg_video();
 					return true;
@@ -514,7 +503,6 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 		}
 		return false;
 	};
-
 	bool h264_ok = test_family(CODEC_FAMILY_H264, VIDEO_FORMAT_MASK_H264);
 	bool hevc_ok = false;
 	if (preference == CODEC_H265 || preference == CODEC_AUTO) {
@@ -524,7 +512,6 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 	if (preference == CODEC_AV1 || preference == CODEC_AUTO) {
 		av1_ok = test_family(CODEC_FAMILY_AV1, VIDEO_FORMAT_MASK_AV1);
 	}
-
 	if (preference == CODEC_AV1 && av1_ok)
 		supported_mask |= VIDEO_FORMAT_MASK_AV1;
 	else if (preference == CODEC_H265 && hevc_ok)
@@ -540,7 +527,6 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 		if (av1_ok)
 			supported_mask |= VIDEO_FORMAT_MASK_AV1;
 	}
-
 	if (supported_mask == 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Warning: No supported decoders found, forcing H.264");
 		supported_mask = VIDEO_FORMAT_MASK_H264;
@@ -552,7 +538,7 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	Vector<String> candidates;
 
 #if defined(__ANDROID__)
-	// Android平台优先使用MediaCodec硬件解码
+	// Android平台优先使用MediaCodec硬件解码器
 	if (codec_family == CODEC_FAMILY_H264) {
 		candidates.push_back("h264_mediacodec");
 	} else if (codec_family == CODEC_FAMILY_H265) {
@@ -562,7 +548,6 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	}
 #endif
 
-	// 软件解码器作为后备
 	if (codec_family == CODEC_FAMILY_H264)
 		candidates.push_back("h264");
 	else if (codec_family == CODEC_FAMILY_H265)
@@ -602,96 +587,97 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	const AVCodec *codec = avcodec_find_decoder_by_name(codec_name.utf8().get_data());
 	if (!codec)
 		return -1;
-
-	// MediaCodec解码器处理:忽略传入的hw_type,使用专属硬件类型
-	bool is_mediacodec = codec_name.contains("_mediacodec");
-	AVHWDeviceType actual_hw_type = hw_type;
-	
-#if defined(__ANDROID__)
-	if (is_mediacodec) {
-		// MediaCodec解码器只能使用MEDIACODEC硬件类型
-		actual_hw_type = AV_HWDEVICE_TYPE_MEDIACODEC;
-	} else if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
-		// 非MediaCodec解码器不能使用MEDIACODEC硬件类型
-		return -1;
-	}
-#endif
-
 	// 检查硬件设备是否被libavutil构建支持
-	if (actual_hw_type != AV_HWDEVICE_TYPE_NONE) {
-		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(actual_hw_type)) == AV_HWDEVICE_TYPE_NONE) {
+	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
+		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(hw_type)) == AV_HWDEVICE_TYPE_NONE) {
 			// 硬件设备未编译或未找到
 			return -1;
 		}
 	}
-
 	AVCodecContext *ctx = avcodec_alloc_context3(codec);
 	if (!ctx)
 		return -1;
-
 	ctx->width = width;
 	ctx->height = height;
 	ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
-	ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
+	ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT; // 对UDP流至关重要
 	ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
-	ctx->flags2 |= AV_CODEC_FLAG2_FAST;
+	ctx->flags2 |= AV_CODEC_FLAG2_FAST; // 允许非规范兼容的加速
+	// 报告解码错误以便我们请求关键帧
 	ctx->err_recognition = AV_EF_EXPLODE;
 
-	bool enforce_sw_pix_fmt = actual_hw_type == AV_HWDEVICE_TYPE_NONE &&
+#if defined(__ANDROID__)
+	// Android MediaCodec专属低延迟配置
+	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC && codec_name.find("mediacodec") != -1) {
+		// 启用低延迟模式
+		av_opt_set_int(ctx, "delay_flush", 1, 0);
+		av_opt_set_int(ctx, "lowlatency", 1, 0);
+		// 禁用B帧以降低延迟
+		ctx->max_b_frames = 0;
+	}
+#endif
+
+	bool enforce_sw_pix_fmt = hw_type == AV_HWDEVICE_TYPE_NONE &&
 			codec_name.find("av1") == -1 && codec_name.find("dav1d") == -1;
 	if (enforce_sw_pix_fmt) {
 		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	}
-
 	// 硬件加速设置
 	hw_pix_fmt = AV_PIX_FMT_NONE;
-	if (actual_hw_type != AV_HWDEVICE_TYPE_NONE) {
-		int err = av_hwdevice_ctx_create(&hw_device_ctx, actual_hw_type, nullptr, nullptr, 0);
+	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
+		int err = av_hwdevice_ctx_create(&hw_device_ctx, hw_type, nullptr, nullptr, 0);
 		if (err < 0) {
+			// 硬件初始化失败
 			avcodec_free_context(&ctx);
 			return -1;
 		}
 		ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
 		ctx->get_format = _get_hw_format_callback;
-
-		// 设置对应的像素格式
-		if (actual_hw_type == AV_HWDEVICE_TYPE_D3D11VA)
+		// 找到此硬件类型对应的像素格式
+		if (hw_type == AV_HWDEVICE_TYPE_D3D11VA)
 			hw_pix_fmt = AV_PIX_FMT_D3D11;
-		else if (actual_hw_type == AV_HWDEVICE_TYPE_DXVA2)
+		else if (hw_type == AV_HWDEVICE_TYPE_DXVA2)
 			hw_pix_fmt = AV_PIX_FMT_DXVA2_VLD;
-		else if (actual_hw_type == AV_HWDEVICE_TYPE_VAAPI)
+		else if (hw_type == AV_HWDEVICE_TYPE_VAAPI)
 			hw_pix_fmt = AV_PIX_FMT_VAAPI;
-		else if (actual_hw_type == AV_HWDEVICE_TYPE_CUDA)
+		else if (hw_type == AV_HWDEVICE_TYPE_CUDA)
 			hw_pix_fmt = AV_PIX_FMT_CUDA;
-		else if (actual_hw_type == AV_HWDEVICE_TYPE_QSV)
+		else if (hw_type == AV_HWDEVICE_TYPE_QSV)
 			hw_pix_fmt = AV_PIX_FMT_QSV;
-		else if (actual_hw_type == AV_HWDEVICE_TYPE_VIDEOTOOLBOX)
+		else if (hw_type == AV_HWDEVICE_TYPE_VIDEOTOOLBOX)
 			hw_pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
-		else if (actual_hw_type == AV_HWDEVICE_TYPE_MEDIACODEC)
+		else if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC)
 			hw_pix_fmt = AV_PIX_FMT_MEDIACODEC;
-		else if (actual_hw_type == AV_HWDEVICE_TYPE_VULKAN)
+		else if (hw_type == AV_HWDEVICE_TYPE_VULKAN)
 			hw_pix_fmt = AV_PIX_FMT_VULKAN;
-
-		UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(actual_hw_type));
+		UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(hw_type));
 	} else {
 		UtilityFunctions::print(LOG_PREFIX "Attempting SW Decoder: ", codec_name);
 	}
-
 	int thread_count = OS::get_singleton()->get_processor_count() - 1;
 	if (thread_count < 1)
 		thread_count = 1;
 
-	// MediaCodec必须使用单线程
-	if (is_mediacodec || actual_hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
+#if defined(__ANDROID__)
+	// MediaCodec解码器不支持多线程，强制单线程
+	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
 		ctx->thread_count = 1;
-	} else if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
-		ctx->thread_type = FF_THREAD_SLICE;
-		ctx->thread_count = thread_count;
-	} else {
-		ctx->thread_count = 1;
+		ctx->thread_type = 0; // 禁用线程
+	} else
+#endif
+	{
+		// 优先使用切片线程以降低延迟
+		if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
+			ctx->thread_type = FF_THREAD_SLICE;
+			ctx->thread_count = thread_count;
+		} else {
+			// 如果不支持切片多线程，则回退到1个线程。我们故意避免使用FF_THREAD_FRAME，因为它会引入与线程数量成正比的延迟。
+			ctx->thread_count = 1;
+		}
 	}
 
 	if (avcodec_open2(ctx, codec, nullptr) < 0) {
+		// 如果已打开，则清理硬件上下文
 		if (hw_device_ctx) {
 			av_buffer_unref(&hw_device_ctx);
 			hw_device_ctx = nullptr;
@@ -699,17 +685,15 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		avcodec_free_context(&ctx);
 		return -1;
 	}
-
 	v_codec = codec;
 	v_codec_ctx = ctx;
 	return 0;
 }
 
 int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) {
-	codec_mutex->lock();
+	codec_mutex->lock(); // 锁定
 	_cleanup_ffmpeg_video();
 	UtilityFunctions::print(LOG_PREFIX "Setup Video: Fmt=0x", String::num_int64(video_fmt, 16), " Size=", width, "x", height);
-
 	int family = -1;
 	if (video_fmt & VIDEO_FORMAT_MASK_H264)
 		family = CODEC_FAMILY_H264;
@@ -717,37 +701,21 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 		family = CODEC_FAMILY_H265;
 	else if (video_fmt & VIDEO_FORMAT_MASK_AV1)
 		family = CODEC_FAMILY_AV1;
-
 	if (family == -1) {
 		codec_mutex->unlock();
 		return -1;
 	}
-
 	Vector<String> candidates = _get_candidate_decoders(family);
 	Vector<AVHWDeviceType> hw_devices;
 	if (!disable_hw_decoding) {
 		hw_devices = _get_supported_hw_devices();
 	}
-	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE);
-
+	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE); // 回退到SW
 	bool opened = false;
 	String opened_name = "";
 	String opened_hw = "Software";
-
 	for (int i = 0; i < candidates.size(); i++) {
-		bool is_mediacodec = candidates[i].contains("_mediacodec");
-		
 		for (int j = 0; j < hw_devices.size(); j++) {
-#if defined(__ANDROID__)
-			// MediaCodec解码器跳过非MEDIACODEC和NONE的硬件类型
-			if (is_mediacodec && hw_devices[j] != AV_HWDEVICE_TYPE_MEDIACODEC && hw_devices[j] != AV_HWDEVICE_TYPE_NONE) {
-				continue;
-			}
-			// 非MediaCodec解码器跳过MEDIACODEC硬件类型
-			if (!is_mediacodec && hw_devices[j] == AV_HWDEVICE_TYPE_MEDIACODEC) {
-				continue;
-			}
-#endif
 			if (_try_open_decoder(candidates[i], width, height, hw_devices[j]) == 0) {
 				opened_name = candidates[i];
 				if (hw_devices[j] != AV_HWDEVICE_TYPE_NONE) {
@@ -760,21 +728,18 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 		if (opened)
 			break;
 	}
-
 	if (!opened) {
 		UtilityFunctions::printerr(LOG_PREFIX "No usable decoder found!");
 		call_deferred("emit_signal", "warning_message", "INIT_ERROR", "Failed to initialize any decoder");
-		codec_mutex->unlock();
+		codec_mutex->unlock(); // 失败时解锁
 		return -1;
 	}
-
 	UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name, " (", opened_hw, ")");
 	call_deferred("emit_signal", "log_message", "Decoder initialized: " + opened_name + " (" + opened_hw + ")");
-
 	video_width = width;
 	video_height = height;
-	video_format = -1;
-	codec_mutex->unlock();
+	video_format = -1; // 在第一帧强制初始化SWS
+	codec_mutex->unlock(); // 成功时解锁
 	return DR_OK;
 }
 
@@ -907,6 +872,7 @@ void MoonlightStreamCore::_apply_sws_colorspace(SwsContext *ctx, AVFrame *frame)
 // ============================================================================
 // moonlight音频流playback
 // ============================================================================
+// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 AudioStreamPlaybackMoonlight::AudioStreamPlaybackMoonlight() : active(false) {}
 AudioStreamPlaybackMoonlight::~AudioStreamPlaybackMoonlight() {}
@@ -935,6 +901,7 @@ void AudioStreamPlaybackMoonlight::_bind_methods() {}
 // ============================================================================
 // moonlight音频流
 // ============================================================================
+// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 AudioStreamMoonlight::AudioStreamMoonlight() : mix_rate(48000) {
 	buffer_mutex.instantiate();
@@ -1135,6 +1102,7 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 // ============================================================================
 // 静态回调与绑定
 // ============================================================================
+// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 void MoonlightStreamCore::_cl_stage_starting(int stage) { UtilityFunctions::print(LOG_PREFIX "Stage Starting: ", LiGetStageName(stage)); }
 void MoonlightStreamCore::_cl_connection_started() {
