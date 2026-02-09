@@ -153,16 +153,16 @@ jobs:
           if [[ "$PLATFORM" == "linux" ]]; then
           FEATURES+=("vaapi")
           fi
-          
+             
+          # vulkan: linux & windows
+          if [[ "$PLATFORM" == "linux" || "$PLATFORM" == "windows" || "$PLATFORM" == "android" ]]; then
+          FEATURES+=("vulkan")
+          fi
+
           if [[ "$PLATFORM" == "android" ]]; then
             FEATURES=()
           fi
-
-          # vulkan: linux & windows
-          if [[ "$PLATFORM" == "linux" || "$PLATFORM" == "windows"]]; then
-            FEATURES+=("vulkan")
-          fi
-
+          
           if [ ${#FEATURES[@]} -gt 0 ]; then
             IFS=','
             FEATURE_STR="${FEATURES[*]}"
