@@ -365,9 +365,21 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							LiRequestIdrFrame();
 							break;
 						}
-						// 优化：帧丢弃逻辑如果队列堆积（ > 10帧），跳过渲染（SWS + 纹理更新）以允许解码器跟上。我们仍然必须解码以保持上下文有效。注意：queue_size 是解码此帧前的快照
-						if (queue_size > 10) {
-							continue;
+						
+#if defined(__ANDROID__)
+						// Android优化：动态调整丢帧阈值
+						// MediaCodec 有内部缓冲，允许更大的队列
+						int drop_threshold = (hw_pix_fmt == AV_PIX_FMT_MEDIACODEC) ? 30 : 10;
+#else
+						int drop_threshold = 10;
+#endif
+						// 优化：帧丢弃逻辑
+						if (queue_size > drop_threshold) {
+							// Android MediaCodec: 仅在极端情况下丢帧
+							if (queue_size > 60) {
+								av_frame_unref(v_frame);
+								continue;
+							}
 						}
 
 						AVFrame *display_frame = v_frame;
@@ -383,6 +395,14 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							av_frame_copy_props(sw_frame, v_frame);
 							display_frame = sw_frame;
 						}
+						
+#if defined(__ANDROID__)
+						// Android MediaCodec 直接输出 YUV 数据，无需额外下载
+						if (v_frame->format == AV_PIX_FMT_MEDIACODEC) {
+							// MediaCodec 返回的帧已经在 CPU 可访问内存中
+							display_frame = v_frame;
+						}
+#endif
 
 						// 2. 确保 SWS 上下文正确初始化
 						int w = display_frame->width;
@@ -393,8 +413,13 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							if (sws_ctx)
 								sws_freeContext(sws_ctx);
 
-							// 关键点：显式指定转换 SWS_ACCURATE_RND 保证精度
-							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, SWS_BICUBIC, nullptr, nullptr, nullptr);
+#if defined(__ANDROID__)
+							// Android: 使用更快的缩放算法
+							int sws_flags = SWS_FAST_BILINEAR;
+#else
+							int sws_flags = SWS_BICUBIC;
+#endif
+							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, sws_flags, nullptr, nullptr, nullptr);
 
 							// 设置色彩空间细节（防止偏绿的核心步骤）
 							_apply_sws_colorspace(sws_ctx, display_frame);
@@ -611,9 +636,18 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC && codec_name.find("mediacodec") != -1) {
 		// 启用低延迟模式
 		av_opt_set_int(ctx, "delay_flush", 1, 0);
-		av_opt_set_int(ctx, "lowlatency", 1, 0);
+		// MediaCodec 的 lowlatency 选项在某些设备上可能不稳定，移除它
+		// av_opt_set_int(ctx, "lowlatency", 1, 0);
+		
 		// 禁用B帧以降低延迟
 		ctx->max_b_frames = 0;
+		
+		// 关键：设置输出格式为 Surface (Android特有)
+		// 这避免了 CPU 复制，直接渲染到 Surface
+		av_opt_set_int(ctx, "output_format", 2, 0); // OMX_COLOR_FormatAndroidOpaque
+		
+		// 启用操作模式为异步以降低延迟
+		av_opt_set_int(ctx, "operating_rate", 0x7FFFFFFF, 0); // 最大处理速率
 	}
 #endif
 
@@ -622,38 +656,49 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	if (enforce_sw_pix_fmt) {
 		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	}
-	// 硬件加速设置
-	hw_pix_fmt = AV_PIX_FMT_NONE;
-	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
-		int err = av_hwdevice_ctx_create(&hw_device_ctx, hw_type, nullptr, nullptr, 0);
-		if (err < 0) {
-			// 硬件初始化失败
-			avcodec_free_context(&ctx);
-			return -1;
-		}
-		ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
-		ctx->get_format = _get_hw_format_callback;
-		// 找到此硬件类型对应的像素格式
-		if (hw_type == AV_HWDEVICE_TYPE_D3D11VA)
-			hw_pix_fmt = AV_PIX_FMT_D3D11;
-		else if (hw_type == AV_HWDEVICE_TYPE_DXVA2)
-			hw_pix_fmt = AV_PIX_FMT_DXVA2_VLD;
-		else if (hw_type == AV_HWDEVICE_TYPE_VAAPI)
-			hw_pix_fmt = AV_PIX_FMT_VAAPI;
-		else if (hw_type == AV_HWDEVICE_TYPE_CUDA)
-			hw_pix_fmt = AV_PIX_FMT_CUDA;
-		else if (hw_type == AV_HWDEVICE_TYPE_QSV)
-			hw_pix_fmt = AV_PIX_FMT_QSV;
-		else if (hw_type == AV_HWDEVICE_TYPE_VIDEOTOOLBOX)
-			hw_pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
-		else if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC)
-			hw_pix_fmt = AV_PIX_FMT_MEDIACODEC;
-		else if (hw_type == AV_HWDEVICE_TYPE_VULKAN)
-			hw_pix_fmt = AV_PIX_FMT_VULKAN;
+	
+#if defined(__ANDROID__)
+	// Android MediaCodec：不需要手动创建 hw_device_ctx
+	// MediaCodec 会自动管理硬件资源
+	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
+		hw_pix_fmt = AV_PIX_FMT_MEDIACODEC;
 		UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(hw_type));
-	} else {
-		UtilityFunctions::print(LOG_PREFIX "Attempting SW Decoder: ", codec_name);
+		// 不设置 get_format 回调，让 MediaCodec 自动处理
+	} else
+#endif
+	{
+		// 硬件加速设置
+		hw_pix_fmt = AV_PIX_FMT_NONE;
+		if (hw_type != AV_HWDEVICE_TYPE_NONE) {
+			int err = av_hwdevice_ctx_create(&hw_device_ctx, hw_type, nullptr, nullptr, 0);
+			if (err < 0) {
+				// 硬件初始化失败
+				avcodec_free_context(&ctx);
+				return -1;
+			}
+			ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
+			ctx->get_format = _get_hw_format_callback;
+			// 找到此硬件类型对应的像素格式
+			if (hw_type == AV_HWDEVICE_TYPE_D3D11VA)
+				hw_pix_fmt = AV_PIX_FMT_D3D11;
+			else if (hw_type == AV_HWDEVICE_TYPE_DXVA2)
+				hw_pix_fmt = AV_PIX_FMT_DXVA2_VLD;
+			else if (hw_type == AV_HWDEVICE_TYPE_VAAPI)
+				hw_pix_fmt = AV_PIX_FMT_VAAPI;
+			else if (hw_type == AV_HWDEVICE_TYPE_CUDA)
+				hw_pix_fmt = AV_PIX_FMT_CUDA;
+			else if (hw_type == AV_HWDEVICE_TYPE_QSV)
+				hw_pix_fmt = AV_PIX_FMT_QSV;
+			else if (hw_type == AV_HWDEVICE_TYPE_VIDEOTOOLBOX)
+				hw_pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
+			else if (hw_type == AV_HWDEVICE_TYPE_VULKAN)
+				hw_pix_fmt = AV_PIX_FMT_VULKAN;
+			UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(hw_type));
+		} else {
+			UtilityFunctions::print(LOG_PREFIX "Attempting SW Decoder: ", codec_name);
+		}
 	}
+	
 	int thread_count = OS::get_singleton()->get_processor_count() - 1;
 	if (thread_count < 1)
 		thread_count = 1;
@@ -685,6 +730,19 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		avcodec_free_context(&ctx);
 		return -1;
 	}
+	
+#if defined(__ANDROID__)
+	// 验证 MediaCodec 是否成功初始化了硬件加速
+	if (hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
+		if (ctx->pix_fmt != AV_PIX_FMT_MEDIACODEC) {
+			UtilityFunctions::printerr(LOG_PREFIX "MediaCodec failed to initialize hardware acceleration, got format: ", av_get_pix_fmt_name(ctx->pix_fmt));
+			avcodec_free_context(&ctx);
+			return -1;
+		}
+		UtilityFunctions::print(LOG_PREFIX "MediaCodec successfully initialized with format: ", av_get_pix_fmt_name(ctx->pix_fmt));
+	}
+#endif
+	
 	v_codec = codec;
 	v_codec_ctx = ctx;
 	return 0;
@@ -763,7 +821,13 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 	}
 	if (packet_ready) {
 		queue_mutex->lock();
-		if (packet_queue.size() < 120) {
+#if defined(__ANDROID__)
+		// Android: 增加队列容量以适应 MediaCodec 的内部缓冲
+		int max_queue = (hw_pix_fmt == AV_PIX_FMT_MEDIACODEC) ? 200 : 120;
+#else
+		int max_queue = 120;
+#endif
+		if (packet_queue.size() < max_queue) {
 			packet_queue.push_back(pkt);
 			queue_mutex->unlock();
 			decode_sem->post();
@@ -774,7 +838,7 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 			static uint64_t last_log = 0;
 			uint64_t now = Time::get_singleton()->get_ticks_msec();
 			if (now - last_log > 1000) {
-				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 120)");
+				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > ", max_queue, ")");
 				last_log = now;
 			}
 			av_packet_free(&pkt);
