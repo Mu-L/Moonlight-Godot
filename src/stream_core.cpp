@@ -401,20 +401,17 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 								sws_freeContext(sws_ctx);
 
 							// 关键性能优化：NV12 -> RGBA 转换 (YUV转RGB)
-							// 在 Android 平台上，为了保证 1080p60fps 的性能，我们必须确保 libswscale 命中 NEON 汇编优化路径。
-							// 1. 使用 SWS_FAST_BILINEAR 算法。
-							// 2. 避免使用 sws_setColorspaceDetails (在 _apply_sws_colorspace 中)，这会强制 C 语言慢速路径。
-							//    默认的 sws_getContext 会根据分辨率自动选择正确的 YUV 矩阵 (BT.709/BT.601) 进行 RGB 转换。
+							// 在 Android 平台上使用 SWS_FAST_BILINEAR 提升缩放性能。
+							// 务必保留 _apply_sws_colorspace 调用，否则 YUV 系数错误会导致画面严重偏绿。
 							int sws_flags = SWS_BICUBIC;
 #if defined(__ANDROID__)
 							sws_flags = SWS_FAST_BILINEAR;
 #endif
 							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, sws_flags, nullptr, nullptr, nullptr);
 
-#if !defined(__ANDROID__)
-							// 非 Android 平台性能较强，可以应用更精确的色彩矩阵校正
+							// 始终应用色彩校正，确保 YUV->RGB 使用正确的矩阵（BT.709/601）和范围（JPEG/MPEG）。
+							// 修复画面偏绿问题。
 							_apply_sws_colorspace(sws_ctx, display_frame);
-#endif
 
 							video_width = w;
 							video_height = h;

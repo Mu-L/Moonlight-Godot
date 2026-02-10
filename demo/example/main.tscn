@@ -26,6 +26,15 @@ context_menu_enabled = false
 emoji_menu_enabled = false
 clear_button_enabled = true
 
+[node name="LineEdit2" type="LineEdit" parent="ScrollContainer/GridContainer" unique_id=1349395978]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "20"
+placeholder_text = "Bitrate（Mbps）"
+context_menu_enabled = false
+emoji_menu_enabled = false
+clear_button_enabled = true
+
 [node name="CheckButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=940442173]
 layout_mode = 2
 text = "Hardware 
@@ -142,6 +151,7 @@ file_mode = 3
 access = 1
 
 [connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit" to="." method="_on_line_edit_editing_toggled"]
+[connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit2" to="." method="_on_line_edit_editing_toggled"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]

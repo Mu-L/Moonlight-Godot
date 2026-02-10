@@ -92,7 +92,8 @@ func test_establish_stream() -> void:
         "gcmap": "1",
         "gcpersist": "1",
         "video_codec": $ScrollContainer/GridContainer/OptionButton.get_selected_id(),
-        "disable_hw_acceleration": not $ScrollContainer/GridContainer/CheckButton.button_pressed
+        "disable_hw_acceleration": not $ScrollContainer/GridContainer/CheckButton.button_pressed,
+        "bitrate": int($ScrollContainer/GridContainer/LineEdit2.text) * 10000
     }
 # delay(s)
 # WITH CHANGE:
@@ -111,7 +112,7 @@ func test_establish_stream() -> void:
     #   H265:0.27
     moonlightstreamcore.set_render_target($ScrollContainer/GridContainer/Screen)
     $ScrollContainer/GridContainer/AudioStreamPlayer.stream=moonlightstreamcore.get_audio_stream()
-    computermamager.establish_stream(1,1191261554,options,func(info): print(info);info["bitrate"]=200000;moonlightstreamcore.start_play_stream(info))
+    computermamager.establish_stream(1,1191261554,options,func(info): print(info);moonlightstreamcore.start_play_stream(info))
     await get_tree().create_timer(2).timeout
     $ScrollContainer/GridContainer/AudioStreamPlayer.play()
 
