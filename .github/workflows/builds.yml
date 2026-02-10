@@ -126,16 +126,16 @@ jobs:
         shell: bash
         run: |
           FEATURES=()
-          PLATFORM="${{ matrix.target.platform }}"
-          ARCH="${{ matrix.target.arch }}"
+          PLATFORM="ios"
+          ARCH="arm64"
 
           # nvcodec: linux | (!osx & !uwp & !(arm64 & windows))
-          if [[ "$PLATFORM" == "linux" ]] || [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && ! ("$ARCH" == "arm64" && "$PLATFORM" == "windows") ]]; then
+          if [[ "$PLATFORM" == "linux" ]] || [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && ! ( "$ARCH" == "arm64" && "$PLATFORM" == "windows" ) ]]; then
             FEATURES+=("nvcodec")
           fi
 
           # qsv: ((x86 | x64) & (linux | windows))
-          if [[ ("$ARCH" == "x86_64" && ("$PLATFORM" == "linux" || "$PLATFORM" == "windows")) ]] || [[ "$PLATFORM" == "windows" ]]; then
+          if [[ ( "$ARCH" == "x86_64" && ( "$PLATFORM" == "linux" || "$PLATFORM" == "windows" ) ) ]] || [[ "$PLATFORM" == "windows" ]]; then
             FEATURES+=("qsv")
           fi
 
@@ -146,17 +146,17 @@ jobs:
 
           # x265: !osx
           if [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && "$ARCH" != "arm64" ]]; then
-          FEATURES+=("x265")
+            FEATURES+=("x265")
           fi
 
           # vaapi: linux
           if [[ "$PLATFORM" == "linux" ]]; then
-          FEATURES+=("vaapi")
+            FEATURES+=("vaapi")
           fi
-             
+            
           # vulkan: linux & windows
           if [[ "$PLATFORM" == "linux" || "$PLATFORM" == "windows" || "$PLATFORM" == "android" ]]; then
-          FEATURES+=("vulkan")
+            FEATURES+=("vulkan")
           fi
 
           if [[ "$PLATFORM" == "android" ]]; then
@@ -164,8 +164,8 @@ jobs:
           fi
 
           # x264: !android
-          if [[ "$PLATFORM" != "android"]]; then
-          FEATURES+=("x264")
+          if [[ "$PLATFORM" != "android" ]]; then
+            FEATURES+=("x264")
           fi
 
           if [ ${#FEATURES[@]} -gt 0 ]; then
