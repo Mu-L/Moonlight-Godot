@@ -6,15 +6,17 @@
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mutex.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/semaphore.hpp>
+#include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/texture_rect.hpp>
 #include <godot_cpp/classes/thread.hpp>
-#include <godot_cpp/templates/list.hpp>
-#include <godot_cpp/templates/vector.hpp>
-#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/templates/list.hpp>
+#include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <atomic>
@@ -45,6 +47,9 @@ struct SwrContext;
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 }
+
+// YUV 转 RGB 的 shader 资源
+#include "yuvtorgb_shader.h"
 
 #define LOG_PREFIX "[Moonlight-StreamCore] "
 
@@ -173,7 +178,19 @@ private:
 
 	// --- 视频渲染状态 ---
 	TextureRect *display_rect = nullptr;
-	Ref<ImageTexture> display_texture;
+	Ref<ImageTexture> display_texture; // Used for SW fallback (RGBA) or placeholder
+
+	// Shader Pipeline Resources
+	bool use_shader_conversion = false;
+	Ref<ShaderMaterial> shader_material;
+	Ref<Shader> yuv_shader;
+
+	// Internal textures for planes (Y, U, V or Y, UV)
+	// We use max 3 planes (Y, U, V). For NV12, we use 0 (Y) and 1 (UV).
+	Ref<Image> plane_images[3];
+	Ref<ImageTexture> plane_textures[3];
+	PackedByteArray plane_buffers[3]; // Reusable intermediate buffers
+
 	Ref<Image> last_decoded_image;
 	Ref<Mutex> texture_mutex;
 	bool new_frame_available;
@@ -192,7 +209,6 @@ private:
 	AVCodecContext *v_codec_ctx = nullptr;
 	AVFrame *v_frame = nullptr;
 	AVFrame *sw_frame = nullptr; // 用于硬件下载的中间帧
-	SwsContext *sws_ctx = nullptr;
 	int video_width = 0;
 	int video_height = 0;
 	int video_format = 0;
@@ -202,7 +218,7 @@ private:
 	AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
 
 	// 优化：使用可重用缓冲区存储解码数据以避免每帧重新分配
-	PackedByteArray decode_buffer;
+	// PackedByteArray decode_buffer; // Removed: Legacy RGB buffer
 
 	// --- FFmpeg 音频上下文 ---
 	AVCodecContext *a_codec_ctx = nullptr;
@@ -221,7 +237,6 @@ private:
 	void _cleanup_ffmpeg_video();
 	void _cleanup_ffmpeg_audio();
 	String _get_error_string(int error_code);
-	void _apply_sws_colorspace(struct SwsContext *ctx, AVFrame *frame);
 	AVColorSpace _resolve_frame_colorspace(AVFrame *frame) const;
 
 	// limelight回调静态封装器
@@ -251,6 +266,8 @@ private:
 
 	// 内部更新方法
 	void _update_display_texture();
+	void _setup_shader_integration(int width, int height, AVPixelFormat format, AVColorSpace colorspace, AVColorRange color_range, int bit_depth);
+	void _update_textures_with_frame(AVFrame *frame);
 
 	// 线程循环
 	void _thread_func_connection();

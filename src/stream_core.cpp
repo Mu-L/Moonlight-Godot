@@ -1,4 +1,5 @@
 #include "stream_core.h"
+#include "yuvtorgb_shader.h"
 
 using namespace godot;
 
@@ -17,6 +18,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	new_frame_available = false;
 	selected_codec_config = CODEC_H264;
 	disable_hw_decoding = false;
+	use_shader_conversion = false;
 
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
@@ -208,8 +210,6 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 
 void MoonlightStreamCore::stop_play_stream() {
 	// 0. 停止流
-	// 即使 is_streaming 已经为 false，也必须允许清理。当服务器远程取消流时会发生这种情况（错误 - 100）。
-	// 如果我们在这里提前返回，LiStopConnection() 永远不会被调用，而 C 库的内部状态（CurrentStage）将保持脏状态，导致下一次启动时出现断言。
 	UtilityFunctions::print(LOG_PREFIX "Stopping stream...");
 
 	// 1. 设置标志
@@ -226,7 +226,7 @@ void MoonlightStreamCore::stop_play_stream() {
 	// 4. 停止库（对重置内部状态至关重要）
 	LiStopConnection();
 
-	// 5. 等待线程停止
+	// 5. 等待线程停止 (MUST wait before cleaning up shader resources to avoid '_texture_2d_update' crash)
 	if (connection_thread.is_valid()) {
 		connection_thread->wait_to_finish();
 		connection_thread.unref();
@@ -248,21 +248,56 @@ void MoonlightStreamCore::stop_play_stream() {
 	}
 	_cleanup_ffmpeg_video();
 	_cleanup_ffmpeg_audio();
-	reset_render_target();
+
+	// Clean up shader resources
+	// Important: Clear textures to release VRAM and avoid holding references preventing restart
+	for (int i = 0; i < 3; i++) {
+		if (plane_textures[i].is_valid())
+			plane_textures[i].unref();
+		if (plane_images[i].is_valid())
+			plane_images[i].unref();
+		plane_buffers[i].resize(0);
+	}
+	if (shader_material.is_valid()) {
+		shader_material.unref();
+	}
+	use_shader_conversion = false;
+
+	// 修复：不要在这里调用 reset_render_target()，否则下一次 start 时 display_rect 为 null 导致黑屏
+	// 我们只需要清理视觉残留
+	if (display_rect) {
+		display_rect->set_material(Ref<Material>());
+		display_rect->set_texture(Ref<Texture2D>());
+	}
 }
 
 void MoonlightStreamCore::set_render_target(TextureRect *target) {
 	display_rect = target;
 	if (display_rect) {
-		if (display_texture.is_null()) {
-			Ref<Image> img = Image::create(1280, 720, false, Image::FORMAT_RGBA8);
-			img->fill(Color(0, 0, 0, 1));
-			display_texture = ImageTexture::create_from_image(img);
+		// If using shaders, ensure the material is re-applied when target changes
+		if (use_shader_conversion && shader_material.is_valid()) {
+			display_rect->set_material(shader_material);
+			// Set a placeholder texture if null, so the rect actually draws
+			if (display_rect->get_texture().is_null()) {
+				// 1x1 dummy Texture
+				Ref<Image> img = Image::create(1, 1, false, Image::FORMAT_L8);
+				Ref<ImageTexture> tex = ImageTexture::create_from_image(img);
+				display_rect->set_texture(tex);
+			}
+		} else {
+			// Fallback / Initial State
+			display_rect->set_material(Ref<Material>()); // Clear material
+			// Clean up previous texture if any
+			display_rect->set_texture(Ref<Texture2D>());
 		}
-		display_rect->set_texture(display_texture);
 	}
 }
-void MoonlightStreamCore::reset_render_target() { display_rect = nullptr; }
+void MoonlightStreamCore::reset_render_target() {
+	if (display_rect) {
+		display_rect->set_material(Ref<Material>());
+	}
+	display_rect = nullptr;
+}
 Ref<AudioStream> MoonlightStreamCore::get_audio_stream() {
 	if (audio_stream.is_null())
 		audio_stream.instantiate();
@@ -277,27 +312,9 @@ void MoonlightStreamCore::reset_audio_stream(bool free_stream) {
 }
 
 void MoonlightStreamCore::_update_display_texture() {
-	if (!is_streaming.load())
-		return;
-	if (new_frame_available && texture_mutex.is_valid()) {
-		texture_mutex->lock();
-		if (last_decoded_image.is_valid() && display_texture.is_valid()) {
-			// ImageTexture::update() 需要精确的尺寸/格式匹配。
-			int tex_w = display_texture->get_width();
-			int tex_h = display_texture->get_height();
-			int img_w = last_decoded_image->get_width();
-			int img_h = last_decoded_image->get_height();
-			if (tex_w != img_w || tex_h != img_h || display_texture->get_format() != last_decoded_image->get_format()) {
-				// 如果纹理分辨率有变动，重新设置纹理
-				display_texture->set_image(last_decoded_image);
-			} else {
-				// 否则直接快速更新
-				display_texture->update(last_decoded_image);
-			}
-		}
-		new_frame_available = false;
-		texture_mutex->unlock();
-	}
+	// This function was for legacy SW fallback. Since we removed legacy CPU conversion,
+	// this is practically a no-op or placeholder.
+	return;
 }
 
 // ============================================================================
@@ -329,7 +346,7 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 		} else {
 			break;
 		}
-		// 尽可能排空队列，处理信号量发布合并或队列填充速度快于唤醒的情况
+		// 尽可能排空队列
 		while (true) {
 			AVPacket *pkt = nullptr;
 			int queue_size = 0;
@@ -340,35 +357,32 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 				packet_queue.pop_front();
 			}
 			queue_mutex->unlock();
-			// 退出条件：没有正在正常运行的流媒体连接且队列中没有数据
+
+			// Exit condition
 			if (!is_streaming.load() && pkt == nullptr) {
 				UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Stopping (Queue empty)");
 				goto end_of_thread;
 			}
-			// 如果没有数据包但仍在流式传输，跳出内循环以再次等待信号量
+
 			if (pkt == nullptr) {
 				break;
 			}
-			codec_mutex->lock(); // 锁：保护 v_codec_ctx 访问
+
+			codec_mutex->lock();
 			if (v_codec_ctx) {
 				int ret = avcodec_send_packet(v_codec_ctx, pkt);
 				if (ret >= 0) {
 					while (true) {
-						// v_frame 保证有效（在构造函数中分配）
 						ret = avcodec_receive_frame(v_codec_ctx, v_frame);
 						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 							break;
 						if (ret < 0) {
-							// 严重解码错误，请求新的数据流
 							UtilityFunctions::printerr(LOG_PREFIX "Decode error: ", ret);
-							call_deferred("emit_signal", "warning_message", "DECODE_ERROR", "Error receiving frame from decoder");
 							LiRequestIdrFrame();
 							break;
 						}
-						// 优化：帧丢弃逻辑。
-						// 队列积压表明渲染/转换跟不上解码。
-						// 如果积压严重(>12)，我们应该只解码不渲染，以尽快消耗队列，避免已解码帧的时间戳严重滞后。
-						// 提高阈值以优先保证连贯性，减少不需要的跳帧。
+
+						// Frame dropping optimization
 						bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
 						if (queue_size > 12 && !is_keyframe) {
 							continue;
@@ -376,11 +390,12 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 
 						AVFrame *display_frame = v_frame;
 
-						// 1. 硬件帧下载到 CPU (对于非引用计数的BUFFER模式，这里通常不执行，因为 hw_device_ctx 可能是 null)
-						// 针对 D3D11VA, VAAPI, CUDA 等真正的硬件上下文
-						if (v_frame->format == hw_pix_fmt && hw_device_ctx) {
+						// 1. Hardware frame transfer to system memory
+						bool is_hw_frame = (v_frame->format == hw_pix_fmt && hw_device_ctx);
+						if (is_hw_frame) {
 							if (!sw_frame)
 								sw_frame = av_frame_alloc();
+							// Download frame from GPU/Device to CPU memory for upload to Godot
 							int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
 							if (err < 0) {
 								UtilityFunctions::printerr(LOG_PREFIX "Failed to transfer hardware frame: ", err);
@@ -390,68 +405,30 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							display_frame = sw_frame;
 						}
 
-						// 2. 确保 SWS 上下文正确初始化
-						int w = display_frame->width;
-						int h = display_frame->height;
-						AVPixelFormat src_fmt = (AVPixelFormat)display_frame->format;
-
-						if (!sws_ctx || video_width != w || video_height != h || video_format != src_fmt) {
-							if (sws_ctx)
-								sws_freeContext(sws_ctx);
-
-							// 关键性能与画质平衡：
-							// 移除 SWS_ACCURATE_RND 以大幅提升移动端性能（防止阻塞解码线程）。
-							// 使用 SWS_BICUBIC 保持较好的画质，避免 FAST_BILINEAR 可能导致的色彩插值错误（绿边/偏色）。
-							int sws_flags = SWS_BICUBIC;
-							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, sws_flags, nullptr, nullptr, nullptr);
-
-							// 设置色彩空间细节（防止偏绿的核心步骤）
-							_apply_sws_colorspace(sws_ctx, display_frame);
-
-							video_width = w;
-							video_height = h;
-							video_format = src_fmt;
-						}
-
-						if (sws_ctx) {
-							// 关键修复：使用 av_image_fill_arrays 来自动计算正确的 linesize 和指针偏移，解决重影问题
-							int required_size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, w, h, 1);
-							if (decode_buffer.size() != required_size) {
-								decode_buffer.resize(required_size);
-							}
-
-							uint8_t *dest_data[4];
-							int dest_linesizes[4];
-							av_image_fill_arrays(dest_data, dest_linesizes, decode_buffer.ptrw(), AV_PIX_FMT_RGBA, w, h, 1);
-
-							// 执行转换
-							sws_scale(sws_ctx, display_frame->data, display_frame->linesize, 0, h, dest_data, dest_linesizes);
-
-							if (texture_mutex.is_valid()) {
-								texture_mutex->lock();
-								if (last_decoded_image.is_null() || last_decoded_image->get_width() != w || last_decoded_image->get_height() != h) {
-									last_decoded_image = Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
-								} else {
-									last_decoded_image->set_data(w, h, false, Image::FORMAT_RGBA8, decode_buffer);
-								}
-								new_frame_available = true;
-								texture_mutex->unlock();
-								call_deferred("_update_display_texture");
+						// 2. Upload to Godot Texture via RenderingServer (Shader Path)
+						if (use_shader_conversion) {
+							_update_textures_with_frame(display_frame);
+						} else {
+							// Should rarely happen if setup logic is correct.
+							// Attempt to setup shader if we haven't yet (lazy init for SW fallback)
+							if (video_width > 0 && video_height > 0) {
+								call_deferred("_setup_shader_integration", video_width, video_height, (AVPixelFormat)display_frame->format,
+										_resolve_frame_colorspace(display_frame), (AVColorRange)display_frame->color_range, 8);
+								// We lose this frame, but next one will catch up
 							}
 						}
-						// 如果我们使用了中间的SW帧，取消引用它
-						if (display_frame == sw_frame) {
+
+						// Unref temp frame if used
+						if (is_hw_frame) {
 							av_frame_unref(sw_frame);
 						}
 					}
 				} else {
-					// 发送数据包失败，可能是数据流损坏
 					UtilityFunctions::printerr(LOG_PREFIX "Send packet failed: ", ret);
-					call_deferred("emit_signal", "warning_message", "PACKET_ERROR", "Failed to send packet to decoder");
 					LiRequestIdrFrame();
 				}
 			}
-			codec_mutex->unlock(); // 解锁
+			codec_mutex->unlock();
 			av_packet_free(&pkt);
 		}
 	}
@@ -610,6 +587,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 			codec_name.find("av1") == -1 && codec_name.find("dav1d") == -1 &&
 			codec_name.find("_mediacodec") == -1; // 不要强制 MediaCodec 使用 YUV420P，它通常输出 NV12
 	if (enforce_sw_pix_fmt) {
+		// Require YUV420P for SW decoders so our shader can handle it
 		ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	}
 	// 硬件加速设置
@@ -731,9 +709,20 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	}
 	UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name, " (", opened_hw, ")");
 	call_deferred("emit_signal", "log_message", "Decoder initialized: " + opened_name + " (" + opened_hw + ")");
+	if (v_codec_ctx) {
+		AVPixelFormat fmt = v_codec_ctx->pix_fmt;
+		// Determine bit depth and HDR
+		// Note: v_codec_ctx->pix_fmt might be default here until first frame for HW decoders
+		// But for SW decoders it should be set.
+		// We optimistically setup shader. If invalid format, _setup_shader_integration will log and fail gracefully.
+		int bit_depth = 8;
+		// Use negotiate color range. If UNSPECIFIED, usually Limited (0) for video.
+		AVColorRange range = v_codec_ctx->color_range;
+		_setup_shader_integration(width, height, fmt, AVCOL_SPC_BT709, range, bit_depth);
+	}
 	video_width = width;
 	video_height = height;
-	video_format = -1; // 在第一帧强制初始化SWS
+	// video_format = -1; // Removed legacy SWS format tracking
 	codec_mutex->unlock(); // 成功时解锁
 	return DR_OK;
 }
@@ -791,18 +780,191 @@ void MoonlightStreamCore::_cleanup_ffmpeg_video() {
 	}
 	hw_pix_fmt = AV_PIX_FMT_NONE;
 
-	if (sws_ctx) {
-		sws_freeContext(sws_ctx);
-		sws_ctx = nullptr;
-	}
+	// Removed sws_ctx cleanup as it is removed
 	if (v_codec_ctx) {
 		avcodec_free_context(&v_codec_ctx);
 		v_codec_ctx = nullptr;
 	}
-	// 不要在这里释放 v_frame。它在核心实例的整个生命周期中都会存在
 }
 
-// 新增：根据帧信息推断色彩空间，供 SWS 配置使用
+// New helper to fill image with color (used for black initialization)
+static void fill_image_color(Ref<Image> img, Color color) {
+	if (img.is_null())
+		return;
+	// Simple fill for L8/RG8 using fill pattern
+	// Note: Image::fill(Color) works but maps mapping might be tricky for L8.
+	// L8 maps R channel. RG8 maps RG.
+	// For performance and correctness:
+	// Y (L8) Black: 0.0 -> 0 byte
+	// UV (RG8) Grey: 0.5, 0.5 -> 128, 128 bytes
+
+	// Since fill(Color) is available in Godot 4, we use it.
+	img->fill(color);
+}
+
+void MoonlightStreamCore::_setup_shader_integration(int width, int height, AVPixelFormat format, AVColorSpace colorspace, AVColorRange color_range, int bit_depth) {
+	// Only support optimized shader path for NV12 and YUV420P
+	bool is_nv12 = (format == AV_PIX_FMT_NV12);
+	bool is_yuv420p = (format == AV_PIX_FMT_YUV420P);
+
+	if (!is_nv12 && !is_yuv420p) {
+		// Relaxed check: if HW format is unknown yet (common in some ffmpeg versions init), default to NV12 for HW or YUV420P?
+		// For safety, if format is NONE or invalid, we assume NV12 if hw_device_ctx is present, else YUV420P.
+		if (format == AV_PIX_FMT_NONE) {
+			if (hw_device_ctx)
+				is_nv12 = true;
+			else
+				is_yuv420p = true;
+		} else {
+			use_shader_conversion = false;
+			UtilityFunctions::print(LOG_PREFIX "Format not supported by internal shader (", av_get_pix_fmt_name(format), "), shader path disabled.");
+			return;
+		}
+	}
+
+	UtilityFunctions::print(LOG_PREFIX "Initializing Godot Shader Video Pipeline. Format: ", is_nv12 ? "NV12" : "YUV420P");
+	use_shader_conversion = true;
+
+	int y_w = width;
+	int y_h = height;
+	int uv_w = width / 2;
+	int uv_h = height / 2;
+
+	// Plane 0: Y (L8) - Init to Black (0)
+	plane_images[0] = Image::create(y_w, y_h, false, Image::FORMAT_L8);
+	fill_image_color(plane_images[0], Color(0, 0, 0));
+	plane_textures[0] = ImageTexture::create_from_image(plane_images[0]);
+
+	if (is_nv12) {
+		// Plane 1: UV (RG8) - Init to Neutral (128, 128) -> Color(0.5, 0.5, 0.5)
+		plane_images[1] = Image::create(uv_w, uv_h, false, Image::FORMAT_RG8);
+		fill_image_color(plane_images[1], Color(0.5, 0.5, 0.5));
+		plane_textures[1] = ImageTexture::create_from_image(plane_images[1]);
+	} else {
+		// Plane 1: U (L8) - Init to 0.5
+		plane_images[1] = Image::create(uv_w, uv_h, false, Image::FORMAT_L8);
+		fill_image_color(plane_images[1], Color(0.5, 0.5, 0.5));
+		plane_textures[1] = ImageTexture::create_from_image(plane_images[1]);
+
+		// Plane 2: V (L8) - Init to 0.5
+		plane_images[2] = Image::create(uv_w, uv_h, false, Image::FORMAT_L8);
+		fill_image_color(plane_images[2], Color(0.5, 0.5, 0.5));
+		plane_textures[2] = ImageTexture::create_from_image(plane_images[2]);
+	}
+
+	// Create Material
+	if (yuv_shader.is_null()) {
+		yuv_shader.instantiate();
+		yuv_shader->set_code(YUV_SHADER_CODE);
+	}
+	if (shader_material.is_null()) {
+		shader_material.instantiate();
+		shader_material->set_shader(yuv_shader);
+	}
+
+	shader_material->set_shader_parameter("is_semi_planar", is_nv12);
+
+	// Infer matrix
+	int matrix_type = 1; // Default BT.709
+	if (colorspace == AVCOL_SPC_BT470BG || colorspace == AVCOL_SPC_SMPTE170M) {
+		matrix_type = 0;
+	} else if (colorspace == AVCOL_SPC_BT2020_NCL || colorspace == AVCOL_SPC_BT2020_CL) {
+		matrix_type = 2;
+	} else if (width < 1280 && height < 720) {
+		matrix_type = 0;
+	}
+	shader_material->set_shader_parameter("color_matrix_type", matrix_type);
+
+	// Determine Color Range
+	// 0 = Limited (default for most video), 1 = Full
+	int range_val = 0;
+	if (color_range == AVCOL_RANGE_JPEG) {
+		range_val = 1;
+	} else if (color_range == AVCOL_RANGE_UNSPECIFIED) {
+		// PC streaming (NVEncode) is usually Full Range via Moonlight,
+		// but raw video/Android HW decoders often default to Limited.
+		// We can try to guess or default to Limited (safe choice to avoid crushing blacks).
+		// However, Moonlight protocol often implies Full Range for gaming.
+		// If "whitish" was the issue, it means we displayed Limited data as Full.
+		// So defaulting to Limited (letting shader expand it) fixes whitish.
+		range_val = 0;
+	} else {
+		range_val = 0; // AVCOL_RANGE_MPEG
+	}
+
+	// Override based on manual stream config if present?
+	// For now trust FFmpeg context or stick to Limited default to fix "whitish" look.
+	shader_material->set_shader_parameter("color_range", range_val);
+
+	// Assign Textures
+	shader_material->set_shader_parameter("tex_y", plane_textures[0]);
+	shader_material->set_shader_parameter("tex_u", plane_textures[1]);
+	if (!is_nv12) {
+		shader_material->set_shader_parameter("tex_v", plane_textures[2]);
+	}
+
+	// Apply to Target
+	call_deferred("set_render_target", display_rect);
+}
+
+void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
+	if (!frame)
+		return;
+
+	// Use RenderingServer for thread-safe updates without memory allocation overhead.
+	RenderingServer *rs = RenderingServer::get_singleton();
+
+	auto upload_plane = [&](int gl_idx, int av_idx, int w, int h, int bpp) {
+		// CRITICAL FIX: Ensure image resources still exist (handle race condition on stop)
+		if (plane_images[gl_idx].is_null() || plane_images[gl_idx]->is_empty())
+			return;
+		if (plane_textures[gl_idx].is_null())
+			return;
+
+		int src_stride = frame->linesize[av_idx];
+		int dst_stride = w * bpp;
+		int required_size = dst_stride * h;
+
+		// Resize local buffer if needed
+		if (plane_buffers[gl_idx].size() != required_size) {
+			plane_buffers[gl_idx].resize(required_size);
+		}
+
+		uint8_t *dst = plane_buffers[gl_idx].ptrw();
+		uint8_t *src = frame->data[av_idx];
+
+		if (src_stride == dst_stride) {
+			memcpy(dst, src, required_size);
+		} else {
+			for (int i = 0; i < h; i++) {
+				memcpy(dst + i * dst_stride, src + i * src_stride, dst_stride);
+			}
+		}
+
+		// Push data to Godot
+		plane_images[gl_idx]->set_data(w, h, false, (bpp == 2) ? Image::FORMAT_RG8 : Image::FORMAT_L8, plane_buffers[gl_idx]);
+		rs->texture_2d_update(plane_textures[gl_idx]->get_rid(), plane_images[gl_idx], 0);
+	};
+
+	bool is_nv12 = (frame->format == AV_PIX_FMT_NV12);
+
+	// Upload layout based on format detected in setup
+	// If frame format mismatches setup (e.g. dynamic format change), this might look weird,
+	// but usually format is constant or stream resets.
+
+	// Y Plane
+	upload_plane(0, 0, frame->width, frame->height, 1);
+
+	if (is_nv12) {
+		// UV Plane (NV12)
+		upload_plane(1, 1, frame->width / 2, frame->height / 2, 2);
+	} else {
+		// U + V Planes (YUV420P)
+		upload_plane(1, 1, frame->width / 2, frame->height / 2, 1);
+		upload_plane(2, 2, frame->width / 2, frame->height / 2, 1);
+	}
+}
+
 AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) const {
 	if (!frame)
 		return AVCOL_SPC_BT709;
@@ -822,9 +984,6 @@ AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) cons
 	}
 #endif
 
-	// Android MediaCodec (Buffer Mode) 经常返回 UNSPECIFIED，尤其是在 H.264 上。
-	// 大多数 Android 设备解码器输出 Limited Range 的数据，默认 BT.601 (SD) 或 BT.709 (HD)。
-	// 如果不显式处理，SWS 默认可能使用错误矩阵导致偏色（偏绿或偏淡）。
 	if (declared == AVCOL_SPC_UNSPECIFIED || declared == AVCOL_SPC_RGB) {
 #if defined(__ANDROID__)
 		// Android 强推测：HD/FHD 使用 BT.709，SD 使用 BT.601
@@ -835,50 +994,6 @@ AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) cons
 	}
 
 	return declared;
-}
-
-void MoonlightStreamCore::_apply_sws_colorspace(SwsContext *ctx, AVFrame *frame) {
-	if (!ctx || !frame)
-		return;
-
-	AVColorSpace src_csp = _resolve_frame_colorspace(frame);
-	// Android MediaCodec 默认通常是 Limited Range (MPEG)，除非显式标记为 JPEG
-	int src_full_range = (frame->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
-	int dst_full_range = 1;
-
-#if defined(_WIN32)
-	bool hw_dx = hw_device_ctx != nullptr &&
-			(hw_pix_fmt == AV_PIX_FMT_D3D11 || hw_pix_fmt == AV_PIX_FMT_DXVA2_VLD);
-	if (hw_dx && (frame->format == AV_PIX_FMT_NV12 || frame->format == AV_PIX_FMT_P010LE)) {
-		// 强制使用 BT.709 + 限制级范围，避免偏绿
-		frame->color_primaries = AVCOL_PRI_BT709;
-		frame->color_trc = AVCOL_TRC_BT709;
-		frame->color_range = AVCOL_RANGE_MPEG;
-		src_full_range = 0;
-		src_csp = AVCOL_SPC_BT709;
-	}
-#endif
-
-#if defined(__ANDROID__)
-	// 针对 Android 部分机型 MediaCodec 输出范围标记丢失的修正
-	if (frame->color_range == AVCOL_RANGE_UNSPECIFIED) {
-		src_full_range = 0; // 默认为 Limited
-	}
-#endif
-
-	frame->colorspace = src_csp;
-
-	const int *src_mat = sws_getCoefficients(src_csp);
-	const int *dst_mat = sws_getCoefficients(AVCOL_SPC_RGB);
-	if (!src_mat || !dst_mat)
-		return;
-
-	if (sws_setColorspaceDetails(ctx,
-				const_cast<int *>(src_mat), src_full_range,
-				const_cast<int *>(dst_mat), dst_full_range,
-				0, 1 << 16, 1 << 16) < 0) {
-		UtilityFunctions::printerr(LOG_PREFIX "Failed to configure SWS colorspace, using defaults");
-	}
 }
 
 // ============================================================================

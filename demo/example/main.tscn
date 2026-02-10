@@ -140,6 +140,7 @@ appdata"
 autoplay = true
 
 [node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=428695045]
+custom_minimum_size = Vector2(1280, 720)
 layout_mode = 2
 
 [node name="FileDialog" type="FileDialog" parent="ScrollContainer" unique_id=1291668764]
