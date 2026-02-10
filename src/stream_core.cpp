@@ -448,8 +448,8 @@ end_of_thread:
 
 void MoonlightStreamCore::_request_idr_frame(const String &reason) {
 	uint64_t now = Time::get_singleton()->get_ticks_msec();
-	// Throttle to once every 500ms
-	if (now - last_idr_time > 500) {
+	// Throttle to once every 2000ms to prevent log spam and network congestion
+	if (now - last_idr_time > 2000) {
 		if (enable_idr_logs) {
 			UtilityFunctions::print(LOG_PREFIX "Requesting IDR: ", reason);
 		}
@@ -462,11 +462,10 @@ Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
 #if defined(__ANDROID__)
 	// Android: 返回空列表。
-	// 虽然新版 FFmpeg 可以通过 NDK 自行解决 JNI，但我们需要的是解码数据回到内存（YUV 纹理上传），
-	// 而不是渲染到 Surface（AV_HWDEVICE_TYPE_MEDIACODEC 通常暗示 Surface 输出）。
-	// 通过返回空列表，我们在 _try_open_decoder 中使用 AV_HWDEVICE_TYPE_NONE，
-	// 并明确指定 "h264_mediacodec" 等名称，这会强制 FFmpeg 运行在 "MediaCodec Buffer Mode"。
-	// 这既利用了硬件解码，又拿到了 YUV 数据供 Godot Shader 使用。
+	// 这会迫使逻辑只使用 AV_HWDEVICE_TYPE_NONE。
+	// 当我们使用 AV_HWDEVICE_TYPE_NONE 并通过名称 (如 "h264_mediacodec") 打开解码器时，
+	// FFmpeg 会进入 MediaCodec Buffer 模式。
+	// 这规避了复杂的 JNI/Surface 设置，并且是 Godot 这种自绘引擎所需要的（我们需要 YUV 数据）。
 #elif defined(_WIN32)
 	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
 	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
@@ -548,6 +547,7 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 		candidates.push_back("av1_mediacodec");
 	}
 #endif
+	// 软件解码器作为后备
 	if (codec_family == CODEC_FAMILY_H264)
 		candidates.push_back("h264");
 	else if (codec_family == CODEC_FAMILY_H265)

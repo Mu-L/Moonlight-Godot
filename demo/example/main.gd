@@ -93,7 +93,8 @@ func test_establish_stream() -> void:
         "gcpersist": "1",
         "video_codec": $ScrollContainer/GridContainer/OptionButton.get_selected_id(),
         "disable_hw_acceleration": not $ScrollContainer/GridContainer/CheckButton.button_pressed,
-        "bitrate": int($ScrollContainer/GridContainer/LineEdit2.text) * 10000
+        "bitrate": int($ScrollContainer/GridContainer/LineEdit2.text) * 10000,
+        "debug_idr_log":false
     }
 # delay(s)
 # WITH CHANGE:
