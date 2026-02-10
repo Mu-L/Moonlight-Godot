@@ -126,9 +126,8 @@ jobs:
         shell: bash
         run: |
           FEATURES=()
-          PLATFORM="ios"
-          ARCH="arm64"
-
+          PLATFORM="${{ matrix.target.platform }}"
+          ARCH="${{ matrix.target.arch }}"
           # nvcodec: linux | (!osx & !uwp & !(arm64 & windows))
           if [[ "$PLATFORM" == "linux" ]] || [[ "$PLATFORM" != "macos" && "$PLATFORM" != "ios" && ! ( "$ARCH" == "arm64" && "$PLATFORM" == "windows" ) ]]; then
             FEATURES+=("nvcodec")
@@ -162,7 +161,6 @@ jobs:
           if [[ "$PLATFORM" == "android" ]]; then
             FEATURES=()
           fi
-
           # x264: !android
           if [[ "$PLATFORM" != "android" ]]; then
             FEATURES+=("x264")

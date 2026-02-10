@@ -399,13 +399,10 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							if (sws_ctx)
 								sws_freeContext(sws_ctx);
 
-							// 关键性能优化：在 Android 或 CPU 较弱的平台上，SWS_BICUBIC | SWS_ACCURATE_RND 过于昂贵。
-							// 改回 SWS_FAST_BILINEAR。虽然稍微牺牲画质（尤其是缩放时），但对于 NV12->RGBA 的 1:1 转换，这能带来巨大的性能提升。
-							int sws_flags = SWS_FAST_BILINEAR;
-#if !defined(__ANDROID__) && !defined(__APPLE__)
-							// 桌面平台如果不是Buffer模式，通常可以使用更高质量的缩放
-							sws_flags = SWS_BICUBIC;
-#endif
+							// 关键性能与画质平衡：
+							// 移除 SWS_ACCURATE_RND 以大幅提升移动端性能（防止阻塞解码线程）。
+							// 使用 SWS_BICUBIC 保持较好的画质，避免 FAST_BILINEAR 可能导致的色彩插值错误（绿边/偏色）。
+							int sws_flags = SWS_BICUBIC;
 							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, sws_flags, nullptr, nullptr, nullptr);
 
 							// 设置色彩空间细节（防止偏绿的核心步骤）
@@ -506,6 +503,10 @@ int MoonlightStreamCore::_probe_video_format(MoonlightStreamCore::VideoCodecConf
 	auto test_family = [&](int family) -> bool {
 		Vector<String> candidates = _get_candidate_decoders(family);
 		for (int i = 0; i < candidates.size(); i++) {
+			// 修复手动禁用硬件解码无效的问题：在探测阶段跳过 mediacodec
+			if (disable_hw_decoding && candidates[i].find("_mediacodec") != -1) {
+				continue;
+			}
 			for (int j = 0; j < hw_devices.size(); j++) {
 				if (_try_open_decoder(candidates[i], test_w, test_h, hw_devices[j]) == 0) {
 					_cleanup_ffmpeg_video();
@@ -601,6 +602,10 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	ctx->flags2 |= AV_CODEC_FLAG2_FAST; // 允许非规范兼容的加速
 	// 报告解码错误以便我们请求关键帧
 	ctx->err_recognition = AV_EF_EXPLODE;
+
+	// 修复：移除强制 NV12 的逻辑。让 FFmpeg 自动协商 MediaCodec 的最佳输出格式。
+	// 强制格式可能导致 H.264 解码器初始化失败或输出绿屏（因为实际输出并非 NV12）。
+
 	bool enforce_sw_pix_fmt = hw_type == AV_HWDEVICE_TYPE_NONE &&
 			codec_name.find("av1") == -1 && codec_name.find("dav1d") == -1 &&
 			codec_name.find("_mediacodec") == -1; // 不要强制 MediaCodec 使用 YUV420P，它通常输出 NV12
@@ -699,6 +704,10 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	String opened_name = "";
 	String opened_hw = "Software";
 	for (int i = 0; i < candidates.size(); i++) {
+		// 修复手动禁用硬件解码无效的问题：在 setup 阶段跳过 mediacodec
+		if (disable_hw_decoding && candidates[i].find("_mediacodec") != -1) {
+			continue;
+		}
 		for (int j = 0; j < hw_devices.size(); j++) {
 			if (_try_open_decoder(candidates[i], width, height, hw_devices[j]) == 0) {
 				opened_name = candidates[i];
@@ -813,8 +822,16 @@ AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) cons
 	}
 #endif
 
+	// Android MediaCodec (Buffer Mode) 经常返回 UNSPECIFIED，尤其是在 H.264 上。
+	// 大多数 Android 设备解码器输出 Limited Range 的数据，默认 BT.601 (SD) 或 BT.709 (HD)。
+	// 如果不显式处理，SWS 默认可能使用错误矩阵导致偏色（偏绿或偏淡）。
 	if (declared == AVCOL_SPC_UNSPECIFIED || declared == AVCOL_SPC_RGB) {
+#if defined(__ANDROID__)
+		// Android 强推测：HD/FHD 使用 BT.709，SD 使用 BT.601
+		return (frame->width >= 1280 || frame->height >= 720) ? AVCOL_SPC_BT709 : AVCOL_SPC_BT470BG;
+#else
 		return (frame->width <= 1024 && frame->height <= 576) ? AVCOL_SPC_BT470BG : AVCOL_SPC_BT709;
+#endif
 	}
 
 	return declared;
@@ -825,6 +842,7 @@ void MoonlightStreamCore::_apply_sws_colorspace(SwsContext *ctx, AVFrame *frame)
 		return;
 
 	AVColorSpace src_csp = _resolve_frame_colorspace(frame);
+	// Android MediaCodec 默认通常是 Limited Range (MPEG)，除非显式标记为 JPEG
 	int src_full_range = (frame->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
 	int dst_full_range = 1;
 
@@ -838,6 +856,13 @@ void MoonlightStreamCore::_apply_sws_colorspace(SwsContext *ctx, AVFrame *frame)
 		frame->color_range = AVCOL_RANGE_MPEG;
 		src_full_range = 0;
 		src_csp = AVCOL_SPC_BT709;
+	}
+#endif
+
+#if defined(__ANDROID__)
+	// 针对 Android 部分机型 MediaCodec 输出范围标记丢失的修正
+	if (frame->color_range == AVCOL_RANGE_UNSPECIFIED) {
+		src_full_range = 0; // 默认为 Limited
 	}
 #endif
 

@@ -164,7 +164,7 @@ private:
 	SERVER_INFORMATION server_info;
 
 	VideoCodecConfig selected_codec_config;
-	bool disable_hw_decoding;
+	bool disable_hw_decoding; // 为 true 时将跳过 mediacodec 与硬件设备，仅使用纯软件解码
 
 	// 回调
 	CONNECTION_LISTENER_CALLBACKS cl_callbacks;
