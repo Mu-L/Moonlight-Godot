@@ -8,6 +8,7 @@ Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 // ============================================================================
 // moonlight流核心
 // ============================================================================
+// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 MoonlightStreamCore::MoonlightStreamCore() {
 	// 默认参数设定
@@ -364,8 +365,12 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							LiRequestIdrFrame();
 							break;
 						}
-						// 优化：帧丢弃逻辑如果队列堆积（ > 10帧），跳过渲染（SWS + 纹理更新）以允许解码器跟上。我们仍然必须解码以保持上下文有效。注意：queue_size 是解码此帧前的快照
-						if (queue_size > 10) {
+						// 优化：帧丢弃逻辑。
+						// 队列积压表明渲染/转换跟不上解码。
+						// 如果积压严重(>10)，我们应该只解码不渲染，以尽快消耗队列，避免已解码帧的时间戳严重滞后。
+						// 注意：对于关键帧（IDR），我们尽量不丢弃，否则画面会花。
+						bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
+						if (queue_size > 5 && !is_keyframe) { // 阈值调低到5，更积极地追赶进度
 							continue;
 						}
 
@@ -394,9 +399,14 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							if (sws_ctx)
 								sws_freeContext(sws_ctx);
 
-							// 关键点：使用 SWS_BICUBIC 加 SWS_ACCURATE_RND 确保色彩精度，防止偏绿
-							// 对于 SWS_BICUBIC，即使在 1:1 转换中，SWS_ACCURATE_RND 也能稍微改善颜色转换的舍入
-							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, SWS_BICUBIC | SWS_ACCURATE_RND, nullptr, nullptr, nullptr);
+							// 关键性能优化：在 Android 或 CPU 较弱的平台上，SWS_BICUBIC | SWS_ACCURATE_RND 过于昂贵。
+							// 改回 SWS_FAST_BILINEAR。虽然稍微牺牲画质（尤其是缩放时），但对于 NV12->RGBA 的 1:1 转换，这能带来巨大的性能提升。
+							int sws_flags = SWS_FAST_BILINEAR;
+#if !defined(__ANDROID__) && !defined(__APPLE__)
+							// 桌面平台如果不是Buffer模式，通常可以使用更高质量的缩放
+							sws_flags = SWS_BICUBIC;
+#endif
+							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, sws_flags, nullptr, nullptr, nullptr);
 
 							// 设置色彩空间细节（防止偏绿的核心步骤）
 							_apply_sws_colorspace(sws_ctx, display_frame);
@@ -739,7 +749,8 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 	}
 	if (packet_ready) {
 		queue_mutex->lock();
-		if (packet_queue.size() < 120) {
+		// 增大队列允许的最大长度，防止在稍微的网络抖动或CPU瞬时高负载时立即丢包
+		if (packet_queue.size() < 240) {
 			packet_queue.push_back(pkt);
 			queue_mutex->unlock();
 			decode_sem->post();
@@ -750,7 +761,7 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 			static uint64_t last_log = 0;
 			uint64_t now = Time::get_singleton()->get_ticks_msec();
 			if (now - last_log > 1000) {
-				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 120)");
+				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 240)");
 				last_log = now;
 			}
 			av_packet_free(&pkt);

@@ -19,7 +19,6 @@
         "swscale",
         "avfilter",
         "gpl",
-        "x264",
         "aom",
         "dav1d",
         "opus"
