@@ -20,6 +20,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	disable_hw_decoding = false;
 	use_shader_conversion = false;
 	last_idr_time = 0;
+	enable_idr_logs = false;
 
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
@@ -116,6 +117,8 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 
 	// 2. 编解码器选择
 	disable_hw_decoding = options.get("disable_hw_acceleration", false);
+	enable_idr_logs = options.get("debug_idr_log", false); // 默认关闭
+
 	int codec_val = options.get("video_codec", (int)CODEC_H264);
 	selected_codec_config = (VideoCodecConfig)codec_val;
 	String codec_name;
@@ -447,7 +450,9 @@ void MoonlightStreamCore::_request_idr_frame(const String &reason) {
 	uint64_t now = Time::get_singleton()->get_ticks_msec();
 	// Throttle to once every 500ms
 	if (now - last_idr_time > 500) {
-		UtilityFunctions::print(LOG_PREFIX "Requesting IDR: ", reason);
+		if (enable_idr_logs) {
+			UtilityFunctions::print(LOG_PREFIX "Requesting IDR: ", reason);
+		}
 		LiRequestIdrFrame();
 		last_idr_time = now;
 	}
@@ -456,11 +461,12 @@ void MoonlightStreamCore::_request_idr_frame(const String &reason) {
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
 #if defined(__ANDROID__)
-	// Android MediaCodec：不要返回 HW Device Type。
-	// 在 FFmpeg 6.0+ 中，如果我们在 _try_open_decoder 中不提供 hw_device_ctx (即 NULL)，
-	// 并且使用名字 "h264_mediacodec" 打开，MediaCodec 将运行在缓冲模式，输出 NV12 格式到内存。
-	// 这正是我们需要直接通过 sws_scale 转换的模式，完全绕过 Surface 和 JNI 的复杂性。
-	// 返回空列表将导致 _try_open_decoder 中的 hw_type 为 NONE，从而跳过 ctx->hw_device_ctx 的创建。
+	// Android: 返回空列表。
+	// 虽然新版 FFmpeg 可以通过 NDK 自行解决 JNI，但我们需要的是解码数据回到内存（YUV 纹理上传），
+	// 而不是渲染到 Surface（AV_HWDEVICE_TYPE_MEDIACODEC 通常暗示 Surface 输出）。
+	// 通过返回空列表，我们在 _try_open_decoder 中使用 AV_HWDEVICE_TYPE_NONE，
+	// 并明确指定 "h264_mediacodec" 等名称，这会强制 FFmpeg 运行在 "MediaCodec Buffer Mode"。
+	// 这既利用了硬件解码，又拿到了 YUV 数据供 Godot Shader 使用。
 #elif defined(_WIN32)
 	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
 	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
@@ -533,12 +539,14 @@ int MoonlightStreamCore::_probe_video_format(MoonlightStreamCore::VideoCodecConf
 Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	Vector<String> candidates;
 #if defined(__ANDROID__)
-	if (codec_family == CODEC_FAMILY_H264)
+	// Android 必须优先尝试 mediacodec
+	if (codec_family == CODEC_FAMILY_H264) {
 		candidates.push_back("h264_mediacodec");
-	else if (codec_family == CODEC_FAMILY_H265)
+	} else if (codec_family == CODEC_FAMILY_H265) {
 		candidates.push_back("hevc_mediacodec");
-	else if (codec_family == CODEC_FAMILY_AV1)
+	} else if (codec_family == CODEC_FAMILY_AV1) {
 		candidates.push_back("av1_mediacodec");
+	}
 #endif
 	if (codec_family == CODEC_FAMILY_H264)
 		candidates.push_back("h264");
@@ -582,7 +590,9 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	// 极致低延迟选项：设置内部 delay 为 0，防止帧缓存
 	ctx->delay = 0;
 
-	// 对UDP流至关重要。注意：某些 mediacodec 实现可能不喜欢 OUTPUT_CORRUPT，导致解码失败
+	// 对UDP流至关重要。
+	// 注意：Android MediaCodec (Buffer Mode) 往往不支持 OUTPUT_CORRUPT 标志，会导致 avcodec_open2 失败 (Error -22 / EINVAL)
+	// 或者导致解码器处于错误状态。我们在 Android 上禁用它。
 	if (codec_name.find("_mediacodec") == -1) {
 		ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
 	}

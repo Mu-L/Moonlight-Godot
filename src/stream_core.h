@@ -204,6 +204,9 @@ private:
 	Ref<Semaphore> decode_sem;
 	Ref<Mutex> codec_mutex;
 
+	// --- Debug Options ---
+	bool enable_idr_logs = false;
+
 	// --- 音频状态 ---
 	Ref<AudioStreamMoonlight> audio_stream;
 
