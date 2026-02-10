@@ -1,9 +1,5 @@
 #include "stream_core.h"
 
-#ifdef __ANDROID__
-#include <godot_cpp/core/jni_helper.hpp>
-#endif
-
 using namespace godot;
 
 static MoonlightStreamCore *singleton_instance = nullptr;
@@ -12,7 +8,6 @@ Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 // ============================================================================
 // moonlight流核心
 // ============================================================================
-// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 MoonlightStreamCore::MoonlightStreamCore() {
 	// 默认参数设定
@@ -195,15 +190,6 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	server_info.serverCodecModeSupport = options.get("server_codec_mode_support", 0);
 	is_streaming.store(true);
 
-#ifdef __ANDROID__
-	// 针对 Android 的关键修复：必须向 FFmpeg 提供 JavaVM 才能正常启动 MediaCodec 硬件加速组件并发挥性能
-	JavaVM *jvm = godot::JNIRuntime::get_java_vm();
-	if (jvm) {
-		av_jni_set_java_vm(jvm, nullptr);
-		UtilityFunctions::print(LOG_PREFIX "Android JNI JavaVM attached to FFmpeg");
-	}
-#endif
-
 	// 5. 启动线程
 	if (connection_thread.is_valid()) {
 		connection_thread->wait_to_finish();
@@ -364,37 +350,35 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 			}
 			codec_mutex->lock(); // 锁：保护 v_codec_ctx 访问
 			if (v_codec_ctx) {
-				// 极致低延迟：如果队列中积压了超过 2 帧，且当前包是 IDR，则清空解码器并直接从这一帧开始
-				if (pkt->flags & AV_PKT_FLAG_KEY && queue_size > 2) {
-					avcodec_flush_buffers(v_codec_ctx);
-				}
-
 				int ret = avcodec_send_packet(v_codec_ctx, pkt);
 				if (ret >= 0) {
 					while (true) {
+						// v_frame 保证有效（在构造函数中分配）
 						ret = avcodec_receive_frame(v_codec_ctx, v_frame);
 						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 							break;
 						if (ret < 0) {
+							// 严重解码错误，请求新的数据流
 							UtilityFunctions::printerr(LOG_PREFIX "Decode error: ", ret);
+							call_deferred("emit_signal", "warning_message", "DECODE_ERROR", "Error receiving frame from decoder");
 							LiRequestIdrFrame();
 							break;
 						}
-
-						// Android 16 优化：如果解码后的积压依然超过 1 帧，立即丢弃当前帧以赶上进度
-						// 这样可以解决“PPT”感，因为它强制画面同步到最新。
-						if (queue_size > 1) {
+						// 优化：帧丢弃逻辑如果队列堆积（ > 10帧），跳过渲染（SWS + 纹理更新）以允许解码器跟上。我们仍然必须解码以保持上下文有效。注意：queue_size 是解码此帧前的快照
+						if (queue_size > 10) {
 							continue;
 						}
 
 						AVFrame *display_frame = v_frame;
 
-						// 1. 硬件帧下载到 CPU
+						// 1. 硬件帧下载到 CPU (对于非引用计数的BUFFER模式，这里通常不执行，因为 hw_device_ctx 可能是 null)
+						// 针对 D3D11VA, VAAPI, CUDA 等真正的硬件上下文
 						if (v_frame->format == hw_pix_fmt && hw_device_ctx) {
 							if (!sw_frame)
 								sw_frame = av_frame_alloc();
 							int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
 							if (err < 0) {
+								UtilityFunctions::printerr(LOG_PREFIX "Failed to transfer hardware frame: ", err);
 								continue;
 							}
 							av_frame_copy_props(sw_frame, v_frame);
@@ -410,14 +394,9 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							if (sws_ctx)
 								sws_freeContext(sws_ctx);
 
-							// 关键优化：Android 上 SWS_BICUBIC 进行彩色空间转换极其吃 CPU，这是造成 1080p“PPT”感和高延迟的核心瓶颈。
-							// 针对 Android 强制使用 SWS_FAST_BILINEAR，将宝贵的 CPU 资源留给解码和逻辑处理，确保画面能同步。
-							int flags = SWS_BICUBIC | SWS_ACCURATE_RND;
-#ifdef __ANDROID__
-							flags = SWS_FAST_BILINEAR;
-#endif
-
-							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, flags, nullptr, nullptr, nullptr);
+							// 关键点：使用 SWS_BICUBIC 加 SWS_ACCURATE_RND 确保色彩精度，防止偏绿
+							// 对于 SWS_BICUBIC，即使在 1:1 转换中，SWS_ACCURATE_RND 也能稍微改善颜色转换的舍入
+							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, SWS_BICUBIC | SWS_ACCURATE_RND, nullptr, nullptr, nullptr);
 
 							// 设置色彩空间细节（防止偏绿的核心步骤）
 							_apply_sws_colorspace(sws_ctx, display_frame);
@@ -428,12 +407,12 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						}
 
 						if (sws_ctx) {
+							// 关键修复：使用 av_image_fill_arrays 来自动计算正确的 linesize 和指针偏移，解决重影问题
 							int required_size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, w, h, 1);
 							if (decode_buffer.size() != required_size) {
 								decode_buffer.resize(required_size);
 							}
 
-							// 关键修复：使用 av_image_fill_arrays 来自动计算正确的 linesize 和指针偏移，解决重影问题
 							uint8_t *dest_data[4];
 							int dest_linesizes[4];
 							av_image_fill_arrays(dest_data, dest_linesizes, decode_buffer.ptrw(), AV_PIX_FMT_RGBA, w, h, 1);
@@ -481,7 +460,11 @@ end_of_thread:
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
 #if defined(__ANDROID__)
-	// Android MediaCodec 优化：不提供 HW Context 以进入 Buffer 模式输出 NV12
+	// Android MediaCodec：不要返回 HW Device Type。
+	// 在 FFmpeg 6.0+ 中，如果我们在 _try_open_decoder 中不提供 hw_device_ctx (即 NULL)，
+	// 并且使用名字 "h264_mediacodec" 打开，MediaCodec 将运行在缓冲模式，输出 NV12 格式到内存。
+	// 这正是我们需要直接通过 sws_scale 转换的模式，完全绕过 Surface 和 JNI 的复杂性。
+	// 返回空列表将导致 _try_open_decoder 中的 hw_type 为 NONE，从而跳过 ctx->hw_device_ctx 的创建。
 #elif defined(_WIN32)
 	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
 	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
@@ -492,12 +475,13 @@ Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 #elif defined(__linux__)
 	types.push_back(AV_HWDEVICE_TYPE_VAAPI);
 	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
+	types.push_back(AV_HWDEVICE_TYPE_QSV);
 	types.push_back(AV_HWDEVICE_TYPE_CUDA);
 #endif
 	return types;
 }
 
-int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
+int MoonlightStreamCore::_probe_video_format(MoonlightStreamCore::VideoCodecConfig preference) {
 	int supported_mask = 0;
 	int test_w = 1280;
 	int test_h = 720;
@@ -506,6 +490,7 @@ int MoonlightStreamCore::_probe_video_format(VideoCodecConfig preference) {
 	if (!disable_hw_decoding) {
 		hw_devices = _get_supported_hw_devices();
 	}
+	// 总是最后测试无硬件上下文模式（软件或 Android MediaCodec Buffer 模式）
 	hw_devices.push_back(AV_HWDEVICE_TYPE_NONE);
 
 	auto test_family = [&](int family) -> bool {
@@ -593,19 +578,11 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	ctx->width = width;
 	ctx->height = height;
 	ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
-	ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER; // 帮助某些驱动减少解析时间
 
+	// 极致低延迟选项：设置内部 delay 为 0，防止帧缓存
 	ctx->delay = 0;
 
-	// Android 16 MediaCodec 专用调试标志
-#if defined(__ANDROID__)
-	if (codec_name.find("mediacodec") != -1) {
-		// 某些版本的 FFmpeg 允许通过 private_data 设置特定的 mediacodec 标志
-		av_opt_set_int(ctx->priv_data, "low_delay", 1, 0);
-	}
-#endif
-
-	// 对UDP流至关重要。
+	// 对UDP流至关重要。注意：某些 mediacodec 实现可能不喜欢 OUTPUT_CORRUPT，导致解码失败
 	if (codec_name.find("_mediacodec") == -1) {
 		ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
 	}
@@ -650,25 +627,23 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 			hw_pix_fmt = AV_PIX_FMT_VULKAN;
 		UtilityFunctions::print(LOG_PREFIX "Attempting HW Decoder: ", codec_name, " Type: ", av_hwdevice_get_type_name(hw_type));
 	} else {
-		// 修复日志混淆：如果是 mediacodec，虽然 hw_type 为 NONE，但它依然是硬件加速
-		if (codec_name.find("mediacodec") != -1) {
-			UtilityFunctions::print(LOG_PREFIX "Attempting HW Wrapper Decoder: ", codec_name);
-		} else {
-			UtilityFunctions::print(LOG_PREFIX "Attempting SW Decoder: ", codec_name);
-		}
+		// Android MediaCodec buffer mode 也会走进这里 (hw_type == NONE)
+		UtilityFunctions::print(LOG_PREFIX "Attempting SW/Buffer Decoder: ", codec_name);
 	}
 	int thread_count = OS::get_singleton()->get_processor_count() - 1;
 	if (thread_count < 1)
 		thread_count = 1;
 
-	// 核心低延时修复：强制禁用帧并行解码 (FF_THREAD_FRAME)
-	// 帧并行解码会为了利用多核而缓存 N 帧，每核一帧，直接导致 N/FPS 的毫秒延迟。
+	// 优化：线程延迟处理。
+	// 对于所有的硬件加速模式，强制使用 1 个线程解码。
+	// 多线程硬解不仅不能减小单帧延迟，反而经常因为线程管理和同步机制引入 16-33ms 的额外缓冲。
 	if (hw_type != AV_HWDEVICE_TYPE_NONE) {
 		ctx->thread_count = 1;
-		ctx->thread_type = 0;
+		ctx->thread_type = 0; // 禁用帧并行解码（会引入延迟）
 	} else {
+		// 软解仅使用 Slice 线程以保持低延迟
 		if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
-			ctx->thread_type = FF_THREAD_SLICE; // 切片并行不会导致帧级延迟
+			ctx->thread_type = FF_THREAD_SLICE;
 			ctx->thread_count = thread_count;
 		} else {
 			ctx->thread_count = 1;
@@ -719,9 +694,8 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 				opened_name = candidates[i];
 				if (hw_devices[j] != AV_HWDEVICE_TYPE_NONE) {
 					opened_hw = String(av_hwdevice_get_type_name(hw_devices[j]));
-				} else if (opened_name.find("mediacodec") != -1) {
-					// 修正显示：即便没有关联独立 HW Device Context，mediacodec 本质仍是硬件加速路径。
-					opened_hw = "MediaCodec";
+				} else if (candidates[i].find("_mediacodec") != -1) {
+					opened_hw = "MediaCodec (Buffer)";
 				}
 				opened = true;
 				break;
@@ -752,10 +726,6 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 	AVPacket *pkt = av_packet_alloc();
 	bool packet_ready = false;
 	if (pkt && av_new_packet(pkt, decode_unit->fullLength) >= 0) {
-		// 记录帧类型信息
-		if (decode_unit->frameType == FRAME_TYPE_IDR) {
-			pkt->flags |= AV_PKT_FLAG_KEY;
-		}
 		int offset = 0;
 		PLENTRY entry = decode_unit->bufferList;
 		while (entry != nullptr) {
@@ -769,18 +739,24 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 	}
 	if (packet_ready) {
 		queue_mutex->lock();
-		// 实时流极致丢包逻辑：如果队列中已经有超过 2 个包，丢弃旧包，推送新包。
-		// 这样可以移除网络波动导致的帧积压（PPT 效应的主要来源）。
-		while (packet_queue.size() >= 2) {
-			AVPacket *old_pkt = packet_queue.front()->get();
-			packet_queue.pop_front();
-			av_packet_free(&old_pkt);
+		if (packet_queue.size() < 120) {
+			packet_queue.push_back(pkt);
+			queue_mutex->unlock();
+			decode_sem->post();
+			return DR_OK;
+		} else {
+			queue_mutex->unlock();
+			// 限制因溢出导致的日志泛滥
+			static uint64_t last_log = 0;
+			uint64_t now = Time::get_singleton()->get_ticks_msec();
+			if (now - last_log > 1000) {
+				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 120)");
+				last_log = now;
+			}
+			av_packet_free(&pkt);
+			// 丢帧但不请求 IDR，避免循环请求
+			return DR_OK;
 		}
-
-		packet_queue.push_back(pkt);
-		queue_mutex->unlock();
-		decode_sem->post();
-		return DR_OK;
 	} else {
 		if (pkt)
 			av_packet_free(&pkt);

@@ -17,10 +17,6 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
-#ifdef __ANDROID__
-#include <jni.h>
-#endif
-
 #include <atomic>
 #include <string>
 #include <vector>
@@ -29,11 +25,6 @@
 
 // 包含C API
 #include "Limelight.h"
-
-#ifdef __ANDROID__
-#include <libavcodec/jni.h>
-#include <godot_cpp/core/jni_helper.hpp>
-#endif
 
 // 前向声明 FFmpeg 结构体
 extern "C" {
@@ -53,9 +44,6 @@ struct SwrContext;
 #include <libavutil/pixfmt.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
-#ifdef __ANDROID__
-#include <libavcodec/jni.h>
-#endif
 }
 
 #define LOG_PREFIX "[Moonlight-StreamCore] "
