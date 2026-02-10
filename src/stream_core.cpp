@@ -19,6 +19,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	selected_codec_config = CODEC_H264;
 	disable_hw_decoding = false;
 	use_shader_conversion = false;
+	last_idr_time = 0;
 
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
@@ -377,12 +378,11 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 							break;
 						if (ret < 0) {
-							UtilityFunctions::printerr(LOG_PREFIX "Decode error: ", ret);
-							LiRequestIdrFrame();
+							// 严重解码错误，请求新的数据流 - Throttled
+							_request_idr_frame("Decode Error " + String::num_int64(ret));
 							break;
 						}
-
-						// Frame dropping optimization
+						// 优化：帧丢弃逻辑。
 						bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
 						if (queue_size > 12 && !is_keyframe) {
 							continue;
@@ -424,11 +424,13 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						}
 					}
 				} else {
-					UtilityFunctions::printerr(LOG_PREFIX "Send packet failed: ", ret);
-					LiRequestIdrFrame();
+					// 发送数据包失败 - Throttled
+					if (ret != AVERROR(EAGAIN)) {
+						_request_idr_frame("Send Packet Failed " + String::num_int64(ret));
+					}
 				}
 			}
-			codec_mutex->unlock();
+			codec_mutex->unlock(); // 解锁
 			av_packet_free(&pkt);
 		}
 	}
@@ -440,6 +442,16 @@ end_of_thread:
 // FFmpeg 辅助方法+AVPacket解码
 // ============================================================================
 // 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+
+void MoonlightStreamCore::_request_idr_frame(const String &reason) {
+	uint64_t now = Time::get_singleton()->get_ticks_msec();
+	// Throttle to once every 500ms
+	if (now - last_idr_time > 500) {
+		UtilityFunctions::print(LOG_PREFIX "Requesting IDR: ", reason);
+		LiRequestIdrFrame();
+		last_idr_time = now;
+	}
+}
 
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
@@ -915,10 +927,14 @@ void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
 	RenderingServer *rs = RenderingServer::get_singleton();
 
 	auto upload_plane = [&](int gl_idx, int av_idx, int w, int h, int bpp) {
-		// CRITICAL FIX: Ensure image resources still exist (handle race condition on stop)
-		if (plane_images[gl_idx].is_null() || plane_images[gl_idx]->is_empty())
+		// CRITICAL FIX: Ensure image resources still exist and validity check for _texture_2d_update
+		// Capture Refs locally to avoid race conditions if stop_play_stream logic changes
+		Ref<Image> img = plane_images[gl_idx];
+		Ref<ImageTexture> tex = plane_textures[gl_idx];
+
+		if (img.is_null() || img->is_empty())
 			return;
-		if (plane_textures[gl_idx].is_null())
+		if (tex.is_null())
 			return;
 
 		int src_stride = frame->linesize[av_idx];
@@ -942,8 +958,13 @@ void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
 		}
 
 		// Push data to Godot
-		plane_images[gl_idx]->set_data(w, h, false, (bpp == 2) ? Image::FORMAT_RG8 : Image::FORMAT_L8, plane_buffers[gl_idx]);
-		rs->texture_2d_update(plane_textures[gl_idx]->get_rid(), plane_images[gl_idx], 0);
+		img->set_data(w, h, false, (bpp == 2) ? Image::FORMAT_RG8 : Image::FORMAT_L8, plane_buffers[gl_idx]);
+
+		// Double check before sending to RS
+		if (img->is_empty())
+			return;
+
+		rs->texture_2d_update(tex->get_rid(), img, 0);
 	};
 
 	bool is_nv12 = (frame->format == AV_PIX_FMT_NV12);

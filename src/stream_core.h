@@ -195,6 +195,9 @@ private:
 	Ref<Mutex> texture_mutex;
 	bool new_frame_available;
 
+	// Throttling
+	uint64_t last_idr_time = 0;
+
 	// --- 数据包队列（Pull 与 Decode 之间的缓冲区） ---
 	List<AVPacket *> packet_queue;
 	Ref<Mutex> queue_mutex;
@@ -229,6 +232,8 @@ private:
 	// --- 内部方法 ---
 	int _probe_video_format(VideoCodecConfig preference);
 	Vector<String> _get_candidate_decoders(int codec_family);
+
+	void _request_idr_frame(const String &reason);
 
 	// 帮助获取特定平台的硬件优先级
 	Vector<AVHWDeviceType> _get_supported_hw_devices();
