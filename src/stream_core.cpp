@@ -367,10 +367,11 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						}
 						// 优化：帧丢弃逻辑。
 						// 队列积压表明渲染/转换跟不上解码。
-						// 如果积压严重(>10)，我们应该只解码不渲染，以尽快消耗队列，避免已解码帧的时间戳严重滞后。
+						// 如果积压严重(>5)，我们应该只解码不渲染，以尽快消耗队列，避免已解码帧的时间戳严重滞后。
 						// 注意：对于关键帧（IDR），我们尽量不丢弃，否则画面会花。
+						int drop_threshold = 5;
 						bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
-						if (queue_size > 5 && !is_keyframe) { // 阈值调低到5，更积极地追赶进度
+						if (queue_size > drop_threshold && !is_keyframe) {
 							continue;
 						}
 
@@ -399,17 +400,21 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							if (sws_ctx)
 								sws_freeContext(sws_ctx);
 
-							// 关键性能优化：在 Android 或 CPU 较弱的平台上，SWS_BICUBIC | SWS_ACCURATE_RND 过于昂贵。
-							// 改回 SWS_FAST_BILINEAR。虽然稍微牺牲画质（尤其是缩放时），但对于 NV12->RGBA 的 1:1 转换，这能带来巨大的性能提升。
-							int sws_flags = SWS_FAST_BILINEAR;
-#if !defined(__ANDROID__) && !defined(__APPLE__)
-							// 桌面平台如果不是Buffer模式，通常可以使用更高质量的缩放
-							sws_flags = SWS_BICUBIC;
+							// 关键性能优化：NV12 -> RGBA 转换 (YUV转RGB)
+							// 在 Android 平台上，为了保证 1080p60fps 的性能，我们必须确保 libswscale 命中 NEON 汇编优化路径。
+							// 1. 使用 SWS_FAST_BILINEAR 算法。
+							// 2. 避免使用 sws_setColorspaceDetails (在 _apply_sws_colorspace 中)，这会强制 C 语言慢速路径。
+							//    默认的 sws_getContext 会根据分辨率自动选择正确的 YUV 矩阵 (BT.709/BT.601) 进行 RGB 转换。
+							int sws_flags = SWS_BICUBIC;
+#if defined(__ANDROID__)
+							sws_flags = SWS_FAST_BILINEAR;
 #endif
 							sws_ctx = sws_getContext(w, h, src_fmt, w, h, AV_PIX_FMT_RGBA, sws_flags, nullptr, nullptr, nullptr);
 
-							// 设置色彩空间细节（防止偏绿的核心步骤）
+#if !defined(__ANDROID__)
+							// 非 Android 平台性能较强，可以应用更精确的色彩矩阵校正
 							_apply_sws_colorspace(sws_ctx, display_frame);
+#endif
 
 							video_width = w;
 							video_height = h;
@@ -417,17 +422,19 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						}
 
 						if (sws_ctx) {
-							// 关键修复：使用 av_image_fill_arrays 来自动计算正确的 linesize 和指针偏移，解决重影问题
-							int required_size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, w, h, 1);
+							// 使用 32 字节对齐以配合 ARM NEON SIMD 指令
+							int align = 32;
+							int required_size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, w, h, align);
 							if (decode_buffer.size() != required_size) {
 								decode_buffer.resize(required_size);
 							}
 
 							uint8_t *dest_data[4];
 							int dest_linesizes[4];
-							av_image_fill_arrays(dest_data, dest_linesizes, decode_buffer.ptrw(), AV_PIX_FMT_RGBA, w, h, 1);
+							// 务必使用与 size 计算相同的对齐
+							av_image_fill_arrays(dest_data, dest_linesizes, decode_buffer.ptrw(), AV_PIX_FMT_RGBA, w, h, align);
 
-							// 执行转换
+							// 执行 YUV -> RGBA 转换
 							sws_scale(sws_ctx, display_frame->data, display_frame->linesize, 0, h, dest_data, dest_linesizes);
 
 							if (texture_mutex.is_valid()) {
