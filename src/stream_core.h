@@ -207,6 +207,9 @@ private:
 	// --- Debug Options ---
 	bool enable_idr_logs = false;
 
+	// --- Decoder State ---
+	bool is_hw_decode_active = false;
+
 	// --- 音频状态 ---
 	Ref<AudioStreamMoonlight> audio_stream;
 

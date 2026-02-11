@@ -1,4 +1,5 @@
 #include "stream_core.h"
+#include "yuvtorgb_shader.h"
 
 using namespace godot;
 
@@ -20,6 +21,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	use_shader_conversion = false;
 	last_idr_time = 0;
 	enable_idr_logs = false;
+	is_hw_decode_active = false;
 
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
@@ -265,6 +267,7 @@ void MoonlightStreamCore::stop_play_stream() {
 		shader_material.unref();
 	}
 	use_shader_conversion = false;
+	is_hw_decode_active = false;
 
 	// 修复：不要在这里调用 reset_render_target()，否则下一次 start 时 display_rect 为 null 导致黑屏
 	// 我们只需要清理视觉残留
@@ -353,35 +356,8 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 		while (true) {
 			AVPacket *pkt = nullptr;
 			int queue_size = 0;
-
-			// 3. 软件解码/延迟恢复逻辑：若积压过多，丢弃旧帧并请求刷新
 			queue_mutex->lock();
 			queue_size = packet_queue.size();
-			if (queue_size > 15) { // 阈值：15帧 (60fps时约250ms)
-				UtilityFunctions::print(LOG_PREFIX "Decoder lagging (Queue=", queue_size, "), flushing to recover latency...");
-
-				// 清空队列
-				while (packet_queue.size() > 0) {
-					AVPacket *p = packet_queue.front()->get();
-					packet_queue.pop_front();
-					av_packet_free(&p);
-				}
-				queue_mutex->unlock();
-
-				// 刷新解码器内部缓冲
-				codec_mutex->lock();
-				if (v_codec_ctx) {
-					avcodec_flush_buffers(v_codec_ctx);
-				}
-				codec_mutex->unlock();
-
-				// 请求关键帧以重置流
-				_request_idr_frame("Decoder Lag Flush");
-
-				// 跳过本次循环，重新等待新数据
-				continue;
-			}
-
 			if (queue_size > 0) {
 				pkt = packet_queue.front()->get();
 				packet_queue.pop_front();
@@ -414,7 +390,6 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 						// 优化：帧丢弃逻辑。
 						bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
 						if (queue_size > 12 && !is_keyframe) {
-							// 注意：即使因为队列长选择丢弃显示，也必须释放帧引用！
 							av_frame_unref(v_frame);
 							continue;
 						}
@@ -430,8 +405,6 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
 							if (err < 0) {
 								UtilityFunctions::printerr(LOG_PREFIX "Failed to transfer hardware frame: ", err);
-								// 释放引用
-								av_frame_unref(v_frame);
 								continue;
 							}
 							av_frame_copy_props(sw_frame, v_frame);
@@ -451,15 +424,10 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 							}
 						}
 
-						// Unref temp frame if used for download
+						// Unref temp frame if used
 						if (is_hw_frame) {
 							av_frame_unref(sw_frame);
 						}
-
-						// 2. H265/MediaCodec 修复: 显式释放解码器帧引用
-						// 必须立即释放 v_frame，否则直到下一次 avcodec_receive_frame 调用前，
-						// 都会占用一个 MediaCodec 缓冲区。这会导致 "BufferManager::ReleaseBuffer ref_count = 1"
-						// 以及缓冲区耗尽导致的丢帧。
 						av_frame_unref(v_frame);
 					}
 				} else {
@@ -692,20 +660,12 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		ctx->thread_count = 1;
 		ctx->thread_type = 0; // 禁用帧并行解码（会引入延迟）
 	} else {
-		// 1. Android MediaCodec 修复:
-		// MediaCodec 封装层不支持 Slice Threading，且多线程初始化会导致 avcodec_open2 失败。
-		// 必须强制指定 thread_count 为 1。
-		if (codec_name.find("_mediacodec") != -1) {
-			ctx->thread_count = 1;
-			ctx->thread_type = 0;
+		// 软解仅使用 Slice 线程以保持低延迟
+		if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
+			ctx->thread_type = FF_THREAD_SLICE;
+			ctx->thread_count = thread_count;
 		} else {
-			// 软解仅使用 Slice 线程以保持低延迟
-			if (codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) {
-				ctx->thread_type = FF_THREAD_SLICE;
-				ctx->thread_count = thread_count;
-			} else {
-				ctx->thread_count = 1;
-			}
+			ctx->thread_count = 1;
 		}
 	}
 
@@ -813,8 +773,21 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 	}
 	if (packet_ready) {
 		queue_mutex->lock();
+		int qsize = packet_queue.size();
+		// 软解压力过大时清理队列并请求 IDR
+		if (!is_hw_decode_active && qsize > 128) {
+			while (packet_queue.size() > 0) {
+				AVPacket *old = packet_queue.front()->get();
+				packet_queue.pop_front();
+				av_packet_free(&old);
+			}
+			queue_mutex->unlock();
+			av_packet_free(&pkt);
+			_request_idr_frame("SW Queue Flush");
+			return DR_OK;
+		}
 		// 增大队列允许的最大长度至 512，防止在稍微的网络抖动或CPU瞬时高负载时立即硬件级丢包造成花屏
-		if (packet_queue.size() < 512) {
+		if (qsize < 512) {
 			packet_queue.push_back(pkt);
 			queue_mutex->unlock();
 			decode_sem->post();
