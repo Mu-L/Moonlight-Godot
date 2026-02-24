@@ -580,12 +580,60 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 #if defined(__ANDROID__)
 	// Android 必须优先尝试 mediacodec
 	if (codec_family == CODEC_FAMILY_H264) {
-		candidates.push_back("h264_mediacodec");
-	} else if (codec_family == CODEC_FAMILY_H265) {
-		candidates.push_back("hevc_mediacodec");
-	} else if (codec_family == CODEC_FAMILY_AV1) {
-		candidates.push_back("av1_mediacodec");
-	}
+		// Prefer low-latency specific MediaCodec components if available
+		Vector<String> codec_names;
+		// JNI helper: collect MediaCodec component names
+		{
+			JNIEnv *env = GetJNIEnv();
+			if (env) {
+				jclass cls = env->FindClass("android/media/MediaCodecList");
+				if (cls) {
+					jmethodID mid = env->GetStaticMethodID(cls, "getCodecInfos", "()[Landroid/media/MediaCodecInfo;");
+					if (mid) {
+						jobjectArray arr = (jobjectArray)env->CallStaticObjectMethod(cls, mid);
+						if (arr) {
+							jsize len = env->GetArrayLength(arr);
+							for (jsize i = 0; i < len; i++) {
+								jobject info = env->GetObjectArrayElement(arr, i);
+								if (!info)
+									continue;
+								jclass infoCls = env->GetObjectClass(info);
+								jmethodID nameMid = env->GetMethodID(infoCls, "getName", "()Ljava/lang/String;");
+								if (nameMid) {
+									jstring jname = (jstring)env->CallObjectMethod(info, nameMid);
+									if (jname) {
+										const char *cname = env->GetStringUTFChars(jname, nullptr);
+										if (cname) {
+											codec_names.push_back(String(cname));
+											env->ReleaseStringUTFChars(jname, cname);
+										}
+										env->DeleteLocalRef(jname);
+									}
+								}
+								env->DeleteLocalRef(info);
+							}
+						}
+					}
+					env->DeleteLocalRef(cls);
+				}
+			}
+			// Search for low_latency substrings
+			for (int i = 0; i < codec_names.size(); i++) {
+				String kn = codec_names[i].to_lower();
+				if (kn.find("low_latency") != -1 || kn.find("low-latency") != -1) {
+					// Push a special candidate that encodes the component name
+					candidates.push_back("h264_mediacodec_lowlat:" + codec_names[i]);
+				}
+			}
+			// Always add generic fallback
+			candidates.push_back("h264_mediacodec");
+		}
+		else if (codec_family == CODEC_FAMILY_H265) {
+			candidates.push_back("hevc_mediacodec");
+		}
+		else if (codec_family == CODEC_FAMILY_AV1) {
+			candidates.push_back("av1_mediacodec");
+		}
 #endif
 	// 软件解码器作为后备
 	if (codec_family == CODEC_FAMILY_H264)
@@ -610,7 +658,14 @@ AVPixelFormat MoonlightStreamCore::_get_hw_format_callback(AVCodecContext *ctx, 
 }
 
 int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, int height, AVHWDeviceType hw_type) {
-	const AVCodec *codec = avcodec_find_decoder_by_name(codec_name.utf8().get_data());
+	// Support special candidate names that include a ':' followed by a platform-specific component name
+	// e.g. "h264_mediacodec_lowlat:c2.qti.hevc.decoder.low_latency"
+	String base_name = codec_name;
+	int sep = codec_name.find(":");
+	if (sep != -1) {
+		base_name = codec_name.substr(0, sep);
+	}
+	const AVCodec *codec = avcodec_find_decoder_by_name(base_name.utf8().get_data());
 	if (!codec)
 		return -1;
 	// 检查硬件设备是否被libavutil构建支持
@@ -705,15 +760,34 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		}
 	}
 
-	if (avcodec_open2(ctx, codec, nullptr) < 0) {
+	AVDictionary *opts = nullptr;
+	// If codec_name encodes a specific mediacodec component (format: name_lowlat:ComponentName), pass it to FFmpeg
+	String special_component;
+	int sep_idx = codec_name.find(":");
+	String base_name = codec_name;
+	if (sep_idx != -1) {
+		base_name = codec_name.substr(0, sep_idx);
+		special_component = codec_name.substr(sep_idx + 1, codec_name.length() - (sep_idx + 1));
+	}
+	if (special_component != String()) {
+		// We map to an AVDictionary option for mediacodec component selection. Key name may vary by FFmpeg build;
+		// common option used in builds exposing MediaCodec choice is "mediacodec_name".
+		av_dict_set(&opts, "mediacodec_name", special_component.utf8().get_data(), 0);
+	}
+
+	if (avcodec_open2(ctx, codec, &opts) < 0) {
 		// 如果已打开，则清理硬件上下文
 		if (hw_device_ctx) {
 			av_buffer_unref(&hw_device_ctx);
 			hw_device_ctx = nullptr;
 		}
+		if (opts)
+			av_dict_free(&opts);
 		avcodec_free_context(&ctx);
 		return -1;
 	}
+	if (opts)
+		av_dict_free(&opts);
 	v_codec = codec;
 	v_codec_ctx = ctx;
 	return 0;
