@@ -4,13 +4,20 @@
 // Android JNI Integration for Zero-Copy (SurfaceTexture)
 #ifdef __ANDROID__
 #include <android/native_window_jni.h>
+#include <dlfcn.h>
 #include <jni.h>
 
 // On-demand JNIEnv retrieval as requested
 static JNIEnv *GetJNIEnv() {
-	JavaVM *vm;
-	jsize vm_count;
-	jint result = JNI_GetCreatedJavaVMs(&vm, 1, &vm_count);
+	typedef jint (*JNI_GetCreatedJavaVMs_t)(JavaVM **, jsize, jsize *);
+	// Use dlsym to avoid a direct link-time dependency on JNI_GetCreatedJavaVMs
+	JNI_GetCreatedJavaVMs_t jni_get_created = (JNI_GetCreatedJavaVMs_t)dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs");
+	if (!jni_get_created)
+		return nullptr;
+
+	JavaVM *vm = nullptr;
+	jsize vm_count = 0;
+	jint result = jni_get_created(&vm, 1, &vm_count);
 	if (result != JNI_OK || vm_count == 0) {
 		return nullptr;
 	}
