@@ -7,16 +7,21 @@
 #include <godot_cpp/classes/mutex.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/rd_texture_format.hpp>
+#include <godot_cpp/classes/rd_texture_view.hpp>
+#include <godot_cpp/classes/rendering_device.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/semaphore.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/texture2drd.hpp>
 #include <godot_cpp/classes/texture_rect.hpp>
 #include <godot_cpp/classes/thread.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <atomic>
@@ -178,7 +183,15 @@ private:
 
 	// --- 视频渲染状态 ---
 	TextureRect *display_rect = nullptr;
-	Ref<ImageTexture> display_texture; // Used for SW fallback (RGBA) or placeholder
+	Ref<ImageTexture> display_texture; // Used for legacy fallback (RGBA) or placeholder
+
+	// RenderingDevice Acceleration
+	RenderingDevice *rd = nullptr;
+	RID rd_texture_rid[3]; // Low-level RD RIDs
+	RID rs_texture_rid[3]; // High-level RS RIDs (linked to RD)
+	Ref<Texture2DRD> rd_texture_wrappers[3];
+	PackedByteArray rd_texture_buffers[3];
+	std::atomic<bool> pending_gpu_update;
 
 	// Shader Pipeline Resources
 	bool use_shader_conversion = false;
@@ -283,6 +296,11 @@ private:
 	// 线程循环
 	void _thread_func_connection();
 	void _thread_func_video_decode();
+
+	// 渲染辅助
+	void _perform_gpu_update();
+	void _render_thread_setup_shader(int width, int height, int format, int colorspace, int color_range, int bit_depth);
+	void _render_thread_cleanup_resources();
 };
 
 } //namespace godot

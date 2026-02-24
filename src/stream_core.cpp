@@ -1,6 +1,28 @@
 #include "stream_core.h"
 #include "yuvtorgb_shader.h"
 
+// Android JNI Integration for Zero-Copy (SurfaceTexture)
+#ifdef __ANDROID__
+#include <android/native_window_jni.h>
+#include <jni.h>
+
+// On-demand JNIEnv retrieval as requested
+static JNIEnv *GetJNIEnv() {
+	JavaVM *vm;
+	jsize vm_count;
+	jint result = JNI_GetCreatedJavaVMs(&vm, 1, &vm_count);
+	if (result != JNI_OK || vm_count == 0) {
+		return nullptr;
+	}
+	JNIEnv *env;
+	result = vm->AttachCurrentThread(&env, NULL);
+	if (result != JNI_OK) {
+		return nullptr;
+	}
+	return env;
+}
+#endif
+
 using namespace godot;
 
 static MoonlightStreamCore *singleton_instance = nullptr;
@@ -22,6 +44,7 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	last_idr_time = 0;
 	enable_idr_logs = false;
 	is_hw_decode_active = false;
+	pending_gpu_update.store(false);
 
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
@@ -94,6 +117,16 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	texture_mutex.instantiate();
 	codec_mutex.instantiate();
 	packet_queue.clear();
+
+	// Initialize RenderingDevice checks (Main Thread)
+	// We do this here as it's safe on main thread before decoder threads start
+	rd = RenderingServer::get_singleton()->get_rendering_device();
+	if (rd) {
+		UtilityFunctions::print(LOG_PREFIX "RenderingDevice available. Hardware acceleration optimizations enabled.");
+	} else {
+		UtilityFunctions::print(LOG_PREFIX "RenderingDevice NOT available. Falling back to compatibility mode.");
+	}
+
 	// 确保音频流存在并已清空
 	get_audio_stream();
 	if (audio_stream.is_valid()) {
@@ -254,8 +287,12 @@ void MoonlightStreamCore::stop_play_stream() {
 	_cleanup_ffmpeg_video();
 	_cleanup_ffmpeg_audio();
 
-	// Clean up shader resources
-	// Important: Clear textures to release VRAM and avoid holding references preventing restart
+	// Clean up shader resources on the render thread to avoid thread context errors
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs) {
+		rs->call_on_render_thread(callable_mp(this, &MoonlightStreamCore::_render_thread_cleanup_resources));
+	}
+
 	for (int i = 0; i < 3; i++) {
 		if (plane_textures[i].is_valid())
 			plane_textures[i].unref();
@@ -283,17 +320,16 @@ void MoonlightStreamCore::set_render_target(TextureRect *target) {
 		// If using shaders, ensure the material is re-applied when target changes
 		if (use_shader_conversion && shader_material.is_valid()) {
 			display_rect->set_material(shader_material);
-			// Set a placeholder texture if null, so the rect actually draws
-			if (display_rect->get_texture().is_null()) {
-				// 1x1 dummy Texture
-				Ref<Image> img = Image::create(1, 1, false, Image::FORMAT_L8);
-				Ref<ImageTexture> tex = ImageTexture::create_from_image(img);
-				display_rect->set_texture(tex);
+
+			// Set the main texture to fix "Missing Texture" checkerboard and provide size info
+			if (rd) {
+				display_rect->set_texture(rd_texture_wrappers[0]);
+			} else if (plane_textures[0].is_valid()) {
+				display_rect->set_texture(plane_textures[0]);
 			}
 		} else {
 			// Fallback / Initial State
 			display_rect->set_material(Ref<Material>()); // Clear material
-			// Clean up previous texture if any
 			display_rect->set_texture(Ref<Texture2D>());
 		}
 	}
@@ -842,21 +878,48 @@ static void fill_image_color(Ref<Image> img, Color color) {
 }
 
 void MoonlightStreamCore::_setup_shader_integration(int width, int height, AVPixelFormat format, AVColorSpace colorspace, AVColorRange color_range, int bit_depth) {
-	// Only support optimized shader path for NV12 and YUV420P
-	bool is_nv12 = (format == AV_PIX_FMT_NV12);
-	bool is_yuv420p = (format == AV_PIX_FMT_YUV420P);
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rs) {
+		rs->call_on_render_thread(callable_mp(this, &MoonlightStreamCore::_render_thread_setup_shader).bind(width, height, (int)format, (int)colorspace, (int)color_range, bit_depth));
+	}
+}
+
+void MoonlightStreamCore::_render_thread_setup_shader(int width, int height, int format, int colorspace, int color_range, int bit_depth) {
+	texture_mutex->lock();
+	AVPixelFormat av_format = (AVPixelFormat)format;
+	AVColorSpace av_colorspace = (AVColorSpace)colorspace;
+	AVColorRange av_color_range = (AVColorRange)color_range;
+
+	// 1. Cleanup existing resources if any (for resolution/format changes)
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rd) {
+		for (int i = 0; i < 3; i++) {
+			rd_texture_wrappers[i].unref();
+			if (rs_texture_rid[i].is_valid()) {
+				rs->free_rid(rs_texture_rid[i]);
+				rs_texture_rid[i] = RID();
+			}
+			if (rd_texture_rid[i].is_valid()) {
+				rd->free_rid(rd_texture_rid[i]);
+				rd_texture_rid[i] = RID();
+			}
+		}
+	}
+
+	// 2. Format Detection
+	bool is_nv12 = (av_format == AV_PIX_FMT_NV12);
+	bool is_yuv420p = (av_format == AV_PIX_FMT_YUV420P);
 
 	if (!is_nv12 && !is_yuv420p) {
-		// Relaxed check: if HW format is unknown yet (common in some ffmpeg versions init), default to NV12 for HW or YUV420P?
-		// For safety, if format is NONE or invalid, we assume NV12 if hw_device_ctx is present, else YUV420P.
-		if (format == AV_PIX_FMT_NONE) {
+		if (av_format == AV_PIX_FMT_NONE) {
 			if (hw_device_ctx)
 				is_nv12 = true;
 			else
 				is_yuv420p = true;
 		} else {
 			use_shader_conversion = false;
-			UtilityFunctions::print(LOG_PREFIX "Format not supported by internal shader (", av_get_pix_fmt_name(format), "), shader path disabled.");
+			UtilityFunctions::print(LOG_PREFIX "Format not supported by internal shader (", av_get_pix_fmt_name(av_format), "), shader path disabled.");
+			texture_mutex->unlock();
 			return;
 		}
 	}
@@ -869,26 +932,83 @@ void MoonlightStreamCore::_setup_shader_integration(int width, int height, AVPix
 	int uv_w = width / 2;
 	int uv_h = height / 2;
 
-	// Plane 0: Y (L8) - Init to Black (0)
-	plane_images[0] = Image::create(y_w, y_h, false, Image::FORMAT_L8);
-	fill_image_color(plane_images[0], Color(0, 0, 0));
-	plane_textures[0] = ImageTexture::create_from_image(plane_images[0]);
+	// Check for RenderingDevice availability (Fast Path)
+	rd = rs->get_rendering_device();
+	if (rd) {
+		UtilityFunctions::print(LOG_PREFIX "Using RenderingDevice for video textures acceleration.");
 
-	if (is_nv12) {
-		// Plane 1: UV (RG8) - Init to Neutral (128, 128) -> Color(0.5, 0.5, 0.5)
-		plane_images[1] = Image::create(uv_w, uv_h, false, Image::FORMAT_RG8);
-		fill_image_color(plane_images[1], Color(0.5, 0.5, 0.5));
-		plane_textures[1] = ImageTexture::create_from_image(plane_images[1]);
+		auto create_rd_texture = [&](int idx, int w, int h, RenderingDevice::DataFormat fmt) {
+			Ref<RDTextureFormat> tf;
+			tf.instantiate();
+			tf->set_width(w);
+			tf->set_height(h);
+			tf->set_depth(1);
+			tf->set_array_layers(1);
+			tf->set_format(fmt);
+			tf->set_usage_bits(RenderingDevice::TEXTURE_USAGE_SAMPLING_BIT | RenderingDevice::TEXTURE_USAGE_CAN_UPDATE_BIT | RenderingDevice::TEXTURE_USAGE_CAN_COPY_FROM_BIT);
+			tf->set_texture_type(RenderingDevice::TEXTURE_TYPE_2D);
+
+			Ref<RDTextureView> tv;
+			tv.instantiate();
+
+			PackedByteArray data;
+			data.resize(w * h * (fmt == RenderingDevice::DATA_FORMAT_R8G8_UNORM ? 2 : 1));
+
+			// Neutral YUV
+			if (fmt == RenderingDevice::DATA_FORMAT_R8G8_UNORM || idx > 0) {
+				data.fill(128);
+			} else {
+				data.fill(0);
+			}
+
+			TypedArray<PackedByteArray> data_array;
+			data_array.push_back(data);
+
+			rd_texture_rid[idx] = rd->texture_create(tf, tv, data_array);
+
+			// Create a High-level Texture RID from the RD RID (More stable for Sampling)
+			rs_texture_rid[idx] = rs->texture_rd_create(rd_texture_rid[idx]);
+
+			// Create wrapper
+			if (rd_texture_wrappers[idx].is_null()) {
+				rd_texture_wrappers[idx].instantiate();
+			}
+			rd_texture_wrappers[idx]->set_texture_rd_rid(rd_texture_rid[idx]);
+		};
+
+		// Planar init
+		create_rd_texture(0, y_w, y_h, RenderingDevice::DATA_FORMAT_R8_UNORM);
+		if (is_nv12) {
+			// Some drivers interpret interleaved RG differently; to avoid sampling ambiguity
+			// we deinterleave NV12 into two R8 planes (U and V) and upload them separately.
+			create_rd_texture(1, uv_w, uv_h, RenderingDevice::DATA_FORMAT_R8_UNORM); // U
+			create_rd_texture(2, uv_w, uv_h, RenderingDevice::DATA_FORMAT_R8_UNORM); // V
+		} else {
+			create_rd_texture(1, uv_w, uv_h, RenderingDevice::DATA_FORMAT_R8_UNORM);
+			create_rd_texture(2, uv_w, uv_h, RenderingDevice::DATA_FORMAT_R8_UNORM);
+		}
 	} else {
-		// Plane 1: U (L8) - Init to 0.5
-		plane_images[1] = Image::create(uv_w, uv_h, false, Image::FORMAT_L8);
-		fill_image_color(plane_images[1], Color(0.5, 0.5, 0.5));
-		plane_textures[1] = ImageTexture::create_from_image(plane_images[1]);
+		// Fallback to ImageTexture
+		plane_images[0] = Image::create(y_w, y_h, false, Image::FORMAT_L8);
+		fill_image_color(plane_images[0], Color(0, 0, 0));
+		plane_textures[0] = ImageTexture::create_from_image(plane_images[0]);
 
-		// Plane 2: V (L8) - Init to 0.5
-		plane_images[2] = Image::create(uv_w, uv_h, false, Image::FORMAT_L8);
-		fill_image_color(plane_images[2], Color(0.5, 0.5, 0.5));
-		plane_textures[2] = ImageTexture::create_from_image(plane_images[2]);
+		if (is_nv12) {
+			plane_images[1] = Image::create(uv_w, uv_h, false, Image::FORMAT_RG8);
+			fill_image_color(plane_images[1], Color(0.5, 0.5, 0.5));
+			plane_textures[1] = ImageTexture::create_from_image(plane_images[1]);
+			// Also init plane 2 to avoid null
+			plane_images[2] = Image::create(uv_w, uv_h, false, Image::FORMAT_L8);
+			fill_image_color(plane_images[2], Color(0.5, 0.5, 0.5));
+			plane_textures[2] = ImageTexture::create_from_image(plane_images[2]);
+		} else {
+			plane_images[1] = Image::create(uv_w, uv_h, false, Image::FORMAT_L8);
+			fill_image_color(plane_images[1], Color(0.5, 0.5, 0.5));
+			plane_textures[1] = ImageTexture::create_from_image(plane_images[1]);
+			plane_images[2] = Image::create(uv_w, uv_h, false, Image::FORMAT_L8);
+			fill_image_color(plane_images[2], Color(0.5, 0.5, 0.5));
+			plane_textures[2] = ImageTexture::create_from_image(plane_images[2]);
+		}
 	}
 
 	// Create Material
@@ -901,49 +1021,97 @@ void MoonlightStreamCore::_setup_shader_integration(int width, int height, AVPix
 		shader_material->set_shader(yuv_shader);
 	}
 
-	shader_material->set_shader_parameter("is_semi_planar", is_nv12);
-
 	// Infer matrix
 	int matrix_type = 1; // Default BT.709
-	if (colorspace == AVCOL_SPC_BT470BG || colorspace == AVCOL_SPC_SMPTE170M) {
+	if (av_colorspace == AVCOL_SPC_BT470BG || av_colorspace == AVCOL_SPC_SMPTE170M) {
 		matrix_type = 0;
-	} else if (colorspace == AVCOL_SPC_BT2020_NCL || colorspace == AVCOL_SPC_BT2020_CL) {
+	} else if (av_colorspace == AVCOL_SPC_BT2020_NCL || av_colorspace == AVCOL_SPC_BT2020_CL) {
 		matrix_type = 2;
 	} else if (width < 1280 && height < 720) {
 		matrix_type = 0;
 	}
-	shader_material->set_shader_parameter("color_matrix_type", matrix_type);
 
 	// Determine Color Range
-	// 0 = Limited (default for most video), 1 = Full
-	int range_val = 0;
-	if (color_range == AVCOL_RANGE_JPEG) {
-		range_val = 1;
-	} else if (color_range == AVCOL_RANGE_UNSPECIFIED) {
-		// PC streaming (NVEncode) is usually Full Range via Moonlight,
-		// but raw video/Android HW decoders often default to Limited.
-		// We can try to guess or default to Limited (safe choice to avoid crushing blacks).
-		// However, Moonlight protocol often implies Full Range for gaming.
-		// If "whitish" was the issue, it means we displayed Limited data as Full.
-		// So defaulting to Limited (letting shader expand it) fixes whitish.
-		range_val = 0;
+	int range_val = (av_color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
+
+	// Assign parameters
+	RID mat_rid = shader_material->get_rid();
+	// If we are using RD fast path and NV12, we deinterleave into planar U/V, so shader should treat as planar
+	bool shader_semi = is_nv12;
+	if (rd && is_nv12)
+		shader_semi = false;
+	rs->material_set_param(mat_rid, "is_semi_planar", shader_semi);
+	rs->material_set_param(mat_rid, "color_matrix_type", matrix_type);
+	rs->material_set_param(mat_rid, "color_range", range_val);
+	// Fix for some hardware (AMD/Intel) presenting NV12 as NV21 or vice versa causing Red->Green artifacts
+	rs->material_set_param(mat_rid, "swap_uv", false);
+	rs->material_set_param(mat_rid, "channel_order", 0);
+
+	if (rd) {
+		// Use set_shader_parameter on the Resource object to ensure high-level Inspector visibility
+		// and prevent overwrites. Texture2D types (rd_texture_wrappers) must be passed, not RIDs.
+		if (shader_material.is_valid()) {
+			shader_material->set_shader_parameter("is_semi_planar", shader_semi);
+			shader_material->set_shader_parameter("color_matrix_type", matrix_type);
+			shader_material->set_shader_parameter("color_range", range_val);
+			shader_material->set_shader_parameter("swap_uv", false);
+
+			shader_material->set_shader_parameter("tex_y", rd_texture_wrappers[0]);
+			shader_material->set_shader_parameter("tex_u", rd_texture_wrappers[1]);
+			shader_material->set_shader_parameter("tex_v", rd_texture_wrappers[2]);
+		} else {
+			rs->material_set_param(mat_rid, "tex_y", rs_texture_rid[0]);
+			rs->material_set_param(mat_rid, "tex_u", rs_texture_rid[1]);
+			rs->material_set_param(mat_rid, "tex_v", rs_texture_rid[2]);
+		}
 	} else {
-		range_val = 0; // AVCOL_RANGE_MPEG
-	}
+		if (shader_material.is_valid()) {
+			shader_material->set_shader_parameter("is_semi_planar", is_nv12);
+			shader_material->set_shader_parameter("color_matrix_type", matrix_type);
+			shader_material->set_shader_parameter("color_range", range_val);
+			shader_material->set_shader_parameter("swap_uv", false);
 
-	// Override based on manual stream config if present?
-	// For now trust FFmpeg context or stick to Limited default to fix "whitish" look.
-	shader_material->set_shader_parameter("color_range", range_val);
-
-	// Assign Textures
-	shader_material->set_shader_parameter("tex_y", plane_textures[0]);
-	shader_material->set_shader_parameter("tex_u", plane_textures[1]);
-	if (!is_nv12) {
-		shader_material->set_shader_parameter("tex_v", plane_textures[2]);
+			shader_material->set_shader_parameter("tex_y", plane_textures[0]);
+			shader_material->set_shader_parameter("tex_u", plane_textures[1]);
+			shader_material->set_shader_parameter("tex_v", plane_textures[2]);
+		} else {
+			rs->material_set_param(mat_rid, "tex_y", plane_textures[0]->get_rid());
+			rs->material_set_param(mat_rid, "tex_u", plane_textures[1]->get_rid());
+			rs->material_set_param(mat_rid, "tex_v", plane_textures[2]->get_rid());
+		}
 	}
 
 	// Apply to Target
-	call_deferred("set_render_target", display_rect);
+	if (display_rect) {
+		display_rect->call_deferred("set_material", shader_material);
+		if (rd) {
+			display_rect->call_deferred("set_texture", rd_texture_wrappers[0]);
+		} else if (plane_textures[0].is_valid()) {
+			display_rect->call_deferred("set_texture", plane_textures[0]);
+		}
+	}
+
+	texture_mutex->unlock();
+}
+
+void MoonlightStreamCore::_render_thread_cleanup_resources() {
+	texture_mutex->lock();
+	RenderingServer *rs = RenderingServer::get_singleton();
+	if (rd) {
+		for (int i = 0; i < 3; i++) {
+			rd_texture_wrappers[i].unref();
+			if (rs_texture_rid[i].is_valid()) {
+				rs->free_rid(rs_texture_rid[i]);
+				rs_texture_rid[i] = RID();
+			}
+			if (rd_texture_rid[i].is_valid()) {
+				rd->free_rid(rd_texture_rid[i]);
+				rd_texture_rid[i] = RID();
+			}
+		}
+		rd = nullptr;
+	}
+	texture_mutex->unlock();
 }
 
 void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
@@ -952,6 +1120,78 @@ void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
 
 	// Use RenderingServer for thread-safe updates without memory allocation overhead.
 	RenderingServer *rs = RenderingServer::get_singleton();
+
+	if (rd) {
+		// RenderingDevice High Performance Path
+		texture_mutex->lock();
+		auto upload_rd = [&](int idx, int av_idx, int w, int h, int bpp) {
+			int src_stride = frame->linesize[av_idx];
+			int dst_stride = w * bpp;
+			int required_size = dst_stride * h;
+
+			// Resize intermediate buffer (reuse vector)
+			if (rd_texture_buffers[idx].size() != required_size) {
+				rd_texture_buffers[idx].resize(required_size);
+			}
+
+			uint8_t *dst = rd_texture_buffers[idx].ptrw();
+			uint8_t *src = frame->data[av_idx];
+
+			if (src_stride == dst_stride) {
+				memcpy(dst, src, required_size);
+			} else {
+				for (int i = 0; i < h; i++) {
+					memcpy(dst + i * dst_stride, src + i * src_stride, dst_stride);
+				}
+			}
+		};
+
+		bool is_nv12 = (frame->format == AV_PIX_FMT_NV12);
+
+		// Y Plane
+		upload_rd(0, 0, frame->width, frame->height, 1); // R8
+
+		if (is_nv12) {
+			// NV12: interleaved UV plane in frame->data[1]. Deinterleave into two R8 buffers (U and V)
+			int uv_w = frame->width / 2;
+			int uv_h = frame->height / 2;
+
+			int src_stride = frame->linesize[1];
+			int dst_stride = uv_w; // 1 byte per pixel per plane
+			int required_size = dst_stride * uv_h;
+
+			if (rd_texture_buffers[1].size() != required_size)
+				rd_texture_buffers[1].resize(required_size);
+			if (rd_texture_buffers[2].size() != required_size)
+				rd_texture_buffers[2].resize(required_size);
+
+			uint8_t *dst_u = rd_texture_buffers[1].ptrw();
+			uint8_t *dst_v = rd_texture_buffers[2].ptrw();
+			uint8_t *src = frame->data[1];
+
+			for (int row = 0; row < uv_h; row++) {
+				uint8_t *srow = src + row * src_stride;
+				uint8_t *drow_u = dst_u + row * dst_stride;
+				uint8_t *drow_v = dst_v + row * dst_stride;
+				for (int x = 0; x < uv_w; x++) {
+					drow_u[x] = srow[x * 2 + 0];
+					drow_v[x] = srow[x * 2 + 1];
+				}
+			}
+		} else {
+			// U + V Planes (YUV420P -> R8 each)
+			upload_rd(1, 1, frame->width / 2, frame->height / 2, 1);
+			upload_rd(2, 2, frame->width / 2, frame->height / 2, 1);
+		}
+
+		pending_gpu_update.store(true);
+		texture_mutex->unlock();
+
+		// Request update on the render thread to avoid "only be called from render thread" error
+		rs->call_on_render_thread(callable_mp(this, &MoonlightStreamCore::_perform_gpu_update));
+
+		return; // RD path complete
+	}
 
 	auto upload_plane = [&](int gl_idx, int av_idx, int w, int h, int bpp) {
 		// CRITICAL FIX: Ensure image resources still exist and validity check for _texture_2d_update
@@ -1011,6 +1251,32 @@ void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
 		upload_plane(1, 1, frame->width / 2, frame->height / 2, 1);
 		upload_plane(2, 2, frame->width / 2, frame->height / 2, 1);
 	}
+}
+
+void MoonlightStreamCore::_perform_gpu_update() {
+	if (!rd)
+		return;
+
+	texture_mutex->lock();
+	if (pending_gpu_update.exchange(false)) {
+		// Update Y
+		if (rd_texture_rid[0].is_valid()) {
+			rd->texture_update(rd_texture_rid[0], 0, rd_texture_buffers[0]);
+		}
+		// Update U (or UV)
+		if (rd_texture_rid[1].is_valid()) {
+			rd->texture_update(rd_texture_rid[1], 0, rd_texture_buffers[1]);
+		}
+		// Update V
+		if (rd_texture_rid[2].is_valid()) {
+			rd->texture_update(rd_texture_rid[2], 0, rd_texture_buffers[2]);
+		}
+
+		if (display_rect) {
+			display_rect->call_deferred("queue_redraw");
+		}
+	}
+	texture_mutex->unlock();
 }
 
 AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) const {
@@ -1408,6 +1674,9 @@ void MoonlightStreamCore::_bind_methods() {
 
 	// 绑定内部更新方法以进行延迟调用
 	ClassDB::bind_method(D_METHOD("_update_display_texture"), &MoonlightStreamCore::_update_display_texture);
+	ClassDB::bind_method(D_METHOD("_perform_gpu_update"), &MoonlightStreamCore::_perform_gpu_update);
+	ClassDB::bind_method(D_METHOD("_render_thread_setup_shader", "width", "height", "format", "colorspace", "color_range", "bit_depth"), &MoonlightStreamCore::_render_thread_setup_shader);
+	ClassDB::bind_method(D_METHOD("_render_thread_cleanup_resources"), &MoonlightStreamCore::_render_thread_cleanup_resources);
 
 	ADD_SIGNAL(MethodInfo("connection_started"));
 	ADD_SIGNAL(MethodInfo("connection_terminated", PropertyInfo(Variant::INT, "error_code"), PropertyInfo(Variant::STRING, "message")));
