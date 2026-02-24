@@ -763,11 +763,9 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	AVDictionary *opts = nullptr;
 	// If codec_name encodes a specific mediacodec component (format: name_lowlat:ComponentName), pass it to FFmpeg
 	String special_component;
-	int sep_idx = codec_name.find(":");
-	String base_name = codec_name;
-	if (sep_idx != -1) {
-		base_name = codec_name.substr(0, sep_idx);
-		special_component = codec_name.substr(sep_idx + 1, codec_name.length() - (sep_idx + 1));
+	// reuse earlier `sep` and `base_name` variables to avoid redeclaration
+	if (sep != -1) {
+		special_component = codec_name.substr(sep + 1, codec_name.length() - (sep + 1));
 	}
 	if (special_component != String()) {
 		// We map to an AVDictionary option for mediacodec component selection. Key name may vary by FFmpeg build;
