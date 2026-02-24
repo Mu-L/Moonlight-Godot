@@ -112,7 +112,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         with:
           # 使用 LTS 版本 r27c 以避免 beta 版潜在的链接问题
-          ndk-version: r27c
+          ndk-version: r27d
           link-to-sdk: true
 
       # ——构建——
