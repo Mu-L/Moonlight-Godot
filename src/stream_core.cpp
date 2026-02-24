@@ -628,12 +628,11 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 			// Always add generic fallback
 			candidates.push_back("h264_mediacodec");
 		}
-		else if (codec_family == CODEC_FAMILY_H265) {
-			candidates.push_back("hevc_mediacodec");
-		}
-		else if (codec_family == CODEC_FAMILY_AV1) {
-			candidates.push_back("av1_mediacodec");
-		}
+	} else if (codec_family == CODEC_FAMILY_H265) {
+		candidates.push_back("hevc_mediacodec");
+	} else if (codec_family == CODEC_FAMILY_AV1) {
+		candidates.push_back("av1_mediacodec");
+	}
 #endif
 	// 软件解码器作为后备
 	if (codec_family == CODEC_FAMILY_H264)
