@@ -1,5 +1,4 @@
 #include "stream_core.h"
-#include "yuvtorgb_shader.h"
 
 // Android JNI Integration for Zero-Copy (SurfaceTexture)
 #ifdef __ANDROID__
@@ -35,10 +34,7 @@ using namespace godot;
 static MoonlightStreamCore *singleton_instance = nullptr;
 Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 
-// ============================================================================
-// moonlight流核心
-// ============================================================================
-// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// Moonlight 流核心：音频 / 视频 / 渲染 处理器
 
 MoonlightStreamCore::MoonlightStreamCore() {
 	// 默认参数设定
@@ -52,6 +48,8 @@ MoonlightStreamCore::MoonlightStreamCore() {
 	enable_idr_logs = false;
 	is_hw_decode_active = false;
 	pending_gpu_update.store(false);
+
+	// Verbose defaults already in header; ensure fields exist (no-op here)
 
 	texture_mutex.instantiate();
 	queue_mutex.instantiate();
@@ -129,9 +127,11 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	// We do this here as it's safe on main thread before decoder threads start
 	rd = RenderingServer::get_singleton()->get_rendering_device();
 	if (rd) {
-		UtilityFunctions::print(LOG_PREFIX "RenderingDevice available. Hardware acceleration optimizations enabled.");
+		if (verbose_plugin)
+			UtilityFunctions::print(LOG_PREFIX "RenderingDevice available. Hardware acceleration optimizations enabled.");
 	} else {
-		UtilityFunctions::print(LOG_PREFIX "RenderingDevice NOT available. Falling back to compatibility mode.");
+		if (verbose_plugin)
+			UtilityFunctions::print(LOG_PREFIX "RenderingDevice NOT available. Falling back to compatibility mode.");
 	}
 
 	// 确保音频流存在并已清空
@@ -159,6 +159,16 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	// 2. 编解码器选择
 	disable_hw_decoding = options.get("disable_hw_acceleration", false);
 	enable_idr_logs = options.get("debug_idr_log", false); // 默认关闭
+
+	// Verbose options (override defaults in header)
+	if (options.has("verbose_decoders"))
+		verbose_decoders = options.get("verbose_decoders", verbose_decoders);
+	if (options.has("verbose_requests"))
+		verbose_requests = options.get("verbose_requests", verbose_requests);
+	if (options.has("verbose_limelight"))
+		verbose_limelight = options.get("verbose_limelight", verbose_limelight);
+	if (options.has("verbose_plugin"))
+		verbose_plugin = options.get("verbose_plugin", verbose_plugin);
 
 	int codec_val = options.get("video_codec", (int)CODEC_H264);
 	selected_codec_config = (VideoCodecConfig)codec_val;
@@ -237,6 +247,10 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	server_info.serverInfoGfeVersion = gfe_version_storage.c_str();
 	server_info.serverCodecModeSupport = options.get("server_codec_mode_support", 0);
 	is_streaming.store(true);
+
+	if (verbose_requests) {
+		UtilityFunctions::print(LOG_PREFIX "Connection Request Info: ip=", ip_storage.c_str(), " session_url=", session_url_storage.c_str());
+	}
 
 	// 5. 启动线程
 	if (connection_thread.is_valid()) {
@@ -366,22 +380,21 @@ void MoonlightStreamCore::_update_display_texture() {
 	return;
 }
 
-// ============================================================================
 // 线程逻辑
-// ============================================================================
-// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 void MoonlightStreamCore::_thread_func_connection() {
 	int res = LiStartConnection(&server_info, &stream_config, &cl_callbacks, &dr_callbacks, &ar_callbacks, this, 0, this, 0);
 	if (res != 0) {
-		UtilityFunctions::printerr(LOG_PREFIX "Connection failed with error: ", res);
+		if (verbose_requests)
+			UtilityFunctions::printerr(LOG_PREFIX "Connection failed with error: ", res);
 		// 如果连接无法启动，我们必须进行清理
 		is_streaming.store(false);
 		if (decode_sem.is_valid()) {
 			decode_sem->post();
 		}
 	} else {
-		UtilityFunctions::print(LOG_PREFIX "LiStartConnection returned 0 (Graceful Termination)");
+		if (verbose_requests)
+			UtilityFunctions::print(LOG_PREFIX "LiStartConnection returned 0 (Graceful Termination)");
 		// 修复：不要在这里将 is_streaming 设置为 false。LiStartConnection 返回 0 在此上下文中可能是非阻塞的。我们依赖 _cl_connection_terminated 或 stop_play_stream 来清除标志。
 	}
 }
@@ -488,10 +501,7 @@ end_of_thread:
 	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Exited");
 }
 
-// ============================================================================
-// FFmpeg 辅助方法+AVPacket解码
-// ============================================================================
-// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// FFmpeg 辅助方法和 AVPacket 解码
 
 void MoonlightStreamCore::_request_idr_frame(const String &reason) {
 	uint64_t now = Time::get_singleton()->get_ticks_msec();
@@ -499,6 +509,9 @@ void MoonlightStreamCore::_request_idr_frame(const String &reason) {
 	if (now - last_idr_time > 2000) {
 		if (enable_idr_logs) {
 			UtilityFunctions::print(LOG_PREFIX "Requesting IDR: ", reason);
+		}
+		if (verbose_requests) {
+			UtilityFunctions::print(LOG_PREFIX "IDR request reason (verbose): ", reason);
 		}
 		LiRequestIdrFrame();
 		last_idr_time = now;
@@ -508,11 +521,7 @@ void MoonlightStreamCore::_request_idr_frame(const String &reason) {
 Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 	Vector<AVHWDeviceType> types;
 #if defined(__ANDROID__)
-	// Android: 返回空列表。
-	// 这会迫使逻辑只使用 AV_HWDEVICE_TYPE_NONE。
-	// 当我们使用 AV_HWDEVICE_TYPE_NONE 并通过名称 (如 "h264_mediacodec") 打开解码器时，
-	// FFmpeg 会进入 MediaCodec Buffer 模式。
-	// 这规避了复杂的 JNI/Surface 设置，并且是 Godot 这种自绘引擎所需要的（我们需要 YUV 数据）。
+	// Android: 返回空列表以优先使用 MediaCodec Buffer 模式
 #elif defined(_WIN32)
 	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
 	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
@@ -585,55 +594,62 @@ int MoonlightStreamCore::_probe_video_format(MoonlightStreamCore::VideoCodecConf
 Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	Vector<String> candidates;
 #if defined(__ANDROID__)
-	// Android 必须优先尝试 mediacodec
+	// Android: prefer MediaCodec variants per codec family
 	if (codec_family == CODEC_FAMILY_H264) {
-		// Prefer low-latency specific MediaCodec components if available
 		Vector<String> codec_names;
 		// JNI helper: collect MediaCodec component names
-		{
-			JNIEnv *env = GetJNIEnv();
-			if (env) {
-				jclass cls = env->FindClass("android/media/MediaCodecList");
-				if (cls) {
-					jmethodID mid = env->GetStaticMethodID(cls, "getCodecInfos", "()[Landroid/media/MediaCodecInfo;");
-					if (mid) {
-						jobjectArray arr = (jobjectArray)env->CallStaticObjectMethod(cls, mid);
-						if (arr) {
-							jsize len = env->GetArrayLength(arr);
-							for (jsize i = 0; i < len; i++) {
-								jobject info = env->GetObjectArrayElement(arr, i);
-								if (!info)
-									continue;
-								jclass infoCls = env->GetObjectClass(info);
-								jmethodID nameMid = env->GetMethodID(infoCls, "getName", "()Ljava/lang/String;");
-								if (nameMid) {
-									jstring jname = (jstring)env->CallObjectMethod(info, nameMid);
-									if (jname) {
-										const char *cname = env->GetStringUTFChars(jname, nullptr);
-										if (cname) {
-											codec_names.push_back(String(cname));
-											env->ReleaseStringUTFChars(jname, cname);
-										}
-										env->DeleteLocalRef(jname);
+		JNIEnv *env = GetJNIEnv();
+		if (env) {
+			jclass cls = env->FindClass("android/media/MediaCodecList");
+			if (cls) {
+				jmethodID mid = env->GetStaticMethodID(cls, "getCodecInfos", "()[Landroid/media/MediaCodecInfo;");
+				if (mid) {
+					jobjectArray arr = (jobjectArray)env->CallStaticObjectMethod(cls, mid);
+					if (arr) {
+						jsize len = env->GetArrayLength(arr);
+						for (jsize i = 0; i < len; i++) {
+							jobject info = env->GetObjectArrayElement(arr, i);
+							if (!info)
+								continue;
+							jclass infoCls = env->GetObjectClass(info);
+							jmethodID nameMid = env->GetMethodID(infoCls, "getName", "()Ljava/lang/String;");
+							if (nameMid) {
+								jstring jname = (jstring)env->CallObjectMethod(info, nameMid);
+								if (jname) {
+									const char *cname = env->GetStringUTFChars(jname, nullptr);
+									if (cname) {
+										codec_names.push_back(String(cname));
+										env->ReleaseStringUTFChars(jname, cname);
 									}
+									env->DeleteLocalRef(jname);
 								}
-								env->DeleteLocalRef(info);
 							}
+							env->DeleteLocalRef(info);
 						}
 					}
-					env->DeleteLocalRef(cls);
 				}
+				env->DeleteLocalRef(cls);
 			}
-			// Search for low_latency substrings
-			for (int i = 0; i < codec_names.size(); i++) {
-				String kn = codec_names[i].to_lower();
-				if (kn.find("low_latency") != -1 || kn.find("low-latency") != -1) {
-					// Push a special candidate that encodes the component name
-					candidates.push_back("h264_mediacodec_lowlat:" + codec_names[i]);
-				}
+		}
+
+		// Search for low_latency substrings and add candidates
+		for (int i = 0; i < codec_names.size(); i++) {
+			String kn = codec_names[i].to_lower();
+			if (kn.find("low_latency") != -1 || kn.find("low-latency") != -1) {
+				candidates.push_back("h264_mediacodec_lowlat:" + codec_names[i]);
 			}
-			// Always add generic fallback
-			candidates.push_back("h264_mediacodec");
+		}
+		// Generic MediaCodec fallback for H264
+		candidates.push_back("h264_mediacodec");
+
+		// Verbose: list discovered MediaCodec component names and generated candidates
+		if (singleton_instance && singleton_instance->verbose_decoders) {
+			UtilityFunctions::print(LOG_PREFIX "Android MediaCodec components discovered:");
+			for (int i = 0; i < codec_names.size(); i++)
+				UtilityFunctions::print("  - ", codec_names[i]);
+			UtilityFunctions::print(LOG_PREFIX "Generated decoder candidates:");
+			for (int i = 0; i < candidates.size(); i++)
+				UtilityFunctions::print("  * ", candidates[i]);
 		}
 	} else if (codec_family == CODEC_FAMILY_H265) {
 		candidates.push_back("hevc_mediacodec");
@@ -641,6 +657,7 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 		candidates.push_back("av1_mediacodec");
 	}
 #endif
+
 	// 软件解码器作为后备
 	if (codec_family == CODEC_FAMILY_H264)
 		candidates.push_back("h264");
@@ -652,7 +669,6 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	}
 	return candidates;
 }
-
 AVPixelFormat MoonlightStreamCore::_get_hw_format_callback(AVCodecContext *ctx, const AVPixelFormat *pix_fmts) {
 	if (singleton_instance && singleton_instance->hw_pix_fmt != AV_PIX_FMT_NONE) {
 		for (const AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
@@ -847,7 +863,8 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 		codec_mutex->unlock(); // 失败时解锁
 		return -1;
 	}
-	UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name, " (", opened_hw, ")");
+	if (verbose_decoders)
+		UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name, " (", opened_hw, ")");
 	call_deferred("emit_signal", "log_message", "Decoder initialized: " + opened_name + " (" + opened_hw + ")");
 	if (v_codec_ctx) {
 		AVPixelFormat fmt = v_codec_ctx->pix_fmt;
@@ -996,13 +1013,15 @@ void MoonlightStreamCore::_render_thread_setup_shader(int width, int height, int
 				is_yuv420p = true;
 		} else {
 			use_shader_conversion = false;
-			UtilityFunctions::print(LOG_PREFIX "Format not supported by internal shader (", av_get_pix_fmt_name(av_format), "), shader path disabled.");
+			if (verbose_plugin)
+				UtilityFunctions::print(LOG_PREFIX "Format not supported by internal shader (", av_get_pix_fmt_name(av_format), "), shader path disabled.");
 			texture_mutex->unlock();
 			return;
 		}
 	}
 
-	UtilityFunctions::print(LOG_PREFIX "Initializing Godot Shader Video Pipeline. Format: ", is_nv12 ? "NV12" : "YUV420P");
+	if (verbose_plugin)
+		UtilityFunctions::print(LOG_PREFIX "Initializing Godot Shader Video Pipeline. Format: ", is_nv12 ? "NV12" : "YUV420P");
 	use_shader_conversion = true;
 
 	int y_w = width;
@@ -1013,7 +1032,8 @@ void MoonlightStreamCore::_render_thread_setup_shader(int width, int height, int
 	// Check for RenderingDevice availability (Fast Path)
 	rd = rs->get_rendering_device();
 	if (rd) {
-		UtilityFunctions::print(LOG_PREFIX "Using RenderingDevice for video textures acceleration.");
+		if (verbose_plugin)
+			UtilityFunctions::print(LOG_PREFIX "Using RenderingDevice for video textures acceleration.");
 
 		auto create_rd_texture = [&](int idx, int w, int h, RenderingDevice::DataFormat fmt) {
 			Ref<RDTextureFormat> tf;
@@ -1388,10 +1408,7 @@ AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) cons
 	return declared;
 }
 
-// ============================================================================
-// moonlight音频流playback
-// ============================================================================
-// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 音频：Playback implemention
 
 AudioStreamPlaybackMoonlight::AudioStreamPlaybackMoonlight() : active(false) {}
 AudioStreamPlaybackMoonlight::~AudioStreamPlaybackMoonlight() {}
@@ -1417,10 +1434,7 @@ float AudioStreamPlaybackMoonlight::_get_stream_sampling_rate() const {
 
 void AudioStreamPlaybackMoonlight::_bind_methods() {}
 
-// ============================================================================
-// moonlight音频流
-// ============================================================================
-// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
+// 音频：流与缓冲器实现
 
 AudioStreamMoonlight::AudioStreamMoonlight() : mix_rate(48000) {
 	buffer_mutex.instantiate();
@@ -1494,10 +1508,7 @@ void AudioStreamMoonlight::clear_buffer() {
 
 void AudioStreamMoonlight::_bind_methods() {}
 
-// ============================================================================
 // 音频流核心
-// ============================================================================
-// 修复：在 _handle_ar_init 中，我们应使用 _try_open_decoder 来测试硬件解码器，而不是直接调用 avcodec_open2
 
 int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 	_cleanup_ffmpeg_audio();
@@ -1623,9 +1634,7 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 	}
 }
 
-// ============================================================================
 // 静态回调与绑定
-// ============================================================================
 
 void MoonlightStreamCore::_cl_stage_starting(int stage) { UtilityFunctions::print(LOG_PREFIX "Stage Starting: ", LiGetStageName(stage)); }
 void MoonlightStreamCore::_cl_connection_started() {
@@ -1654,7 +1663,9 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
 	String msg = String(buffer);
-	UtilityFunctions::print(LOG_PREFIX "Log from lib: ", msg);
+	if (!singleton_instance || singleton_instance->verbose_limelight) {
+		UtilityFunctions::print(LOG_PREFIX "Log from lib: ", msg);
+	}
 	if (singleton_instance) {
 		singleton_instance->call_deferred("emit_signal", "log_message", msg);
 	}

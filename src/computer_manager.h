@@ -21,15 +21,15 @@ private:
 	ConfigManager *config_manager = nullptr;
 	Requester *requester = nullptr;
 
-	// Pairing State
+	// Pairing state machine
 	enum PairState {
 		PAIR_IDLE,
-		PAIR_STAGE_0_PREFLIGHT, // HTTP: Check if already paired via serverinfo
-		PAIR_STAGE_1_GET_CERT, // HTTP: Send Salt + ClientCert -> Get ServerCert
-		PAIR_STAGE_2_CLIENT_CHALLENGE, // HTTP: Send Encrypted(ClientRandom) -> Get Encrypted(ServerSecret)
-		PAIR_STAGE_3_SERVER_RESPONSE, // HTTP: Send Encrypted(Hash(ServerSecret+CertSig+ClientSecret)) -> Get ServerSignature
-		PAIR_STAGE_4_CLIENT_SECRET, // HTTP: Send ClientSecret + Sign(ClientSecret)
-		PAIR_STAGE_5_HTTPS_CHALLENGE, // HTTPS: Verify secure connection
+		PAIR_STAGE_0_PREFLIGHT, // check existing pairing
+		PAIR_STAGE_1_GET_CERT, // exchange certificates
+		PAIR_STAGE_2_CLIENT_CHALLENGE, // client challenge
+		PAIR_STAGE_3_SERVER_RESPONSE, // server response
+		PAIR_STAGE_4_CLIENT_SECRET, // client secret/confirmation
+		PAIR_STAGE_5_HTTPS_CHALLENGE, // HTTPS verification
 		PAIR_FINISHED,
 		PAIR_ERROR
 	};

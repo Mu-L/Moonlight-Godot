@@ -26,9 +26,7 @@ void ComputerManager::set_config_manager(Object *cm) {
 	owns_config_manager = false; // 外部所有权
 }
 
-// ============================================================================
 // 1. 配对逻辑
-// ============================================================================
 
 String ComputerManager::start_pair(String ip, int port) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
@@ -374,9 +372,7 @@ void ComputerManager::_reset_pairing() {
 	client_pairing_secret.clear();
 }
 
-// ============================================================================
 // 2. 测试连接
-// ============================================================================
 
 void ComputerManager::connect_to_computer(String ip, int port, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
@@ -409,9 +405,7 @@ void ComputerManager::_on_server_info_completed(int code, PackedByteArray body, 
 		callback.call(result);
 }
 
-// ============================================================================
 // 3. 应用列表及 Cover
-// ============================================================================
 
 void ComputerManager::get_app_list(int host_id, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
@@ -517,9 +511,7 @@ void ComputerManager::_on_app_cover_completed(int code, PackedByteArray body, Di
 		callback.call(Variant());
 }
 
-// ============================================================================
 // 4. 流连接管理
-// ============================================================================
 
 void ComputerManager::establish_stream(int host_id, int app_id, Dictionary options, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
@@ -784,9 +776,7 @@ void ComputerManager::_on_simple_request_completed(int code, PackedByteArray bod
 		callback.call(code == 200 ? body.get_string_from_utf8() : "");
 }
 
-// ============================================================================
 // 工具函数
-// ============================================================================
 
 PackedByteArray ComputerManager::_generate_random_bytes(int size) {
 	Ref<Crypto> c;

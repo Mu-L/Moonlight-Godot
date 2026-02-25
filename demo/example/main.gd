@@ -18,6 +18,11 @@ func on_pair_complete(success,message):
     else:
         push_error("[Moonlight-Godot-ComputerManager]",message)
 
+#func _process(delta):
+    #var time = $ScrollContainer/GridContainer/AudioStreamPlayer.get_playback_position() + AudioServer.get_time_since_last_mix()
+    ## Compensate for output latency.
+    #time -= AudioServer.get_output_latency()
+    #print("Audio latency Time is: ", time*1000, "ms") if time > 0 else null
 
 func test_http_requeset() -> void:
     
