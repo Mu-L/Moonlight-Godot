@@ -58,6 +58,13 @@ struct SwrContext;
 // YUV 转 RGB 的 shader 资源
 #include "yuvtorgb_shader.h"
 
+// Android 平台相关头文件
+#ifdef __ANDROID__
+#include <android/native_window_jni.h>
+#include <dlfcn.h>
+#include <jni.h>
+#endif
+
 // 日志前缀
 #define LOG_PREFIX "[Moonlight-StreamCore] "
 

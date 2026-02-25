@@ -5,9 +5,6 @@ using namespace godot;
 
 // Android JNI Integration for Zero-Copy (SurfaceTexture)
 #ifdef __ANDROID__
-#include <android/native_window_jni.h>
-#include <dlfcn.h>
-#include <jni.h>
 
 // On-demand JNIEnv retrieval as requested
 static JNIEnv *GetJNIEnv() {
