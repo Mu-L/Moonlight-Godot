@@ -68,6 +68,9 @@ struct SwrContext;
 
 namespace godot {
 
+class MoonlightStreamCore;
+extern MoonlightStreamCore *singleton_instance;
+
 // 自定义音频播放
 class AudioStreamMoonlight;
 class AudioStreamPlaybackMoonlight : public AudioStreamPlaybackResampled {
@@ -132,6 +135,118 @@ public:
 		CODEC_H265 = 2,
 		CODEC_AV1 = 3
 	};
+
+	enum MouseButton {
+		MOUSE_BUTTON_LEFT = BUTTON_LEFT,
+		MOUSE_BUTTON_MIDDLE = BUTTON_MIDDLE,
+		MOUSE_BUTTON_RIGHT = BUTTON_RIGHT,
+		MOUSE_BUTTON_X1 = BUTTON_X1,
+		MOUSE_BUTTON_X2 = BUTTON_X2
+	};
+
+	enum MouseButtonAction {
+		MOUSE_BUTTON_ACTION_PRESS = BUTTON_ACTION_PRESS,
+		MOUSE_BUTTON_ACTION_RELEASE = BUTTON_ACTION_RELEASE
+	};
+
+	enum KeyboardAction {
+		KEY_ACTION_DOWN_LIMIT = KEY_ACTION_DOWN,
+		KEY_ACTION_UP_LIMIT = KEY_ACTION_UP
+	};
+
+	enum KeyboardModifier {
+		MODIFIER_NONE = 0,
+		MODIFIER_SHIFT_BIT = MODIFIER_SHIFT,
+		MODIFIER_CTRL_BIT = MODIFIER_CTRL,
+		MODIFIER_ALT_BIT = MODIFIER_ALT,
+		MODIFIER_META_BIT = MODIFIER_META
+	};
+
+	enum TouchEventType {
+		TOUCH_EVENT_HOVER = LI_TOUCH_EVENT_HOVER,
+		TOUCH_EVENT_DOWN = LI_TOUCH_EVENT_DOWN,
+		TOUCH_EVENT_UP = LI_TOUCH_EVENT_UP,
+		TOUCH_EVENT_MOVE = LI_TOUCH_EVENT_MOVE,
+		TOUCH_EVENT_CANCEL = LI_TOUCH_EVENT_CANCEL,
+		TOUCH_EVENT_BUTTON_ONLY = LI_TOUCH_EVENT_BUTTON_ONLY,
+		TOUCH_EVENT_HOVER_LEAVE = LI_TOUCH_EVENT_HOVER_LEAVE,
+		TOUCH_EVENT_CANCEL_ALL = LI_TOUCH_EVENT_CANCEL_ALL
+	};
+
+	enum ToolType {
+		TOOL_TYPE_UNKNOWN = LI_TOOL_TYPE_UNKNOWN,
+		TOOL_TYPE_PEN = LI_TOOL_TYPE_PEN,
+		TOOL_TYPE_ERASER = LI_TOOL_TYPE_ERASER
+	};
+
+	enum PenButton {
+		PEN_BUTTON_PRIMARY = LI_PEN_BUTTON_PRIMARY,
+		PEN_BUTTON_SECONDARY = LI_PEN_BUTTON_SECONDARY,
+		PEN_BUTTON_TERTIARY = LI_PEN_BUTTON_TERTIARY
+	};
+
+	enum ControllerButton {
+		CONTROLLER_A = A_FLAG,
+		CONTROLLER_B = B_FLAG,
+		CONTROLLER_X = X_FLAG,
+		CONTROLLER_Y = Y_FLAG,
+		CONTROLLER_UP = UP_FLAG,
+		CONTROLLER_DOWN = DOWN_FLAG,
+		CONTROLLER_LEFT = LEFT_FLAG,
+		CONTROLLER_RIGHT = RIGHT_FLAG,
+		CONTROLLER_LB = LB_FLAG,
+		CONTROLLER_RB = RB_FLAG,
+		CONTROLLER_PLAY = PLAY_FLAG,
+		CONTROLLER_BACK = BACK_FLAG,
+		CONTROLLER_LS_CLK = LS_CLK_FLAG,
+		CONTROLLER_RS_CLK = RS_CLK_FLAG,
+		CONTROLLER_SPECIAL = SPECIAL_FLAG,
+		CONTROLLER_PADDLE1 = PADDLE1_FLAG,
+		CONTROLLER_PADDLE2 = PADDLE2_FLAG,
+		CONTROLLER_PADDLE3 = PADDLE3_FLAG,
+		CONTROLLER_PADDLE4 = PADDLE4_FLAG,
+		CONTROLLER_TOUCHPAD = TOUCHPAD_FLAG,
+		CONTROLLER_MISC = MISC_FLAG
+	};
+
+	enum ControllerType {
+		CONTROLLER_TYPE_UNKNOWN = LI_CTYPE_UNKNOWN,
+		CONTROLLER_TYPE_XBOX = LI_CTYPE_XBOX,
+		CONTROLLER_TYPE_PS = LI_CTYPE_PS,
+		CONTROLLER_TYPE_NINTENDO = LI_CTYPE_NINTENDO
+	};
+
+	enum ControllerCapability {
+		CONTROLLER_CAP_ANALOG_TRIGGERS = LI_CCAP_ANALOG_TRIGGERS,
+		CONTROLLER_CAP_RUMBLE = LI_CCAP_RUMBLE,
+		CONTROLLER_CAP_TRIGGER_RUMBLE = LI_CCAP_TRIGGER_RUMBLE,
+		CONTROLLER_CAP_TOUCHPAD = LI_CCAP_TOUCHPAD,
+		CONTROLLER_CAP_ACCEL = LI_CCAP_ACCEL,
+		CONTROLLER_CAP_GYRO = LI_CCAP_GYRO,
+		CONTROLLER_CAP_BATTERY_STATE = LI_CCAP_BATTERY_STATE,
+		CONTROLLER_CAP_RGB_LED = LI_CCAP_RGB_LED
+	};
+
+	enum MotionType {
+		MOTION_TYPE_ACCEL = LI_MOTION_TYPE_ACCEL,
+		MOTION_TYPE_GYRO = LI_MOTION_TYPE_GYRO
+	};
+
+	enum BatteryState {
+		BATTERY_STATE_UNKNOWN = LI_BATTERY_STATE_UNKNOWN,
+		BATTERY_STATE_NOT_PRESENT = LI_BATTERY_STATE_NOT_PRESENT,
+		BATTERY_STATE_DISCHARGING = LI_BATTERY_STATE_DISCHARGING,
+		BATTERY_STATE_CHARGING = LI_BATTERY_STATE_CHARGING,
+		BATTERY_STATE_NOT_CHARGING = LI_BATTERY_STATE_NOT_CHARGING,
+		BATTERY_STATE_FULL = LI_BATTERY_STATE_FULL
+	};
+
+	enum InputDefaults {
+		INPUT_ROT_UNKNOWN = LI_ROT_UNKNOWN,
+		INPUT_TILT_UNKNOWN = LI_TILT_UNKNOWN,
+		INPUT_BATTERY_PERCENTAGE_UNKNOWN = LI_BATTERY_PERCENTAGE_UNKNOWN,
+		INPUT_ERR_UNSUPPORTED = LI_ERR_UNSUPPORTED
+	};
 	MoonlightStreamCore();
 	~MoonlightStreamCore();
 	void start_play_stream(Dictionary options);
@@ -140,6 +255,36 @@ public:
 	void reset_render_target();
 	Ref<AudioStream> get_audio_stream();
 	void reset_audio_stream(bool free_stream = false);
+
+	/* 输入相关封装：将 Limelight 的输入 API 暴露给 Godot */
+	int send_mouse_move_event(short delta_x, short delta_y);
+	int send_mouse_position_event(short x, short y, int reference_width, int reference_height);
+	int send_mouse_move_as_mouse_position_event(short delta_x, short delta_y, int reference_width, int reference_height);
+	int send_touch_event(int event_type, int pointer_id, float x, float y, float pressure_or_distance,
+			float contact_area_major, float contact_area_minor, int rotation);
+	int send_pen_event(int event_type, int tool_type, int pen_buttons,
+			float x, float y, float pressure_or_distance,
+			float contact_area_major, float contact_area_minor,
+			int rotation, int tilt);
+	int send_mouse_button_event(int action, int button);
+	int send_keyboard_event(short key_code, int key_action, int modifiers);
+	int send_keyboard_event2(short key_code, int key_action, int modifiers, int flags);
+	int send_utf8_text_event(const String &text);
+	int send_controller_event(int button_flags, int left_trigger, int right_trigger,
+			short left_stick_x, short left_stick_y, short right_stick_x, short right_stick_y);
+	int send_multi_controller_event(int controller_number, int active_gamepad_mask,
+			int button_flags, int left_trigger, int right_trigger,
+			short left_stick_x, short left_stick_y, short right_stick_x, short right_stick_y);
+	int send_controller_arrival_event(int controller_number, int active_gamepad_mask, int type,
+			uint32_t supported_button_flags, int capabilities);
+	int send_controller_touch_event(int controller_number, int event_type, int pointer_id, float x, float y, float pressure);
+	int send_controller_motion_event(int controller_number, int motion_type, float x, float y, float z);
+	int send_controller_battery_event(int controller_number, int battery_state, int battery_percentage);
+	int send_scroll_event(int scroll_clicks);
+	int send_high_res_scroll_event(short scroll_amount);
+	int send_hscroll_event(int scroll_clicks);
+	int send_high_res_hscroll_event(short scroll_amount);
+	uint32_t get_host_feature_flags();
 
 protected:
 	static void _bind_methods();
@@ -276,7 +421,6 @@ private:
 	void _handle_ar_decode_and_play_sample(char *sample_data, int sample_length);
 	void _handle_set_hdr_mode(bool enabled);
 	// 内部更新方法
-	void _update_display_texture();
 	void _setup_shader_integration(int width, int height, AVPixelFormat format, AVColorSpace colorspace, AVColorRange color_range, int bit_depth);
 	void _update_textures_with_frame(AVFrame *frame);
 	// 线程循环
@@ -290,4 +434,22 @@ private:
 
 } //namespace godot
 
+// Global singleton instance reference (defined in stream_core_main.cpp)
+namespace godot {
+extern MoonlightStreamCore *singleton_instance;
+}
+
 VARIANT_ENUM_CAST(godot::MoonlightStreamCore::VideoCodecConfig);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::MouseButton);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::MouseButtonAction);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::KeyboardAction);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::KeyboardModifier);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::TouchEventType);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::ToolType);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::PenButton);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::ControllerButton);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::ControllerType);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::ControllerCapability);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::MotionType);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::BatteryState);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::InputDefaults);
