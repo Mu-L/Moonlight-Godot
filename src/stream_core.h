@@ -78,6 +78,9 @@ namespace godot {
 class MoonlightStreamCore;
 extern MoonlightStreamCore *singleton_instance;
 
+class MoonlightStreamConfigurationResource;
+class MoonlightAdditionalStreamOptions;
+
 // 自定义音频播放
 class AudioStreamMoonlight;
 class AudioStreamPlaybackMoonlight : public AudioStreamPlaybackResampled {
@@ -256,7 +259,7 @@ public:
 	};
 	MoonlightStreamCore();
 	~MoonlightStreamCore();
-	void start_play_stream(Dictionary options);
+	void start_play_stream(Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>());
 	void stop_play_stream();
 	void set_render_target(TextureRect *target);
 	void reset_render_target();

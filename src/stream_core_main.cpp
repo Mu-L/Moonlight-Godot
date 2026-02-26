@@ -1,4 +1,5 @@
 #include "stream_core.h"
+#include "stream_core_struct.h"
 using namespace godot;
 
 // Moonlight 流核心：对外接口与生命周期管理
@@ -80,7 +81,7 @@ MoonlightStreamCore::~MoonlightStreamCore() {
 		singleton_instance = nullptr;
 }
 
-void MoonlightStreamCore::start_play_stream(Dictionary options) {
+void MoonlightStreamCore::start_play_stream(Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options) {
 	// 1.彻底清理上一次会话
 	if (is_streaming.load() || (connection_thread.is_valid() && connection_thread->is_started())) {
 		UtilityFunctions::print(LOG_PREFIX "Stream already running, stopping first...");
@@ -127,22 +128,21 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	dr_callbacks.submitDecodeUnit = _dr_submit_decode_unit;
 	dr_callbacks.capabilities = 0; // 推送渲染器
 
-	// 2. 编解码器选择
-	disable_hw_decoding = options.get("disable_hw_acceleration", false);
-	enable_idr_logs = options.get("debug_idr_log", false); // 默认关闭
+	// 2. 编解码器选择与控制选项（来自 AdditionalStreamOptions）
+	Ref<MoonlightAdditionalStreamOptions> add_opts = Ref<MoonlightAdditionalStreamOptions>();
+	if (additional_options.is_valid())
+		add_opts = additional_options;
 
-	// Verbose options (override defaults in header)
-	if (options.has("verbose_decoders"))
-		verbose_decoders = options.get("verbose_decoders", verbose_decoders);
-	if (options.has("verbose_requests"))
-		verbose_requests = options.get("verbose_requests", verbose_requests);
-	if (options.has("verbose_limelight"))
-		verbose_limelight = options.get("verbose_limelight", verbose_limelight);
-	if (options.has("verbose_plugin"))
-		verbose_plugin = options.get("verbose_plugin", verbose_plugin);
-
-	int codec_val = options.get("video_codec", (int)CODEC_H264);
-	selected_codec_config = (VideoCodecConfig)codec_val;
+	if (add_opts.is_valid()) {
+		disable_hw_decoding = add_opts->get_disable_hw_acceleration();
+		verbose_plugin = add_opts->get_verbose();
+		int codec_val = add_opts->get_video_codec();
+		selected_codec_config = (VideoCodecConfig)codec_val;
+	} else {
+		disable_hw_decoding = false;
+		enable_idr_logs = false;
+		selected_codec_config = CODEC_H264;
+	}
 	String codec_name;
 	switch (selected_codec_config) {
 		case CODEC_AUTO:
@@ -164,59 +164,62 @@ void MoonlightStreamCore::start_play_stream(Dictionary options) {
 	int supported_formats = _probe_video_format(selected_codec_config);
 	UtilityFunctions::print(LOG_PREFIX "Codec Selection: ", codec_name, " | Mask: 0x", String::num_int64(supported_formats, 16));
 
-	// 3. 配置流
+	// 3. 配置流（来自 StreamConfigurationResource）
 	LiInitializeStreamConfiguration(&stream_config);
-	stream_config.width = options.get("width", 1280);
-	stream_config.height = options.get("height", 720);
-	stream_config.fps = options.get("fps", 60);
-	stream_config.bitrate = options.get("bitrate", 10000);
-	stream_config.packetSize = options.get("packet_size", 1392);
-	stream_config.streamingRemotely = STREAM_CFG_AUTO;
-	stream_config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
-	stream_config.supportedVideoFormats = supported_formats;
-	// 如果有请求且编解码器支持，则启用HDR（10bit）支持
-	if (options.get("enable_hdr", false)) {
-		// 检查我们是否使用支持10bit的编解码器（HEVC或AV1）
-		if (supported_formats & (VIDEO_FORMAT_MASK_H265 | VIDEO_FORMAT_MASK_AV1)) {
+	Ref<MoonlightStreamConfigurationResource> cfg = Ref<MoonlightStreamConfigurationResource>();
+	if (stream_config_res.is_valid())
+		cfg = stream_config_res;
+
+	// Fill values with provided Resource or defaults
+	stream_config.width = cfg.is_valid() && cfg->get_width() ? cfg->get_width() : 1280;
+	stream_config.height = cfg.is_valid() && cfg->get_height() ? cfg->get_height() : 720;
+	stream_config.fps = cfg.is_valid() && cfg->get_fps() ? cfg->get_fps() : 60;
+	stream_config.bitrate = cfg.is_valid() && cfg->get_bitrate() ? cfg->get_bitrate() : 10000;
+	stream_config.packetSize = cfg.is_valid() && cfg->get_packet_size() ? cfg->get_packet_size() : 1392;
+	stream_config.streamingRemotely = cfg.is_valid() ? cfg->get_streaming_remotely() : STREAM_CFG_AUTO;
+	stream_config.audioConfiguration = cfg.is_valid() && cfg->get_audio_configuration() ? cfg->get_audio_configuration() : AUDIO_CONFIGURATION_STEREO;
+	stream_config.supportedVideoFormats = cfg.is_valid() && cfg->get_supported_video_formats() ? cfg->get_supported_video_formats() : supported_formats;
+	// HDR / 10-bit enable if requested in resource
+	if (cfg.is_valid() && cfg->get_color_space() == COLORSPACE_REC_2020) {
+		if (stream_config.supportedVideoFormats & (VIDEO_FORMAT_MASK_H265 | VIDEO_FORMAT_MASK_AV1)) {
 			stream_config.supportedVideoFormats |= VIDEO_FORMAT_MASK_10BIT;
 			UtilityFunctions::print(LOG_PREFIX "HDR (10-bit) capability enabled");
 		}
 	}
-	if (options.has("color_space"))
-		stream_config.colorSpace = options["color_space"];
-	if (options.has("color_range"))
-		stream_config.colorRange = options["color_range"];
+	stream_config.colorSpace = cfg.is_valid() ? cfg->get_color_space() : COLORSPACE_REC_709;
+	stream_config.colorRange = cfg.is_valid() ? cfg->get_color_range() : COLOR_RANGE_LIMITED;
+	stream_config.clientRefreshRateX100 = cfg.is_valid() ? cfg->get_client_refresh_rate_x100() : 0;
 
-	if (options.has("surround_audio_info")) {
-		int surround_info = options["surround_audio_info"];
-		int count = (surround_info >> 8) & 0xFF;
-		if (count == 6)
-			stream_config.audioConfiguration = AUDIO_CONFIGURATION_51_SURROUND;
-		if (count == 8)
-			stream_config.audioConfiguration = AUDIO_CONFIGURATION_71_SURROUND;
-	}
+	// Surround audio detection via audioConfiguration value if provided
+	// (Resource already encodes channel count via audioConfiguration macros)
 
-	// 配置流密钥
-	String rikey = options.get("rikey", "");
-	if (!rikey.is_empty()) {
-		PackedByteArray key_bytes = rikey.hex_decode();
+	// Configure encryption keys if provided
+	if (cfg.is_valid()) {
+		PackedByteArray key_bytes = cfg->get_remote_input_aes_key();
+		PackedByteArray iv_bytes = cfg->get_remote_input_aes_iv();
 		if (key_bytes.size() >= 16) {
 			memcpy(stream_config.remoteInputAesKey, key_bytes.ptr(), 16);
+			if (iv_bytes.size() >= 16) {
+				memcpy(stream_config.remoteInputAesIv, iv_bytes.ptr(), 16);
+			} else {
+				memset(stream_config.remoteInputAesIv, 0, 16);
+			}
+			stream_config.encryptionFlags = ENCFLG_NONE;
 		}
-		memset(stream_config.remoteInputAesIv, 0, 16);
-		stream_config.encryptionFlags = ENCFLG_NONE;
 	}
 
 	// 4. 服务器信息
-	ip_storage = String(options.get("ip", "")).utf8().get_data();
-	session_url_storage = String(options.get("session_url", "")).utf8().get_data();
-	app_version_storage = String(options.get("app_version", "0.0.0.0")).utf8().get_data();
-	gfe_version_storage = String(options.get("gfe_version", "")).utf8().get_data();
+	// Server info: leave empty for now (can be filled from resources in future)
+	ip_storage = std::string();
+	session_url_storage = std::string();
+	app_version_storage = std::string("0.0.0.0");
+	gfe_version_storage = std::string("");
+	// For now, keep server_info fields empty unless caller sets them via additional options in future
 	server_info.address = ip_storage.c_str();
 	server_info.rtspSessionUrl = session_url_storage.c_str();
 	server_info.serverInfoAppVersion = app_version_storage.c_str();
 	server_info.serverInfoGfeVersion = gfe_version_storage.c_str();
-	server_info.serverCodecModeSupport = options.get("server_codec_mode_support", 0);
+	server_info.serverCodecModeSupport = cfg.is_valid() ? cfg->get_supported_video_formats() : 0;
 	is_streaming.store(true);
 
 	if (verbose_requests) {
@@ -398,7 +401,7 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	}
 }
 void MoonlightStreamCore::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("start_play_stream", "options"), &MoonlightStreamCore::start_play_stream);
+	ClassDB::bind_method(D_METHOD("start_play_stream", "stream_config_res", "additional_options"), &MoonlightStreamCore::start_play_stream, DEFVAL(Ref<MoonlightAdditionalStreamOptions>()));
 	ClassDB::bind_method(D_METHOD("stop_play_stream"), &MoonlightStreamCore::stop_play_stream);
 	ClassDB::bind_method(D_METHOD("set_render_target", "texture_rect"), &MoonlightStreamCore::set_render_target);
 	ClassDB::bind_method(D_METHOD("reset_render_target"), &MoonlightStreamCore::reset_render_target);

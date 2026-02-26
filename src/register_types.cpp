@@ -11,6 +11,7 @@
 #include "moonlight_godot.h"
 #include "requester.h"
 #include "stream_core.h"
+#include "stream_core_struct.h"
 
 using namespace godot;
 
@@ -29,6 +30,8 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	GDREGISTER_CLASS(MoonlightStreamCore);
 	GDREGISTER_CLASS(AudioStreamMoonlight);
 	GDREGISTER_CLASS(AudioStreamPlaybackMoonlight);
+	GDREGISTER_CLASS(MoonlightStreamConfigurationResource);
+	GDREGISTER_CLASS(MoonlightAdditionalStreamOptions);
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {
