@@ -3,6 +3,8 @@
 #include <godot_cpp/classes/resource.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+// Limelight definitions for video format masks
+#include "Limelight.h"
 
 namespace godot {
 
@@ -30,6 +32,61 @@ private:
 
 public:
 	MoonlightStreamConfigurationResource() {}
+
+	// Video format constants (mapped from Limelight)
+	enum VideoFormat {
+		FORMAT_H264 = VIDEO_FORMAT_H264,
+		FORMAT_H264_HIGH8_444 = VIDEO_FORMAT_H264_HIGH8_444,
+		FORMAT_H265 = VIDEO_FORMAT_H265,
+		FORMAT_H265_MAIN10 = VIDEO_FORMAT_H265_MAIN10,
+		FORMAT_H265_REXT8_444 = VIDEO_FORMAT_H265_REXT8_444,
+		FORMAT_H265_REXT10_444 = VIDEO_FORMAT_H265_REXT10_444,
+		FORMAT_AV1_MAIN8 = VIDEO_FORMAT_AV1_MAIN8,
+		FORMAT_AV1_MAIN10 = VIDEO_FORMAT_AV1_MAIN10,
+		FORMAT_AV1_HIGH8_444 = VIDEO_FORMAT_AV1_HIGH8_444,
+		FORMAT_AV1_HIGH10_444 = VIDEO_FORMAT_AV1_HIGH10_444,
+
+		MASK_H264 = VIDEO_FORMAT_MASK_H264,
+		MASK_H265 = VIDEO_FORMAT_MASK_H265,
+		MASK_AV1 = VIDEO_FORMAT_MASK_AV1,
+		MASK_10BIT = VIDEO_FORMAT_MASK_10BIT,
+		MASK_YUV444 = VIDEO_FORMAT_MASK_YUV444
+	};
+
+	// Streaming mode (maps to STREAM_CFG_*)
+	enum StreamMode {
+		STREAM_LOCAL = STREAM_CFG_LOCAL,
+		STREAM_REMOTE = STREAM_CFG_REMOTE,
+		STREAM_AUTO = STREAM_CFG_AUTO
+	};
+
+	// Color space choices (maps to COLORSPACE_*)
+	enum ColorSpace {
+		CS_REC_601 = COLORSPACE_REC_601,
+		CS_REC_709 = COLORSPACE_REC_709,
+		CS_REC_2020 = COLORSPACE_REC_2020
+	};
+
+	// Color range choices (maps to COLOR_RANGE_*)
+	enum ColorRange {
+		CR_LIMITED = COLOR_RANGE_LIMITED,
+		CR_FULL = COLOR_RANGE_FULL
+	};
+
+	// Encryption flags (maps to ENCFLG_*)
+	enum EncryptionFlag {
+		ENC_NONE = ENCFLG_NONE,
+		ENC_AUDIO = ENCFLG_AUDIO,
+		ENC_VIDEO = ENCFLG_VIDEO,
+		ENC_ALL = ENCFLG_ALL
+	};
+
+	// Common audio configuration presets (maps to AUDIO_CONFIGURATION_* macros)
+	enum AudioConfigurationPreset {
+		AUDIO_CFG_STEREO = AUDIO_CONFIGURATION_STEREO,
+		AUDIO_CFG_51_SURROUND = AUDIO_CONFIGURATION_51_SURROUND,
+		AUDIO_CFG_71_SURROUND = AUDIO_CONFIGURATION_71_SURROUND
+	};
 
 	// setters/getters
 	void set_width(int v) { width = v; }
@@ -60,6 +117,14 @@ public:
 	PackedByteArray get_remote_input_aes_key() const { return remote_input_aes_key; }
 	void set_remote_input_aes_iv(const PackedByteArray &b) { remote_input_aes_iv = b; }
 	PackedByteArray get_remote_input_aes_iv() const { return remote_input_aes_iv; }
+
+	// 返回可用于 /launch 和 /resume 请求的 surroundAudioInfo 值
+	int get_surround_audio_info() const {
+		int x = audio_configuration;
+		int channelCount = (x >> 8) & 0xFF;
+		int channelMask = (x >> 16) & 0xFFFF;
+		return (channelMask << 16) | channelCount;
+	}
 };
 
 class MoonlightAdditionalStreamOptions : public Resource {
@@ -87,3 +152,11 @@ public:
 };
 
 } // namespace godot
+
+// Expose the nested enum to Variant system
+VARIANT_ENUM_CAST(godot::MoonlightStreamConfigurationResource::VideoFormat);
+VARIANT_ENUM_CAST(godot::MoonlightStreamConfigurationResource::StreamMode);
+VARIANT_ENUM_CAST(godot::MoonlightStreamConfigurationResource::ColorSpace);
+VARIANT_ENUM_CAST(godot::MoonlightStreamConfigurationResource::ColorRange);
+VARIANT_ENUM_CAST(godot::MoonlightStreamConfigurationResource::EncryptionFlag);
+VARIANT_ENUM_CAST(godot::MoonlightStreamConfigurationResource::AudioConfigurationPreset);

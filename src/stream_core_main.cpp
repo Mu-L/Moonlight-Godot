@@ -242,6 +242,16 @@ void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<Moonlig
 		opts["limelight_query_parameters"] = String(extra_q);
 	}
 
+	// 将 surroundAudioInfo 添加到 options（由服务器在 /launch 或 /resume 请求中使用）
+	if (cfg.is_valid()) {
+		opts["surround_audio_info"] = cfg->get_surround_audio_info();
+	} else {
+		int x = stream_config.audioConfiguration;
+		int channelCount = (x >> 8) & 0xFF;
+		int channelMask = (x >> 16) & 0xFFFF;
+		opts["surround_audio_info"] = (channelMask << 16) | channelCount;
+	}
+
 	// 保存 pending 配置以便在回调中使用
 	pending_cfg = stream_config_res;
 	pending_add_opts = additional_options;

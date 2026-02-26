@@ -260,6 +260,32 @@ public:
 		INPUT_BATTERY_PERCENTAGE_UNKNOWN = LI_BATTERY_PERCENTAGE_UNKNOWN,
 		INPUT_ERR_UNSUPPORTED = LI_ERR_UNSUPPORTED
 	};
+
+	// Limelight-aligned enums (C++ wrappers for plugin clarity)
+	enum StreamCfg {
+		StreamCfgLocal = STREAM_CFG_LOCAL,
+		StreamCfgRemote = STREAM_CFG_REMOTE,
+		StreamCfgAuto = STREAM_CFG_AUTO
+	};
+
+	enum ColorSpace {
+		ColorSpaceRec601 = COLORSPACE_REC_601,
+		ColorSpaceRec709 = COLORSPACE_REC_709,
+		ColorSpaceRec2020 = COLORSPACE_REC_2020
+	};
+
+	enum ColorRange {
+		ColorRangeLimited = COLOR_RANGE_LIMITED,
+		ColorRangeFull = COLOR_RANGE_FULL
+	};
+
+	enum EncryptionFlags {
+		EncryptNone = ENCFLG_NONE,
+		EncryptAudio = ENCFLG_AUDIO,
+		EncryptVideo = ENCFLG_VIDEO,
+		EncryptAll = ENCFLG_ALL
+	};
+
 	MoonlightStreamCore();
 	~MoonlightStreamCore();
 	void start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>());
@@ -473,3 +499,7 @@ VARIANT_ENUM_CAST(godot::MoonlightStreamCore::ControllerCapability);
 VARIANT_ENUM_CAST(godot::MoonlightStreamCore::MotionType);
 VARIANT_ENUM_CAST(godot::MoonlightStreamCore::BatteryState);
 VARIANT_ENUM_CAST(godot::MoonlightStreamCore::InputDefaults);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::StreamCfg);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::ColorSpace);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::ColorRange);
+VARIANT_ENUM_CAST(godot::MoonlightStreamCore::EncryptionFlags);

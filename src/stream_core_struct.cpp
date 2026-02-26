@@ -59,6 +59,51 @@ void MoonlightStreamConfigurationResource::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_remote_input_aes_iv", "b"), &MoonlightStreamConfigurationResource::set_remote_input_aes_iv);
 	ClassDB::bind_method(D_METHOD("get_remote_input_aes_iv"), &MoonlightStreamConfigurationResource::get_remote_input_aes_iv);
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_BYTE_ARRAY, "remote_input_aes_iv"), "set_remote_input_aes_iv", "get_remote_input_aes_iv");
+
+	ClassDB::bind_method(D_METHOD("get_surround_audio_info"), &MoonlightStreamConfigurationResource::get_surround_audio_info);
+
+	// Bind video format constants (use enum member names declared in the resource)
+	BIND_ENUM_CONSTANT(FORMAT_H264);
+	BIND_ENUM_CONSTANT(FORMAT_H264_HIGH8_444);
+	BIND_ENUM_CONSTANT(FORMAT_H265);
+	BIND_ENUM_CONSTANT(FORMAT_H265_MAIN10);
+	BIND_ENUM_CONSTANT(FORMAT_H265_REXT8_444);
+	BIND_ENUM_CONSTANT(FORMAT_H265_REXT10_444);
+	BIND_ENUM_CONSTANT(FORMAT_AV1_MAIN8);
+	BIND_ENUM_CONSTANT(FORMAT_AV1_MAIN10);
+	BIND_ENUM_CONSTANT(FORMAT_AV1_HIGH8_444);
+	BIND_ENUM_CONSTANT(FORMAT_AV1_HIGH10_444);
+
+	BIND_ENUM_CONSTANT(MASK_H264);
+	BIND_ENUM_CONSTANT(MASK_H265);
+	BIND_ENUM_CONSTANT(MASK_AV1);
+	BIND_ENUM_CONSTANT(MASK_10BIT);
+	BIND_ENUM_CONSTANT(MASK_YUV444);
+
+	// Bind streaming mode
+	BIND_ENUM_CONSTANT(STREAM_LOCAL);
+	BIND_ENUM_CONSTANT(STREAM_REMOTE);
+	BIND_ENUM_CONSTANT(STREAM_AUTO);
+
+	// Bind color space
+	BIND_ENUM_CONSTANT(CS_REC_601);
+	BIND_ENUM_CONSTANT(CS_REC_709);
+	BIND_ENUM_CONSTANT(CS_REC_2020);
+
+	// Bind color range
+	BIND_ENUM_CONSTANT(CR_LIMITED);
+	BIND_ENUM_CONSTANT(CR_FULL);
+
+	// Bind encryption flags
+	BIND_ENUM_CONSTANT(ENC_NONE);
+	BIND_ENUM_CONSTANT(ENC_AUDIO);
+	BIND_ENUM_CONSTANT(ENC_VIDEO);
+	BIND_ENUM_CONSTANT(ENC_ALL);
+
+	// Bind audio configuration presets
+	BIND_ENUM_CONSTANT(AUDIO_CFG_STEREO);
+	BIND_ENUM_CONSTANT(AUDIO_CFG_51_SURROUND);
+	BIND_ENUM_CONSTANT(AUDIO_CFG_71_SURROUND);
 }
 
 void MoonlightAdditionalStreamOptions::_bind_methods() {

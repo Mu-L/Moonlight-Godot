@@ -648,6 +648,11 @@ void ComputerManager::_perform_launch_request(Dictionary ctx, String command) {
 		}
 	}
 
+	// 兼容性：接受 camelCase 的 surroundAudioInfo 键并规范为下划线版本
+	if (options.has("surroundAudioInfo") && !options.has("surround_audio_info")) {
+		options["surround_audio_info"] = options["surroundAudioInfo"];
+	}
+
 	// 可选参数 - 无默认值 (仅当 options 包含时添加)
 	if (options.has("width") && options.has("height") && options.has("fps")) {
 		String mode = String::num_int64(options["width"]) + "x" + String::num_int64(options["height"]) + "x" + String::num_int64(options["fps"]);
