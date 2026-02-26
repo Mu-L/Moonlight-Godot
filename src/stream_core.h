@@ -34,6 +34,8 @@
 
 // Limelight SDK 头文件
 #include "Limelight.h"
+// Stream configuration resources
+#include "stream_core_struct.h"
 
 // FFmpeg 头文件
 extern "C" {
@@ -80,6 +82,7 @@ extern MoonlightStreamCore *singleton_instance;
 
 class MoonlightStreamConfigurationResource;
 class MoonlightAdditionalStreamOptions;
+class ComputerManager;
 
 // 自定义音频播放
 class AudioStreamMoonlight;
@@ -259,7 +262,7 @@ public:
 	};
 	MoonlightStreamCore();
 	~MoonlightStreamCore();
-	void start_play_stream(Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>());
+	void start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>());
 	void stop_play_stream();
 	void set_render_target(TextureRect *target);
 	void reset_render_target();
@@ -348,6 +351,13 @@ private:
 	Ref<Mutex> queue_mutex;
 	Ref<Semaphore> decode_sem;
 	Ref<Mutex> codec_mutex;
+
+	// --- Internal helpers for unified start flow ---
+	ComputerManager *internal_cm = nullptr;
+	Ref<MoonlightStreamConfigurationResource> pending_cfg;
+	Ref<MoonlightAdditionalStreamOptions> pending_add_opts;
+
+	void _on_establish_stream_completed(Dictionary response);
 	// --- Debug Options ---
 	bool enable_idr_logs = false;
 	// Verbose toggles (can be overridden via options dict in start_play_stream)

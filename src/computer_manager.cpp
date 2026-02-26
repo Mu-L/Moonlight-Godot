@@ -639,6 +639,15 @@ void ComputerManager::_perform_launch_request(Dictionary ctx, String command) {
 	url += "&rikey=" + rikey;
 	url += "&rikeyid=" + String::num_int64(rikeyid);
 
+	// 如果上游通过 Limelight 提供了额外的查询参数片段，则附加它（例如来自 LiGetLaunchUrlQueryParameters）
+	if (options.has("limelight_query_parameters")) {
+		String frag = options["limelight_query_parameters"];
+		if (!frag.is_empty()) {
+			// Frag 预期包含以 '&' 开头或不包含，直接附加即可
+			url += frag;
+		}
+	}
+
 	// 可选参数 - 无默认值 (仅当 options 包含时添加)
 	if (options.has("width") && options.has("height") && options.has("fps")) {
 		String mode = String::num_int64(options["width"]) + "x" + String::num_int64(options["height"]) + "x" + String::num_int64(options["fps"]);
@@ -701,6 +710,10 @@ void ComputerManager::_perform_launch_request(Dictionary ctx, String command) {
 				key == "client_hdr_cap_meta_data_id" || key == "client_hdr_cap_display_data") {
 			continue;
 		}
+
+		// Skip Limelight-provided fragment which we already appended
+		if (key == "limelight_query_parameters")
+			continue;
 		// 原样追加其他参数
 		url += "&" + key + "=" + String(options[key]);
 	}

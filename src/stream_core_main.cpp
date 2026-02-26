@@ -1,5 +1,7 @@
+#include "computer_manager.h"
 #include "stream_core.h"
 #include "stream_core_struct.h"
+#include <Limelight.h>
 using namespace godot;
 
 // Moonlight 流核心：对外接口与生命周期管理
@@ -81,7 +83,7 @@ MoonlightStreamCore::~MoonlightStreamCore() {
 		singleton_instance = nullptr;
 }
 
-void MoonlightStreamCore::start_play_stream(Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options) {
+void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options) {
 	// 1.彻底清理上一次会话
 	if (is_streaming.load() || (connection_thread.is_valid() && connection_thread->is_started())) {
 		UtilityFunctions::print(LOG_PREFIX "Stream already running, stopping first...");
@@ -226,7 +228,56 @@ void MoonlightStreamCore::start_play_stream(Ref<MoonlightStreamConfigurationReso
 		UtilityFunctions::print(LOG_PREFIX "Connection Request Info: ip=", ip_storage.c_str(), " session_url=", session_url_storage.c_str());
 	}
 
-	// 5. 启动线程
+	// 5. 获取 Limelight 附加查询参数并委托 ComputerManager 建立流
+	const char *extra_q = LiGetLaunchUrlQueryParameters();
+
+	Dictionary opts;
+	// 基本参数，供 ComputerManager 构建 /launch 或 /resume 请求
+	opts["width"] = stream_config.width;
+	opts["height"] = stream_config.height;
+	opts["fps"] = stream_config.fps;
+	opts["sops"] = stream_config.packetSize;
+	opts["server_codec_mode_support"] = server_info.serverCodecModeSupport;
+	if (extra_q && strlen(extra_q) > 0) {
+		opts["limelight_query_parameters"] = String(extra_q);
+	}
+
+	// 保存 pending 配置以便在回调中使用
+	pending_cfg = stream_config_res;
+	pending_add_opts = additional_options;
+
+	if (!internal_cm) {
+		internal_cm = memnew(ComputerManager);
+	}
+	internal_cm->establish_stream(host_id, app_id, opts, callable_mp(this, &MoonlightStreamCore::_on_establish_stream_completed));
+}
+
+void MoonlightStreamCore::_on_establish_stream_completed(Dictionary response) {
+	if (!is_streaming.load())
+		return;
+
+	String status = response.get("status", "error");
+	if (status != "success") {
+		UtilityFunctions::print(LOG_PREFIX "Establish stream failed: ", response.get("message", "unknown"));
+		is_streaming.store(false);
+		return;
+	}
+
+	// 成功：设置 session_url / ip 等并启动线程
+	String session_url = response.get("session_url", "");
+	String ip = response.get("ip", "");
+	if (session_url.is_empty()) {
+		UtilityFunctions::print(LOG_PREFIX "No session_url returned by ComputerManager");
+		is_streaming.store(false);
+		return;
+	}
+
+	session_url_storage = std::string(session_url.utf8().get_data());
+	ip_storage = std::string(ip.utf8().get_data());
+	server_info.rtspSessionUrl = session_url_storage.c_str();
+	server_info.address = ip_storage.c_str();
+
+	// 启动连接与解码线程（同之前逻辑）
 	if (connection_thread.is_valid()) {
 		connection_thread->wait_to_finish();
 		connection_thread.unref();
@@ -401,7 +452,7 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	}
 }
 void MoonlightStreamCore::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("start_play_stream", "stream_config_res", "additional_options"), &MoonlightStreamCore::start_play_stream, DEFVAL(Ref<MoonlightAdditionalStreamOptions>()));
+	ClassDB::bind_method(D_METHOD("start_play_stream", "host_id", "app_id", "stream_config_res", "additional_options"), &MoonlightStreamCore::start_play_stream, DEFVAL(Ref<MoonlightAdditionalStreamOptions>()));
 	ClassDB::bind_method(D_METHOD("stop_play_stream"), &MoonlightStreamCore::stop_play_stream);
 	ClassDB::bind_method(D_METHOD("set_render_target", "texture_rect"), &MoonlightStreamCore::set_render_target);
 	ClassDB::bind_method(D_METHOD("reset_render_target"), &MoonlightStreamCore::reset_render_target);
