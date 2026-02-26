@@ -1,4 +1,14 @@
 #include "stream_core.h"
+// Compile miniaudio implementation here with minimal feature set. This ensures
+// implementations for device I/O are present in this TU and controlled by
+// project's decisions (FFmpeg handles decoding).
+#define MINIAUDIO_IMPLEMENTATION
+#define MA_NO_DECODING
+#define MA_NO_ENCODING
+#define MA_NO_RESOURCE_MANAGER
+#define MA_NO_NODE_GRAPH
+#define MA_NO_ENGINE
+#include "miniaudio.h"
 using namespace godot;
 
 // Moonlight 流核心：音频 
@@ -264,6 +274,27 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 								av_free(chan_buf);
 							}
 						}
+
+						// 如果启用了原生旁路音频，则将交错多声道样本写入 native 环形缓冲
+						if (native_audio_bypass_enabled) {
+							native_audio_mutex->lock();
+							int samples_to_write = out_samples_multi * in_ch;
+							int free_space = native_rb_capacity - native_rb_used;
+							if (samples_to_write > free_space) {
+								int overflow = samples_to_write - free_space;
+								native_rb_read_pos = (native_rb_read_pos + overflow) % native_rb_capacity;
+								native_rb_used -= overflow;
+							}
+							int first_chunk = MIN(samples_to_write, native_rb_capacity - native_rb_write_pos);
+							int second_chunk = samples_to_write - first_chunk;
+							float *ringptr = native_audio_ring.ptrw();
+							memcpy(ringptr + native_rb_write_pos, multi_buf, first_chunk * sizeof(float));
+							if (second_chunk > 0)
+								memcpy(ringptr, multi_buf + first_chunk, second_chunk * sizeof(float));
+							native_rb_write_pos = (native_rb_write_pos + samples_to_write) % native_rb_capacity;
+							native_rb_used += samples_to_write;
+							native_audio_mutex->unlock();
+						}
 					}
 					av_free(multi_buf);
 				}
@@ -303,4 +334,94 @@ void MoonlightStreamCore::_ar_cleanup(void) {
 void MoonlightStreamCore::_ar_decode_and_play_sample(char *data, int len) {
 	if (singleton_instance)
 		singleton_instance->_handle_ar_decode_and_play_sample(data, len);
+}
+
+// ---------------------- miniaudio 原生旁路实现 ----------------------
+void MoonlightStreamCore::_mab_device_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_uint32 frameCount) {
+	MoonlightStreamCore *core = (MoonlightStreamCore *)pDevice->pUserData;
+	if (!core) {
+		int channels = 2;
+		int samples_needed = (int)frameCount * channels;
+		memset(pOutput, 0, samples_needed * sizeof(float));
+		return;
+	}
+	int channels = core->native_audio_channel_count > 0 ? core->native_audio_channel_count : 2;
+	int samples_needed = (int)frameCount * channels;
+	float *out = (float *)pOutput;
+	// If paused, produce silence and do NOT consume ring buffer
+	if (core->native_audio_paused) {
+		memset(out, 0, samples_needed * sizeof(float));
+		return;
+	}
+	core->native_audio_mutex->lock();
+	int available = core->native_rb_used;
+	int to_read = MIN(samples_needed, available);
+	int read_pos = core->native_rb_read_pos;
+	for (int i = 0; i < to_read; i++) {
+		out[i] = core->native_audio_ring[read_pos];
+		read_pos = (read_pos + 1) % core->native_rb_capacity;
+	}
+	core->native_rb_read_pos = read_pos;
+	core->native_rb_used -= to_read;
+	core->native_audio_mutex->unlock();
+	if (to_read < samples_needed) {
+		memset(out + to_read, 0, (samples_needed - to_read) * sizeof(float));
+	}
+}
+
+int MoonlightStreamCore::_native_audio_start(int channels) {
+	if (native_audio_bypass_enabled)
+		return -1;
+	if (!native_audio_mutex.is_valid())
+		native_audio_mutex.instantiate();
+	native_audio_channel_count = channels > 0 ? channels : 2;
+	// 200ms buffer by default
+	native_rb_capacity = (int)(48000 * native_audio_channel_count * 0.2);
+	if (native_rb_capacity < 1024)
+		native_rb_capacity = 1024;
+	native_audio_ring.resize(native_rb_capacity);
+	native_audio_ring.fill(0);
+	native_rb_write_pos = native_rb_read_pos = native_rb_used = 0;
+
+	ma_device_config config = ma_device_config_init(ma_device_type_playback);
+	config.playback.format = ma_format_f32;
+	config.playback.channels = native_audio_channel_count;
+	config.sampleRate = 48000;
+	config.dataCallback = _mab_device_callback;
+	config.pUserData = this;
+
+	ma_device *device = (ma_device *)::malloc(sizeof(ma_device));
+	if (!device)
+		return -2;
+	if (ma_device_init(NULL, &config, device) != MA_SUCCESS) {
+		::free(device);
+		return -3;
+	}
+	if (ma_device_start(device) != MA_SUCCESS) {
+		ma_device_uninit(device);
+		::free(device);
+		return -4;
+	}
+	native_ma_device = device;
+	return 0;
+}
+
+void MoonlightStreamCore::_native_audio_stop() {
+	if (native_ma_device) {
+		ma_device *device = (ma_device *)native_ma_device;
+		ma_device_stop(device);
+		ma_device_uninit(device);
+		::free(device);
+		native_ma_device = nullptr;
+	}
+	// clear buffer
+	if (native_audio_mutex.is_valid()) {
+		native_audio_mutex->lock();
+		native_rb_write_pos = native_rb_read_pos = native_rb_used = 0;
+		native_audio_mutex->unlock();
+	}
+}
+
+bool MoonlightStreamCore::_native_audio_is_running() const {
+	return native_ma_device != nullptr;
 }

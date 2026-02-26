@@ -453,6 +453,46 @@ void MoonlightStreamCore::reset_audio_stream(bool free_stream) {
 	}
 }
 
+// 原生旁路音频：对外 API（在此文件实现为外部可调用接口，内部实现委托给 stream_core_audio.cpp）
+bool MoonlightStreamCore::start_native_audio_bypass() {
+	int ac = stream_config.audioConfiguration;
+	int channel_count = (ac >> 8) & 0xFF;
+	if (channel_count <= 0)
+		channel_count = 2;
+	int res = _native_audio_start(channel_count);
+	if (res == 0) {
+		native_audio_bypass_enabled = true;
+		native_audio_channel_count = channel_count;
+		return true;
+	}
+	return false;
+}
+
+void MoonlightStreamCore::stop_native_audio_bypass() {
+	_native_audio_stop();
+	native_audio_bypass_enabled = false;
+}
+
+bool MoonlightStreamCore::is_native_audio_bypass_running() const {
+	return native_audio_bypass_enabled;
+}
+
+void MoonlightStreamCore::pause_native_audio_bypass() {
+	if (!native_audio_bypass_enabled)
+		return;
+	native_audio_paused = true;
+}
+
+void MoonlightStreamCore::resume_native_audio_bypass() {
+	if (!native_audio_bypass_enabled)
+		return;
+	native_audio_paused = false;
+}
+
+bool MoonlightStreamCore::is_native_audio_bypass_paused() const {
+	return native_audio_paused;
+}
+
 // 线程逻辑
 void MoonlightStreamCore::_thread_func_connection() {
 	int res = LiStartConnection(&server_info, &stream_config, &cl_callbacks, &dr_callbacks, &ar_callbacks, this, 0, this, 0);
@@ -514,6 +554,12 @@ void MoonlightStreamCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_audio_stream"), &MoonlightStreamCore::get_audio_stream);
 	ClassDB::bind_method(D_METHOD("get_audio_streams"), &MoonlightStreamCore::get_audio_streams);
 	ClassDB::bind_method(D_METHOD("reset_audio_stream", "free_stream"), &MoonlightStreamCore::reset_audio_stream, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("start_native_audio_bypass"), &MoonlightStreamCore::start_native_audio_bypass);
+	ClassDB::bind_method(D_METHOD("stop_native_audio_bypass"), &MoonlightStreamCore::stop_native_audio_bypass);
+	ClassDB::bind_method(D_METHOD("is_native_audio_bypass_running"), &MoonlightStreamCore::is_native_audio_bypass_running);
+	ClassDB::bind_method(D_METHOD("pause_native_audio_bypass"), &MoonlightStreamCore::pause_native_audio_bypass);
+	ClassDB::bind_method(D_METHOD("resume_native_audio_bypass"), &MoonlightStreamCore::resume_native_audio_bypass);
+	ClassDB::bind_method(D_METHOD("is_native_audio_bypass_paused"), &MoonlightStreamCore::is_native_audio_bypass_paused);
 
 	// 输入 API 绑定
 	ClassDB::bind_method(D_METHOD("send_mouse_move_event", "delta_x", "delta_y"), &MoonlightStreamCore::send_mouse_move_event);

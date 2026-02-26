@@ -77,6 +77,10 @@ JNIEnv *GetJNIEnv();
 #define CODEC_FAMILY_H265 1
 #define CODEC_FAMILY_AV1 2
 
+// Forward declarations for miniaudio types used by the native bypass callback.
+struct ma_device;
+typedef unsigned int ma_uint32;
+
 namespace godot {
 
 class MoonlightStreamCore;
@@ -302,6 +306,16 @@ public:
 	Array get_audio_streams();
 	void reset_audio_stream(bool free_stream = false);
 
+	// 原生旁路音频控制：启动/停止直接输出到系统默认设备（可选）
+	bool start_native_audio_bypass();
+	void stop_native_audio_bypass();
+	bool is_native_audio_bypass_running() const;
+
+	// Pause/resume native bypass without stopping device (silence while paused)
+	void pause_native_audio_bypass();
+	void resume_native_audio_bypass();
+	bool is_native_audio_bypass_paused() const;
+
 	/* 输入相关封装：将 Limelight 的输入 API 暴露给 Godot */
 	int send_mouse_move_event(short delta_x, short delta_y);
 	int send_mouse_position_event(short x, short y, int reference_width, int reference_height);
@@ -435,6 +449,23 @@ private:
 	// 这可能增加解码/内存/调度开销；在不需要每通道单独处理时请使用原有的 `get_audio_stream()`。
 	Vector<Ref<AudioStreamMoonlight>> audio_streams;
 
+	// --- 原生旁路音频（miniaudio）支持 ---
+	// 当启用时，音频流会写入一个独立的环形缓冲并由 miniaudio 直接输出到默认设备，
+	// 以尽可能降低延迟。此功能为可选且与 Godot 的音频流并存。
+	bool native_audio_bypass_enabled = false;
+	int native_audio_channel_count = 2;
+	void *native_ma_context = nullptr; // opaque pointer to ma_context
+	void *native_ma_device = nullptr; // opaque pointer to ma_device
+	Vector<float> native_audio_ring; // interleaved float samples
+	int native_rb_write_pos = 0;
+	int native_rb_read_pos = 0;
+	int native_rb_capacity = 0;
+	int native_rb_used = 0;
+	mutable Ref<Mutex> native_audio_mutex;
+
+	// Pause state for native bypass (true -> silently output zeros until resumed)
+	bool native_audio_paused = false;
+
 	// --- FFmpeg 视频上下文 ---
 	const AVCodec *v_codec = nullptr;
 	AVCodecContext *v_codec_ctx = nullptr;
@@ -469,6 +500,8 @@ private:
 	static void _cl_connection_terminated(int error_code);
 	static void _cl_log_message(const char *format, ...);
 	static void _cl_set_hdr_mode(bool enabled);
+
+	static void _mab_device_callback(::ma_device *pDevice, void *pOutput, const void *pInput, ::ma_uint32 frameCount);
 	static int _dr_setup(int video_format, int width, int height, int redraw_rate, void *context, int dr_flags);
 	static void _dr_cleanup(void);
 	static int _dr_submit_decode_unit(PDECODE_UNIT decode_unit);
@@ -482,6 +515,9 @@ private:
 	int _handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit);
 	int _handle_ar_init(int audio_configuration);
 	void _handle_ar_decode_and_play_sample(char *sample_data, int sample_length);
+	int _native_audio_start(int channels);
+	void _native_audio_stop();
+	bool _native_audio_is_running() const;
 	void _handle_set_hdr_mode(bool enabled);
 	// 内部更新方法
 	void _setup_shader_integration(int width, int height, AVPixelFormat format, AVColorSpace colorspace, AVColorRange color_range, int bit_depth);
