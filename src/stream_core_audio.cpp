@@ -8,6 +8,13 @@
 #define MA_NO_RESOURCE_MANAGER
 #define MA_NO_NODE_GRAPH
 #define MA_NO_ENGINE
+// On Apple platforms avoid pulling Objective-C frameworks (AVFoundation/CoreAudio)
+// into a C++ translation unit by disabling those backends.
+#if defined(__APPLE__)
+#define MA_NO_COREAUDIO
+#define MA_NO_AVFOUNDATION
+#define MA_NO_AUDIO_UNIT
+#endif
 #include "miniaudio.h"
 using namespace godot;
 
