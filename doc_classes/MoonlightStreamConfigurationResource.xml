@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="MoonlightStreamConfigurationResource" inherits="Resource" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		描述串流会话的配置资源，包含视频、音频与加密等参数。
+	</brief_description>
+	<description>
+		该资源用于封装启动 Moonlight 串流会话时需要传递的参数集合。
+		配置项包括分辨率、帧率、比特率、网络包大小、音频配置、支持的视频编解码格式、色彩空间与色域范围，以及远程输入的 AES 密钥/IV 等。
+		将此资源传入 [code]MoonlightStreamCore.start_play_stream[/code] 可精确控制会话参数。
+	</description>
+	<members>
+		<member name="width" type="int" setter="set_width" getter="get_width">
+			视频流宽度（像素）。
+		</member>
+		<member name="height" type="int" setter="set_height" getter="get_height">
+			视频流高度（像素）。
+		</member>
+		<member name="fps" type="int" setter="set_fps" getter="get_fps">
+			目标帧率（帧/秒）。
+		</member>
+		<member name="bitrate" type="int" setter="set_bitrate" getter="get_bitrate">
+			目标视频比特率（单位：kbps）。
+		</member>
+		<member name="packet_size" type="int" setter="set_packet_size" getter="get_packet_size">
+			网络包大小（字节），用于控制 RTP 包的分片大小。
+		</member>
+		<member name="streaming_remotely" type="int" setter="set_streaming_remotely" getter="get_streaming_remotely">
+			流式传输模式，使用 [code]StreamMode[/code] 枚举（本地/远程/自动）。
+		</member>
+		<member name="audio_configuration" type="int" setter="set_audio_configuration" getter="get_audio_configuration">
+			音频配置位掩码或预设值，使用 [code]AudioConfigurationPreset[/code] 常量或自定义通道掩码。
+		</member>
+		<member name="supported_video_formats" type="int" setter="set_supported_video_formats" getter="get_supported_video_formats">
+			支持的视频格式掩码，使用 [code]VideoFormat[/code] 中的常量或 MASK_* 值进行按位组合。
+		</member>
+		<member name="client_refresh_rate_x100" type="int" setter="set_client_refresh_rate_x100" getter="get_client_refresh_rate_x100">
+			客户端期望的刷新率乘以 100（例如 60Hz 对应 6000）。
+		</member>
+		<member name="color_space" type="int" setter="set_color_space" getter="get_color_space">
+			色彩空间设置，使用 [code]ColorSpace[/code] 枚举（Rec.601/709/2020）。
+		</member>
+		<member name="color_range" type="int" setter="set_color_range" getter="get_color_range">
+			色域范围，使用 [code]ColorRange[/code] 枚举（Limited/Full）。
+		</member>
+		<member name="encryption_flags" type="int" setter="set_encryption_flags" getter="get_encryption_flags">
+			加密标志位，用于指示是否对音频/视频通道启用加密（使用 [code]EncryptionFlag[/code] 枚举）。
+		</member>
+		<member name="remote_input_aes_key" type="PackedByteArray" setter="set_remote_input_aes_key" getter="get_remote_input_aes_key">
+			远程输入 AES 密钥（期望 16 字节）。用于加密远端输入数据。
+		</member>
+		<member name="remote_input_aes_iv" type="PackedByteArray" setter="set_remote_input_aes_iv" getter="get_remote_input_aes_iv">
+			远程输入 AES 初始向量（IV，期望 16 字节）。
+		</member>
+	</members>
+	<methods>
+		<method name="get_surround_audio_info">
+			<return type="int" />
+			<description>
+				返回一个整数值，可直接用于 `/launch` 和 `/resume` 请求中 [code]surroundAudioInfo[/code] 参数，基于当前 [code]audio_configuration[/code] 计算通道掩码与通道数编码。
+			</description>
+		</method>
+	</methods>
+	<constants>
+		<constant name="FORMAT_H264" value="1" enum="VideoFormat">
+			H.264 High Profile 支持位。
+		</constant>
+		<constant name="FORMAT_H265" value="256" enum="VideoFormat">
+			HEVC 主档 (H.265) 支持位。
+		</constant>
+		<constant name="FORMAT_AV1_MAIN8" value="4096" enum="VideoFormat">
+			AV1 主档 8-bit 支持位（Sunshine 扩展）。
+		</constant>
+		<constant name="MASK_H264" value="15" />
+		<constant name="MASK_H265" value="3840" />
+		<constant name="MASK_AV1" value="61440" />
+		<constant name="MASK_10BIT" value="43520" />
+		<constant name="MASK_YUV444" value="52228" />
+	</constants>
+</class>

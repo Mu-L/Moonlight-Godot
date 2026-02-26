@@ -210,14 +210,14 @@ jobs:
               const path = '.github/workflows/cacheVer.txt';
               const owner = context.repo.owner;
               const repo = context.repo.repo;
-              const { data: content } = await github.repos.getContent({ owner, repo, path });
+              const { data: content } = await github.rest.repos.getContent({ owner, repo, path });
               const decoded = Buffer.from(content.content, 'base64').toString();
               const lines = decoded.split(/\r?\n/);
               while (lines.length < 2) lines.push('');
               const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
               lines[1] = dateStr;
               const newContent = lines.join('\n');
-              await github.repos.createOrUpdateFileContents({
+              await github.rest.repos.createOrUpdateFileContents({
                 owner,
                 repo,
                 path,

@@ -1,156 +1,448 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <class name="MoonlightStreamCore" inherits="Node" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
 	<brief_description>
-		负责处理 Moonlight 串流协议的核心逻辑，包括音视频解码与渲染。
+		Moonlight 流媒体核心节点，负责建立连接、接收与渲染音视频流并提供输入转发接口。
 	</brief_description>
 	<description>
-		[MoonlightStreamCore] 是对 [url=https://github.com/moonlight-stream/moonlight-common-c]Moonlight-common-c[/url] 库的封装。它使用 FFmpeg 库对接收到的视频流（H.264/HEVC/AV1）和音频流（Opus）进行解码，并在 Godot 中进行渲染。
+		MoonlightStreamCore 对接底层的 moonlight-common-c 和 FFmpeg，提供完整的串流会话管理、视频解码与渲染、音频解码与回放、以及向主机转发输入事件的能力。
 
 		主要功能：
-		1. [b]连接管理[/b]：通过 [method start_play_stream] 建立与 Moonlight 主机的 RTSP 连接。
-		2. [b]视频解码与渲染[/b]：使用 FFmpeg（可选硬件加速）解码视频流，将 YUV 数据转换为 RGBA 纹理，并自动更新到指定的 [TextureRect] 上。
-		3. [b]音频处理[/b]：解码 Opus 音频数据并填充到内部的 [AudioStreamMoonlight] 缓冲区中，供 Godot 音频系统播放。
-		4. [b]错误处理与状态反馈[/b]：通过信号机制报告连接状态、解码错误、HDR 模式变更等。
+		- 建立并管理与主机的 RTSP/控制连接，负责会话生命周期。
+		- 将收到的视频帧解码为可在 Godot 中显示的纹理，并支持基于 RenderingDevice 的加速或基于 Shader 的 YUV->RGB 转换。
+		- 解码 Opus 音频并写入内部环形缓冲区，供 [code]AudioStreamMoonlight[/code] 播放。
+		- 暴露完整的输入事件 API（鼠标、触控、手柄、键盘、笔、滚动等），将本地输入传递到远端主机。
 
-		注意：此类依赖于底层的 [code]moonlight-common-c[/code] 库和 FFmpeg 运行时库。视频解码支持硬件加速（根据平台不同支持 D3D11VA、VAAPI、VideoToolbox 等）。
-
-		该类内部使用多线程架构：
-		● 一个连接线程运行 LiStartConnection。
-		● 一个视频解码线程处理数据包队列和解码。
-		音频解码在主线程中间接处理。
+		运行模型：连接与解码使用独立线程以避免阻塞主线程；视频渲染与音频播放通过资源与回调与 Godot 引擎协同工作。
 	</description>
 	<methods>
 		<method name="start_play_stream">
 			<return type="void" />
-			<argument index="0" name="options" type="Dictionary" />
+			<argument index="0" name="host_id" type="int" />
+			<argument index="1" name="app_id" type="int" />
+			<argument index="2" name="stream_config_res" type="Resource" />
+			<argument index="3" name="additional_options" type="Resource" />
 			<description>
-				使用提供的配置启动流媒体播放。此方法将启动后台线程以建立 RTSP 连接并开始接收音视频数据。
-
-				[param options] 字典应包含以下键：
-				● [code]"ip"[/code]: (String) 主机 IP 地址。
-				● [code]"session_url"[/code]: (String) 从 [method ComputerManager.establish_stream] 获取的 RTSP 会话 URL。
-				● [code]"rikey"[/code]: (String) 128位 AES 密钥的十六进制字符串（通常由 ComputerManager 生成）。
-				● [code]"width"[/code]: (int) 视频宽度，默认 1280。
-				● [code]"height"[/code]: (int) 视频高度，默认 720。
-				● [code]"fps"[/code]: (int) 帧率，默认 60。
-				● [code]"bitrate"[/code]: (int) 比特率（kbps），默认 10000。
-				● [code]"packet_size"[/code]: (int) 网络包大小，默认 1024。
-				● [code]"video_codec"[/code]: (int) 视频编解码器偏好，可选值见 [enum VideoCodecConfig]，默认 [constant CODEC_H264]。
-				● [code]"disable_hw_acceleration"[/code]: (bool) 是否禁用硬件解码，默认 false。
-					● 下面列出了测试时的平均延迟供参考（1080p 60fps，200000kbps）：
-						● 硬件解码：0.13s
-						● 软件解码：0.27s
-				● [code]"enable_hdr"[/code]: (bool) 是否启用 HDR 支持（若编解码器支持），默认 false。
-				以及其他可选流配置参数。
-
-				启动成功后，将通过 [signal connection_started] 信号通知。若启动失败，将通过 [signal connection_terminated] 报告错误。
+				此函数开始流式传输。
+				
+				回调都是可选的。传递 NULL 给每个结构中的单个回调，或为整个结构传递 NULL 以对所有回调使用默认值。
+				
+				此函数不是线程安全的。
+				
+				对应 Limelight API: [code]LiStartConnection(PSERVER_INFORMATION serverInfo, PSTREAM_CONFIGURATION streamConfig, PCONNECTION_LISTENER_CALLBACKS clCallbacks, PDECODER_RENDERER_CALLBACKS drCallbacks, PAUDIO_RENDERER_CALLBACKS arCallbacks, void* renderContext, int drFlags, void* audioContext, int arFlags)[/code]
 			</description>
 		</method>
 		<method name="stop_play_stream">
 			<return type="void" />
 			<description>
-				停止当前的流媒体播放连接，终止后台线程，并清理所有 FFmpeg 解码器上下文。
-				此方法会中断网络连接、清空数据包队列，并重置内部状态。
-				停止完成后，将通过 [signal connection_terminated] 信号通知。
+				此函数停止流式传输。此函数不是线程安全的。
+				
+				对应 Limelight API: [code]LiStopConnection()[/code]
 			</description>
 		</method>
 		<method name="set_render_target">
 			<return type="void" />
-			<argument index="0" name="texture_rect" type="TextureRect" />
+			<argument index="0" name="target" type="TextureRect" />
 			<description>
-				设置用于显示视频画面的 [TextureRect] 节点。
-				传入有效的 [TextureRect] 后，MoonlightStreamCore 会自动创建和更新该节点的纹理（Texture），将解码后的视频帧渲染到该控件上。
-				如果传入 null 或调用 [method reset_render_target]，则停止视频渲染更新。
+				将视频渲染输出绑定到指定的 [code]TextureRect[/code] 节点。绑定后，节点的纹理会被自动更新以显示解码后的视频帧。
 			</description>
 		</method>
 		<method name="reset_render_target">
 			<return type="void" />
 			<description>
-				重置渲染目标，停止向之前设置的 TextureRect 更新画面。
-				不会销毁现有的纹理资源，但会断开与显示控件的关联。
+				断开视频渲染目标，停止更新先前绑定的 [code]TextureRect[/code]。
 			</description>
 		</method>
 		<method name="get_audio_stream">
 			<return type="AudioStream" />
 			<description>
-				获取用于播放接收到的音频数据的 [AudioStreamMoonlight] 实例。
-				此音频流内部维护一个环形缓冲区，接收 Opus 解码后的 PCM 数据。
-				通常应将此返回值赋给 [AudioStreamPlayer] 节点的 [member AudioStreamPlayer.stream] 属性以播放声音。
-				注意：每次调用此方法将返回同一个音频流实例（单例模式）。
+				返回内部维护的 [code]AudioStreamMoonlight[/code] 实例，用于播放来自主机的音频。
+				将返回值赋予 [code]AudioStreamPlayer.stream[/code] 即可播放音频。
+			</description>
+		</method>
+		<method name="get_audio_streams">
+			<return type="Array" />
+			<description>
+				返回当前可用的音频流数组（单声道/多实例兼容性支持）。
 			</description>
 		</method>
 		<method name="reset_audio_stream">
 			<return type="void" />
 			<argument index="0" name="free_stream" type="bool" default="false" />
 			<description>
-				清空并重置当前的音频流缓冲区。
-				如果 [param free_stream] 为 true，则会释放当前的音频流实例，下次调用 [method get_audio_stream] 时将创建新的实例。
-				通常在停止流媒体会话后调用此方法以清除残留音频数据。
+				清空音频内部缓冲区。若 [code]free_stream[/code] 为 true，则释放并销毁当前音频流实例。
+			</description>
+		</method>
+
+		<method name="start_native_audio_bypass">
+			<return type="bool" />
+			<description>
+				启用本地原生音频旁路模式，使音频直接输出到系统默认音频设备（绕过 Godot 混音器）。返回 [code]true[/code] 表示已成功启动设备并开始输出。
+			</description>
+		</method>
+		<method name="stop_native_audio_bypass">
+			<return type="void" />
+			<description>
+				停止原生音频旁路并释放相关设备资源。
+			</description>
+		</method>
+		<method name="is_native_audio_bypass_running">
+			<return type="bool" />
+			<description>
+				返回原生音频旁路当前是否处于运行状态。
+			</description>
+		</method>
+		<method name="pause_native_audio_bypass">
+			<return type="void" />
+			<description>
+				暂停原生音频旁路输出（保留设备），用于短时静音处理。
+			</description>
+		</method>
+		<method name="resume_native_audio_bypass">
+			<return type="void" />
+			<description>
+				恢复先前被暂停的原生音频旁路。
+			</description>
+		</method>
+		<method name="is_native_audio_bypass_paused">
+			<return type="bool" />
+			<description>
+				返回原生音频旁路是否处于暂停状态。
+			</description>
+		</method>
+
+		<!-- 输入事件 API：所有 send_* 方法返回 int，返回值为 0 表示成功，负值表示错误 -->
+		<method name="send_mouse_move_event">
+			<return type="int" />
+			<argument index="0" name="delta_x" type="int" />
+			<argument index="1" name="delta_y" type="int" />
+			<description>
+				此函数将相对鼠标移动事件排队，以便发送到远程服务器。
+				
+				对应 Limelight API: [code]LiSendMouseMoveEvent(short deltaX, short deltaY)[/code]
+			</description>
+		</method>
+		<method name="send_mouse_position_event">
+			<return type="int" />
+			<argument index="0" name="x" type="int" />
+			<argument index="1" name="y" type="int" />
+			<argument index="2" name="reference_width" type="int" />
+			<argument index="3" name="reference_height" type="int" />
+			<description>
+				此函数将鼠标位置更新事件排队，以便发送到远程服务器。
+				此功能仅在 GFE 3.20 或更高版本上可靠支持。较早的版本可能无法正确定位鼠标。
+				
+				在许多游戏中，绝对鼠标移动不起作用，因此在进行流式传输时，此模式不应成为鼠标的默认模式。
+				当 [code]LiSendTouchEvent()[/code] 不受支持且触摸屏不是主要输入方式时，它可能作为触摸屏的默认行为是可取的。
+				
+				x 和 y 值被转换为主机坐标，就好像它们来自一个参考宽度为 referenceWidth 且参考高度为 referenceHeight 的平面。
+				这允许您提供相对于任意平面的坐标，例如窗口、屏幕或缩放后的视频视图。
+				
+				例如，如果您想直接将窗口坐标作为 x 和 y 传递，可以将 referenceWidth 和 referenceHeight 设置为您的窗口宽度和高度。
+				
+				对应 Limelight API: [code]LiSendMousePositionEvent(short x, short y, short referenceWidth, short referenceHeight)[/code]
+			</description>
+		</method>
+		<method name="send_mouse_move_as_mouse_position_event">
+			<return type="int" />
+			<argument index="0" name="delta_x" type="int" />
+			<argument index="1" name="delta_y" type="int" />
+			<argument index="2" name="reference_width" type="int" />
+			<argument index="3" name="reference_height" type="int" />
+			<description>
+				此函数将鼠标位置更新事件排队，以便发送到远程服务器，因此上面提到的 [code]LiSendMousePositionEvent()[/code] 的所有限制也适用于此！
+				
+				此函数的行为类似于 [code]LiSendMouseMoveEvent()[/code] 和 [code]LiSendMousePositionEvent()[/code] 的组合，因为它发送一个相对运动事件，
+				但是它基于虚拟客户端光标的计算位置发送此数据作为绝对位置，该虚拟客户端光标在调用 [code]LiSendMousePositionEvent()[/code] 或
+				[code]LiSendMouseMoveAsMousePositionEvent()[/code] 时被“移动”。由于此内部虚拟光标状态，调用者必须确保 [code]LiSendMousePositionEvent()[/code] 和
+				[code]LiSendMouseMoveAsMousePositionEvent()[/code] 不会并发调用！
+				
+				此函数的一大优点是它允许调用者避免使用 [code]LiSendMouseMoveEvent()[/code] 时本会影响的鼠标加速。缺点是它具有与 [code]LiSendMousePositionEvent()[/code] 相同的游戏兼容性问题。
+				
+				当鼠标捕获是接收鼠标输入的唯一可行方式时（如在 Android 或 iOS 上），并且操作系统在捕获时无法提供原始的未加速鼠标运动，此函数非常有用。
+				使用此函数可以避免在客户端运动也加速时出现双重加速。
+				
+				对应 Limelight API: [code]LiSendMouseMoveAsMousePositionEvent(short deltaX, short deltaY, short referenceWidth, short referenceHeight)[/code]
+			</description>
+		</method>
+		<method name="send_touch_event">
+			<return type="int" />
+			<argument index="0" name="event_type" type="int" />
+			<argument index="1" name="pointer_id" type="int" />
+			<argument index="2" name="x" type="float" />
+			<argument index="3" name="y" type="float" />
+			<argument index="4" name="pressure_or_distance" type="float" />
+			<argument index="5" name="contact_area_major" type="float" />
+			<argument index="6" name="contact_area_minor" type="float" />
+			<argument index="7" name="rotation" type="int" />
+			<description>
+				此函数允许将多点触控输入直接发送到 Sunshine 主机。x 和 y 值是归一化的设备坐标，
+				从视频区域的左上角 (0.0, 0.0) 延伸到右下角 (1.0, 1.0)。
+				
+				指针 ID 是一个不透明的 ID，必须唯一标识屏幕上的每个活动触摸点。它必须在涉及单个触摸交互的 down/up/move/cancel 事件中保持不变。
+				
+				旋转角度以度为单位，从垂直 Y 维度（平行于屏幕）开始，范围 0..360。如果旋转角度未知，请传递 [code]LI_ROT_UNKNOWN[/code]。
+				
+				压力是一个从 0.0 到 1.0 的值，表示从最小压力到最大压力。发送 down/move 事件时，压力为 0.0 表示实际压力未知。
+				
+				对于悬停事件，压力值被视为从 1.0 到 0.0 的距触摸表面的距离范围，其中 1.0 是可测量的最远距离，0.0 是实际接触显示器（对于悬停事件无效）。
+				报告距离 0.0 表示悬停事件的实际距离未知。
+				
+				接触区域被建模为一个椭圆，具有归一化设备坐标中的长轴和短轴值。如果接触区域未知，请为两个接触区域轴参数报告 0.0。
+				对于圆形接触区域或如果短轴值不可用，请为长轴和短轴传递相同的值。对于不将接触区域报告为椭圆的 API 或设备，可以使用近似值。
+				
+				对于悬停事件，“接触区域”是悬停手指/工具的大小。如果不可用，请为两个接触区域轴参数传递 0.0。
+				
+				触摸可以使用 [code]LI_TOUCH_EVENT_CANCEL[/code] 或 [code]LI_TOUCH_EVENT_CANCEL_ALL[/code] 取消。使用 [code]LI_TOUCH_EVENT_CANCEL[/code] 时，只有 pointerId 参数有效。所有其他参数都将被忽略。
+				要取消所有活动触摸（例如在失去焦点时），请使用 [code]LI_TOUCH_EVENT_CANCEL_ALL[/code]。
+				
+				如果主机不支持，此函数将返回 [code]LI_ERR_UNSUPPORTED[/code]，调用者应考虑退回到其他函数来发送此输入（例如 [code]LiSendMousePositionEvent()[/code]）。
+				
+				要确定 [code]LiSendTouchEvent()[/code] 是否受支持而无需调用它，请调用 [code]LiGetHostFeatureFlags()[/code] 并检查 [code]LI_FF_PEN_TOUCH_EVENTS[/code] 标志。
+				
+				对应 Limelight API: [code]LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, float pressureOrDistance, float contactAreaMajor, float contactAreaMinor, uint16_t rotation)[/code]
+			</description>
+		</method>
+		<method name="send_pen_event">
+			<return type="int" />
+			<argument index="0" name="event_type" type="int" />
+			<argument index="1" name="tool_type" type="int" />
+			<argument index="2" name="pen_buttons" type="int" />
+			<argument index="3" name="x" type="float" />
+			<argument index="4" name="y" type="float" />
+			<argument index="5" name="pressure_or_distance" type="float" />
+			<argument index="6" name="contact_area_major" type="float" />
+			<argument index="7" name="contact_area_minor" type="float" />
+			<argument index="8" name="rotation" type="int" />
+			<argument index="9" name="tilt" type="int" />
+			<description>
+				此函数类似于 [code]LiSendTouchEvent()[/code]，但允许与笔输入相关的附加参数，包括倾斜和按钮。
+				倾斜角度以度为单位，从垂直 Z 维度（垂直于屏幕）开始，范围 0..90。有关其他参数的详细文档，请参阅 [code]LiSendTouchEvent()[/code]。
+				
+				对于 [code]LI_TOUCH_EVENT_BUTTON_ONLY[/code] 事件，x、y、压力、旋转、接触区域和倾斜被忽略。
+				如果其中某一项发生变化，请改为发送 [code]LI_TOUCH_EVENT_MOVE[/code] 或 [code]LI_TOUCH_EVENT_HOVER[/code]。
+				
+				要确定 [code]LiSendPenEvent()[/code] 是否受支持而无需调用它，请调用 [code]LiGetHostFeatureFlags()[/code] 并检查 [code]LI_FF_PEN_TOUCH_EVENTS[/code] 标志。
+				
+				对应 Limelight API: [code]LiSendPenEvent(uint8_t eventType, uint8_t toolType, uint8_t penButtons, float x, float y, float pressureOrDistance, float contactAreaMajor, float contactAreaMinor, uint16_t rotation, uint8_t tilt)[/code]
+			</description>
+		</method>
+		<method name="send_mouse_button_event">
+			<return type="int" />
+			<argument index="0" name="action" type="int" />
+			<argument index="1" name="button" type="int" />
+			<description>
+				此函数将鼠标按钮事件排队，以便发送到远程服务器。
+				
+				对应 Limelight API: [code]LiSendMouseButtonEvent(char action, int button)[/code]
+			</description>
+		</method>
+		<method name="send_keyboard_event">
+			<return type="int" />
+			<argument index="0" name="key_code" type="int" />
+			<argument index="1" name="key_action" type="int" />
+			<argument index="2" name="modifiers" type="int" />
+			<description>
+				此函数将键盘事件排队，以便发送到远程服务器。
+				键码是 Win32 虚拟键码（VK），并按照美式英语键盘上的键进行解释。
+				
+				对应 Limelight API: [code]LiSendKeyboardEvent(short keyCode, char keyAction, char modifiers)[/code]
+			</description>
+		</method>
+		<method name="send_keyboard_event2">
+			<return type="int" />
+			<argument index="0" name="key_code" type="int" />
+			<argument index="1" name="key_action" type="int" />
+			<argument index="2" name="modifiers" type="int" />
+			<argument index="3" name="flags" type="int" />
+			<description>
+				类似于 [code]LiSendKeyboardEvent()[/code]，但允许客户端告知主机该键码未映射到标准美式英语扫描码，应按原样解释。
+				这是 Sunshine 协议扩展。
+				
+				对应 Limelight API: [code]LiSendKeyboardEvent2(short keyCode, char keyAction, char modifiers, char flags)[/code]
+			</description>
+		</method>
+		<method name="send_utf8_text_event">
+			<return type="int" />
+			<argument index="0" name="text" type="String" />
+			<description>
+				此函数将 UTF-8 编码的文本排队，以便发送到远程服务器。
+				
+				对应 Limelight API: [code]LiSendUtf8TextEvent(const char *text, unsigned int length)[/code]
+			</description>
+		</method>
+		<method name="send_controller_event">
+			<return type="int" />
+			<argument index="0" name="button_flags" type="int" />
+			<argument index="1" name="left_trigger" type="int" />
+			<argument index="2" name="right_trigger" type="int" />
+			<argument index="3" name="left_stick_x" type="int" />
+			<argument index="4" name="left_stick_y" type="int" />
+			<argument index="5" name="right_stick_x" type="int" />
+			<argument index="6" name="right_stick_y" type="int" />
+			<description>
+				此函数将控制器事件排队，以便发送到远程服务器。它将在计算机上被视为第一个控制器。
+				
+				对应 Limelight API: [code]LiSendControllerEvent(int buttonFlags, unsigned char leftTrigger, unsigned char rightTrigger, short leftStickX, short leftStickY, short rightStickX, short rightStickY)[/code]
+			</description>
+		</method>
+		<method name="send_multi_controller_event">
+			<return type="int" />
+			<description>
+				此函数将控制器事件排队，以便发送到远程服务器。controllerNumber 参数是此事件对应的控制器的从零开始的索引。
+				
+				对于 GFE 主机，最大的合法控制器编号是 3；对于 Sunshine 主机，是 15。
+				
+				activeGamepadMask 参数是一个位字段，为每个存在的控制器设置对应的位。在 GFE 上限制为 4 位（0xF），在 Sunshine 上限制为 16 位（0xFFFF）。
+				
+				为了指示游戏手柄的到达，建议使用 [code]LiSendControllerArrivalEvent()[/code]，但也可通过发送空事件并调整掩码来实现到达/移除。
+				
+				对应 Limelight API: [code]LiSendMultiControllerEvent(short controllerNumber, short activeGamepadMask, int buttonFlags, unsigned char leftTrigger, unsigned char rightTrigger, short leftStickX, short leftStickY, short rightStickX, short rightStickY)[/code]
+			</description>
+		</method>
+		<method name="send_controller_arrival_event">
+			<return type="int" />
+			<description>
+				此函数提供一种告知主机新控制器上可用按钮和功能的方法。这是指示新控制器到达的推荐方法。
+				
+				这可以让主机在决定模拟哪种类型的控制器以及向操作系统上的虚拟控制器通告哪些功能时做出更好的决策。
+				
+				如果主机不支持控制器到达事件，此函数将回退到通过 [code]LiSendMultiControllerEvent()[/code] 指示到达。
+				
+				对应 Limelight API: [code]LiSendControllerArrivalEvent(uint8_t controllerNumber, uint16_t activeGamepadMask, uint8_t type, uint32_t supportedButtonFlags, uint16_t capabilities)[/code]
+			</description>
+		</method>
+		<method name="send_controller_touch_event">
+			<return type="int" />
+			<description>
+				此函数类似于 [code]LiSendTouchEvent()[/code]，但触摸事件与游戏控制器上存在的触摸板设备相关联，而不是触摸屏。
+				
+				如果主机不支持，此函数将返回 [code]LI_ERR_UNSUPPORTED[/code]，调用者应考虑使用此触摸输入来模拟触控板输入。
+				
+				对应 Limelight API: [code]LiSendControllerTouchEvent(uint8_t controllerNumber, uint8_t eventType, uint32_t pointerId, float x, float y, float pressure)[/code]
+			</description>
+		</method>
+		<method name="send_controller_motion_event">
+			<return type="int" />
+			<description>
+				此函数允许客户端将控制器相关的运动事件发送到支持的主机。
+				
+				出于功耗和性能原因，除非主机通过 [code]ConnListenerSetMotionEventState()[/code] 明确请求运动事件报告，否则不应启用运动传感器。
+				
+				[code]LI_MOTION_TYPE_ACCEL[/code] 应以 m/s² 为单位报告数据（包括重力加速度）。[code]LI_MOTION_TYPE_GYRO[/code] 应以 deg/s 为单位报告数据。
+				
+				对应 Limelight API: [code]LiSendControllerMotionEvent(uint8_t controllerNumber, uint8_t motionType, float x, float y, float z)[/code]
+			</description>
+		</method>
+		<method name="send_controller_battery_event">
+			<return type="int" />
+			<description>
+				此函数允许客户端向支持的主机发送控制器电池状态。如果主机可以在模拟的控制器上调整电池状态，
+				它可以使用此信息使虚拟控制器与客户端上的物理控制器匹配。
+				
+				对应 Limelight API: [code]LiSendControllerBatteryEvent(uint8_t controllerNumber, uint8_t batteryState, uint8_t batteryPercentage)[/code]
+			</description>
+		</method>
+		<method name="send_scroll_event">
+			<return type="int" />
+			<argument index="0" name="scroll_clicks" type="int" />
+			<description>
+				此函数将垂直滚动事件排队到远程服务器。
+				“点击”次数在发送到 PC 之前乘以 WHEEL_DELTA（120）。
+				
+				对应 Limelight API: [code]LiSendScrollEvent(signed char scrollClicks)[/code]
+			</description>
+		</method>
+		<method name="send_high_res_scroll_event">
+			<return type="int" />
+			<argument index="0" name="scroll_amount" type="int" />
+			<description>
+				此函数将垂直滚动事件排队到远程服务器。
+				与 [code]LiSendScrollEvent()[/code] 不同，此函数可以发送小于 120 单位的滚轮事件，适用于支持“高分辨率”滚动的设备（Apple 触控板、Microsoft 精确触控板等）。
+				
+				对应 Limelight API: [code]LiSendHighResScrollEvent(short scrollAmount)[/code]
+			</description>
+		</method>
+		<method name="send_hscroll_event">
+			<return type="int" />
+			<argument index="0" name="scroll_clicks" type="int" />
+			<description>
+				这些函数将水平滚动事件发送到主机，类似于 [code]LiSendScrollEvent()[/code] 和 [code]LiSendHighResScrollEvent()[/code]。
+				这是 Sunshine 协议扩展。
+				
+				对应 Limelight API: [code]LiSendHScrollEvent(signed char scrollClicks)[/code]
+			</description>
+		</method>
+		<method name="send_high_res_hscroll_event">
+			<return type="int" />
+			<argument index="0" name="scroll_amount" type="int" />
+			<description>
+				这些函数将水平滚动事件发送到主机，类似于 [code]LiSendScrollEvent()[/code] 和 [code]LiSendHighResScrollEvent()[/code]。
+				这是 Sunshine 协议扩展。
+				
+				对应 Limelight API: [code]LiSendHighResHScrollEvent(short scrollAmount)[/code]
+			</description>
+		</method>
+		<method name="get_host_feature_flags">
+			<return type="int" />
+			<description>
+				查询主机支持的功能标志位，返回的掩码可用于判断主机是否支持触控、笔、原生音频绕过等扩展功能。
 			</description>
 		</method>
 	</methods>
 	<signals>
 		<signal name="connection_started">
 			<description>
-				当流媒体连接成功建立并开始时发出。
-				此信号表明 LiStartConnection 已成功进入流媒体阶段，音视频数据即将开始传输。
+				在成功建立并开始传输音视频数据后发出。
 			</description>
 		</signal>
 		<signal name="connection_terminated">
 			<argument index="0" name="error_code" type="int" />
 			<argument index="1" name="message" type="String" />
 			<description>
-				当流媒体连接终止时发出。终止可能是正常的（用户停止）或错误的（网络中断、解码失败等）。
-				[param error_code] 为错误代码，0 通常表示正常终止，其他值表示错误（参见 moonlight-common-c 的错误码定义）。
-				[param message] 为人类可读的错误描述，由内部方法 [method _get_error_string] 生成。
-			</description>
-		</signal>
-		<signal name="hdr_mode_changed" expirimental="未经过实际测试，可能存在问题">
-			<argument index="0" name="enabled" type="bool" />
-			<argument index="1" name="metadata" type="Dictionary" />
-			<description>
-				当 HDR 模式变更时发出。仅在支持 HDR 的流（HEVC/AV1 10-bit）中可能触发。
-				[param enabled] 指示 HDR 是否已启用。
-				[param metadata] 包含 HDR 元数据的字典，可能包含以下键（如果可用）：
-				● [code]"display_primaries_x"[/code]: Array[3] 三原色 x 坐标。
-				● [code]"display_primaries_y"[/code]: Array[3] 三原色 y 坐标。
-				● [code]"white_point_x"[/code]: float 白点 x 坐标。
-				● [code]"white_point_y"[/code]: float 白点 y 坐标。
-				● [code]"min_display_luminance"[/code]: float 最小显示亮度。
-				● [code]"max_display_luminance"[/code]: float 最大显示亮度。
-				● [code]"max_content_light_level"[/code]: float 最大内容光亮度。
-				● [code]"max_frame_average_light_level"[/code]: float 最大帧平均光亮度。
+				在会话终止时发出。error_code 为 0 表示正常结束，非零或负值表示错误情况，message 提供可读的错误描述。
 			</description>
 		</signal>
 		<signal name="log_message">
 			<argument index="0" name="message" type="String" />
 			<description>
-				当底层库（moonlight-common-c）输出日志消息时发出。
-				[param message] 为日志文本，可用于调试和状态监控。
+				底层库产生的日志文本，可用于调试。
 			</description>
 		</signal>
 		<signal name="warning_message">
 			<argument index="0" name="type" type="String" />
 			<argument index="1" name="message" type="String" />
 			<description>
-				当发生非致命但需要注意的问题时发出，例如解码错误、队列溢出等。
-				[param type] 为警告类型标识符，如 "DECODE_ERROR"、"PACKET_ERROR"、"HW_ACCEL_ERROR"、"INIT_ERROR" 等。
-				[param message] 为详细的警告描述。
+				非致命问题的警告通知，type 为分类标识，message 为详细信息。
+			</description>
+		</signal>
+		<signal name="hdr_mode_changed">
+			<argument index="0" name="enabled" type="bool" />
+			<argument index="1" name="metadata" type="Dictionary" />
+			<description>
+				当流的 HDR 模式发生变化时发出。metadata 包含 HDR 相关数据（如 primaries、白点、亮度等）。
 			</description>
 		</signal>
 	</signals>
+	<members>
+		<member name="selected_codec_config" type="int" setter="" getter="">
+			已选择的视频编解码器配置，使用 VideoCodecConfig 枚举。
+		</member>
+	</members>
 	<constants>
 		<constant name="CODEC_AUTO" value="0" enum="VideoCodecConfig">
-			自动选择编解码器。将根据平台支持情况优先选择 H.264、HEVC 或 AV1。
+			自动选择编解码器。
 		</constant>
 		<constant name="CODEC_H264" value="1" enum="VideoCodecConfig">
-			强制使用 H.264/AVC 编解码器。
+			使用 H.264/AVC 编解码器。
 		</constant>
 		<constant name="CODEC_H265" value="2" enum="VideoCodecConfig">
-			强制使用 HEVC (H.265) 编解码器。
+			使用 HEVC(H.265) 编解码器。
 		</constant>
-		<constant name="CODEC_AV1" value="3" enum="VideoCodecConfig" expirimental="该解码器未经过实际测试，可能存在问题">
-			强制使用 AV1 编解码器。
+		<constant name="CODEC_AV1" value="3" enum="VideoCodecConfig">
+			使用 AV1 编解码器。
+		</constant>
+		<constant name="LI_ERR_UNSUPPORTED" value="-5501">
+			函数不可用或主机不支持时返回的错误码（LI_ERR_UNSUPPORTED）。
 		</constant>
 	</constants>
 </class>

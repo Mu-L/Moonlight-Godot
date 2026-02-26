@@ -1,4 +1,7 @@
 #include "stream_core.h"
+// Optionally compile miniaudio implementation. Define NO_MINIAUDIO=1 to disable
+// native miniaudio usage (e.g., on iOS where Godot's audio system must be used).
+#if !defined(NO_MINIAUDIO)
 // Compile miniaudio implementation here with minimal feature set. This ensures
 // implementations for device I/O are present in this TU and controlled by
 // project's decisions (FFmpeg handles decoding).
@@ -16,6 +19,29 @@
 #define MA_NO_AUDIO_UNIT
 #endif
 #include "miniaudio.h"
+#else
+// Provide stub types and functions when miniaudio is disabled to keep linkage.
+typedef struct ma_device ma_device;
+typedef unsigned int ma_uint32;
+enum { MA_SUCCESS = 0 };
+typedef struct {
+	struct {
+		int channels;
+		int format;
+	} playback;
+	int sampleRate;
+	void (*dataCallback)(ma_device *, void *, const void *, ma_uint32);
+	void *pUserData;
+} ma_device_config;
+static inline ma_device_config ma_device_config_init(int t) {
+	ma_device_config c;
+	memset(&c, 0, sizeof(c));
+	return c;
+}
+static inline int ma_device_init(void *, const ma_device_config *, ma_device *) { return MA_SUCCESS; }
+static inline int ma_device_start(ma_device *) { return MA_SUCCESS; }
+static inline void ma_device_uninit(ma_device *) {}
+#endif
 using namespace godot;
 
 // Moonlight 流核心：音频 
@@ -344,6 +370,30 @@ void MoonlightStreamCore::_ar_decode_and_play_sample(char *data, int len) {
 }
 
 // ---------------------- miniaudio 原生旁路实现 ----------------------
+#if defined(NO_MINIAUDIO)
+void MoonlightStreamCore::_mab_device_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_uint32 frameCount) {
+	(void)pDevice;
+	(void)pOutput;
+	(void)pInput;
+	(void)frameCount;
+}
+
+int MoonlightStreamCore::_native_audio_start(int channels) {
+	(void)channels;
+	native_audio_bypass_enabled = false;
+	native_audio_paused = false;
+	return -1;
+}
+
+void MoonlightStreamCore::_native_audio_stop() {
+	native_audio_bypass_enabled = false;
+	native_audio_paused = false;
+}
+
+bool MoonlightStreamCore::_native_audio_is_running() const {
+	return false;
+}
+#else
 void MoonlightStreamCore::_mab_device_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_uint32 frameCount) {
 	MoonlightStreamCore *core = (MoonlightStreamCore *)pDevice->pUserData;
 	if (!core) {
@@ -432,3 +482,5 @@ void MoonlightStreamCore::_native_audio_stop() {
 bool MoonlightStreamCore::_native_audio_is_running() const {
 	return native_ma_device != nullptr;
 }
+
+#endif

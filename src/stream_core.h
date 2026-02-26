@@ -78,8 +78,14 @@ JNIEnv *GetJNIEnv();
 #define CODEC_FAMILY_AV1 2
 
 // Forward declarations for miniaudio types used by the native bypass callback.
+#if !defined(NO_MINIAUDIO)
 struct ma_device;
 typedef unsigned int ma_uint32;
+#else
+// When miniaudio is disabled, provide opaque typedefs to allow compilation.
+typedef struct ma_device ma_device;
+typedef unsigned int ma_uint32;
+#endif
 
 namespace godot {
 

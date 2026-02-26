@@ -145,6 +145,11 @@ else()
     target_compile_options(${LIBNAME} PRIVATE -Wall -Wextra)
 endif()
 
+# iOS 平台禁用 miniaudio 原生旁路，统一使用 Godot 音频系统。
+if(TARGET_PLATFORM STREQUAL "ios")
+    target_compile_definitions(${LIBNAME} PRIVATE NO_MINIAUDIO=1)
+endif()
+
 # 5. 链接库
 target_link_libraries(${LIBNAME}
     PRIVATE 

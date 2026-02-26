@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="MoonlightAdditionalStreamOptions" inherits="Resource" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		附加的串流选项资源，用于指定硬件解码偏好、冗长日志等运行时参数。
+	</brief_description>
+	<description>
+		该资源提供若干运行时选项以微调解码与连接行为。
+		常用于在调用 [code]MoonlightStreamCore.start_play_stream[/code] 时传入以覆盖默认行为或启用调试输出。
+	</description>
+	<members>
+		<member name="disable_hw_acceleration" type="bool" setter="set_disable_hw_acceleration" getter="get_disable_hw_acceleration">
+			禁用硬件加速解码（使用纯软件解码）。
+		</member>
+		<member name="prefer_hw_decoder" type="bool" setter="set_prefer_hw_decoder" getter="get_prefer_hw_decoder">
+			优先选择硬件解码器（当可用）。与 [code]disable_hw_acceleration[/code] 互斥。
+		</member>
+		<member name="verbose" type="bool" setter="set_verbose" getter="get_verbose">
+			启用详细日志输出，便于调试连接和解码问题。
+		</member>
+		<member name="video_codec" type="int" setter="set_video_codec" getter="get_video_codec">
+			指定希望使用的视频编解码器，使用与 [code]MoonlightStreamCore.VideoCodecConfig[/code] 对应的整数值（例如 1 = H.264）。
+		</member>
+	</members>
+	<methods>
+		<method name="set_disable_hw_acceleration">
+			<return type="void" />
+			<argument index="0" name="v" type="bool" />
+			<description>
+				设置是否禁用硬件加速。
+			</description>
+		</method>
+		<method name="get_disable_hw_acceleration">
+			<return type="bool" />
+			<description>
+				返回当前是否禁用硬件加速。
+			</description>
+		</method>
+		<method name="set_prefer_hw_decoder">
+			<return type="void" />
+			<argument index="0" name="v" type="bool" />
+			<description>
+				设置是否优先选择硬件解码器。
+			</description>
+		</method>
+		<method name="get_prefer_hw_decoder">
+			<return type="bool" />
+			<description>
+				返回当前的硬件解码器优先设置。
+			</description>
+		</method>
+		<method name="set_verbose">
+			<return type="void" />
+			<argument index="0" name="v" type="bool" />
+			<description>
+				启用或禁用详细日志。
+			</description>
+		</method>
+		<method name="get_verbose">
+			<return type="bool" />
+			<description>
+				返回当前是否启用详细日志。
+			</description>
+		</method>
+		<method name="set_video_codec">
+			<return type="void" />
+			<argument index="0" name="v" type="int" />
+			<description>
+				设置首选的视频编解码器编号（与 [code]MoonlightStreamCore.VideoCodecConfig[/code] 对应）。
+			</description>
+		</method>
+		<method name="get_video_codec">
+			<return type="int" />
+			<description>
+				返回当前设置的视频编解码器编号。
+			</description>
+		</method>
+	</methods>
+</class>

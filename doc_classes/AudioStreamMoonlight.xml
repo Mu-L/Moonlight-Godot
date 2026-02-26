@@ -1,13 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <class name="AudioStreamMoonlight" inherits="AudioStream" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
 	<brief_description>
-		用于 Moonlight 流媒体音频数据的自定义 AudioStream 资源。
+		Moonlight 的自定义音频流资源，用于承载并播放来自主机的 PCM 音频数据。
 	</brief_description>
 	<description>
-		[AudioStreamMoonlight] 是一个自定义的音频流资源，它充当从网络接收的 PCM 音频数据的环形缓冲区。
-		
-		它由 [MoonlightStreamCore] 内部管理和填充。用户通常不需要手动实例化或操作此类，只需通过 [method MoonlightStreamCore.get_audio_stream] 获取实例并将其分配给音频播放器即可。
+		AudioStreamMoonlight 在内部维护一个线程安全的环形缓冲区，用于存放 Opus 解码后得到的 PCM 数据。
+		该资源由 [code]MoonlightStreamCore[/code] 填充，通常应将其赋值给 [code]AudioStreamPlayer.stream[/code] 或类似的播放节点以播放远端音频。
 	</description>
+	<members>
+		<member name="mix_rate" type="int">
+			音频混音/采样率（单位：Hz）。
+		</member>
+		<member name="channel_count" type="int" setter="set_channel_count" getter="">
+			每实例声道数（1=单声道，2=立体声）。可通过 [code]set_channel_count[/code] 更改以匹配设备/流。
+		</member>
+	</members>
 	<methods>
+		<method name="set_channel_count">
+			<return type="void" />
+			<argument index="0" name="c" type="int" />
+			<description>
+				设置期望的声道数，影响内部缓冲区读写行为和混音。
+			</description>
+		</method>
+		<method name="push_audio">
+			<return type="void" />
+			<argument index="0" name="samples" type="PackedFloat32Array" />
+			<argument index="1" name="count" type="int" />
+			<description>
+				将解码后的 PCM 样本写入内部环形缓冲区。[code]samples[/code] 为浮点样本数组，[code]count[/code] 为样本点数量。
+			</description>
+		</method>
+		<method name="clear_buffer">
+			<return type="void" />
+			<description>
+				清空内部环形缓冲区，丢弃所有未播放的数据。
+			</description>
+		</method>
+		<method name="read_samples">
+			<return type="int" />
+			<argument index="0" name="dst_buffer" type="AudioFrame" />
+			<argument index="1" name="frame_count" type="int" />
+			<description>
+				从内部缓冲区读取最多 [code]frame_count[/code] 帧到 [code]dst_buffer[/code]，返回实际写入的帧数。供内部播放实现调用。
+			</description>
+		</method>
+		<method name="_instantiate_playback">
+			<return type="Ref<AudioStreamPlayback>" />
+			<description>
+				引擎内部使用的实例化方法，返回与该资源配套的播放实现（[code]AudioStreamPlaybackMoonlight[/code]）。
+			</description>
+		</method>
+		<method name="_get_stream_name">
+			<return type="String" />
+			<description>
+				返回流名称（用于调试或显示）。
+			</description>
+		</method>
+		<method name="_get_length">
+			<return type="double" />
+			<description>
+				返回流长度。在线流返回 0 表示无限长度或不可测。
+			</description>
+		</method>
 	</methods>
 </class>

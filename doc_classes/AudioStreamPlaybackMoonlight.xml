@@ -1,11 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <class name="AudioStreamPlaybackMoonlight" inherits="AudioStreamPlaybackResampled" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
 	<brief_description>
-		[AudioStreamMoonlight] 的内部播放实现。
+		[code]AudioStreamMoonlight[/code] 的播放实现，负责混音、重采样与供引擎消费的音频输出。
 	</brief_description>
 	<description>
-		这是 Moonlight 音频流的内部播放逻辑实现，负责处理重采样和混音。它由 Godot 引擎的音频服务器自动实例化，通常不需要在脚本中直接访问或使用。
+		此类由引擎內部通过 [code]AudioStreamMoonlight._instantiate_playback[/code] 创建，处理从 [code]AudioStreamMoonlight[/code] 读取样本并在音频线程中提供给 Godot 的音频服务器。
+		脚本层通常无需直接与此类交互。
 	</description>
 	<methods>
+		<method name="_start">
+			<return type="void" />
+			<argument index="0" name="p_from_pos" type="double" />
+			<description>
+				启动播放。[code]p_from_pos[/code] 指定从流的哪个位置开始（单位秒）。
+			</description>
+		</method>
+		<method name="_stop">
+			<return type="void" />
+			<description>
+				停止播放并释放与播放相关的临时资源。
+			</description>
+		</method>
+		<method name="_is_playing">
+			<return type="bool" />
+			<description>
+				返回播放是否正在进行。
+			</description>
+		</method>
+		<method name="_get_loop_count">
+			<return type="int" />
+			<description>
+				返回循环播放次数，在线流返回 0。
+			</description>
+		</method>
+		<method name="_get_playback_position">
+			<return type="double" />
+			<description>
+				返回当前播放位置（秒）。
+			</description>
+		</method>
+		<method name="_seek">
+			<return type="void" />
+			<argument index="0" name="p_time" type="double" />
+			<description>
+				跳转播放位置为 [code]p_time[/code] 秒。在线实时流此操作可能不完全精确。
+			</description>
+		</method>
+		<method name="_mix_resampled">
+			<return type="int" />
+			<argument index="0" name="dst_buffer" type="AudioFrame" />
+			<argument index="1" name="frame_count" type="int" />
+			<description>
+				将重采样后的 PCM 数据混音到 [code]dst_buffer[/code]，返回写入的帧数。此方法由音频服务器在音频线程调用。
+			</description>
+		</method>
+		<method name="_get_stream_sampling_rate">
+			<return type="float" />
+			<description>
+				返回流的采样率（Hz）。音频服务器使用此值进行重采样设置。
+			</description>
+		</method>
 	</methods>
 </class>
