@@ -7,7 +7,7 @@ using namespace godot;
 #ifdef __ANDROID__
 
 // On-demand JNIEnv retrieval as requested
-static JNIEnv *GetJNIEnv() {
+JNIEnv *GetJNIEnv() {
 	typedef jint (*JNI_GetCreatedJavaVMs_t)(JavaVM **, jsize, jsize *);
 	// Use dlsym to avoid a direct link-time dependency on JNI_GetCreatedJavaVMs
 	JNI_GetCreatedJavaVMs_t jni_get_created = (JNI_GetCreatedJavaVMs_t)dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs");

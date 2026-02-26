@@ -65,6 +65,8 @@ struct SwrContext;
 #include <android/native_window_jni.h>
 #include <dlfcn.h>
 #include <jni.h>
+// Provide JNI helper declaration for other translation units
+JNIEnv *GetJNIEnv();
 #endif
 
 // 日志前缀
@@ -125,7 +127,11 @@ private:
 
 public:
 	int mix_rate;
+	int channel_count = 2; // 每实例的声道数（1=单声道，2=立体声）
 	AudioStreamMoonlight();
+
+	// 可用于更改此 AudioStreamMoonlight 期望的声道数（仅影响内部缓冲/读取行为）
+	void set_channel_count(int c) { channel_count = c; }
 	void push_audio(const float *samples, int count);
 	void clear_buffer();
 	int read_samples(AudioFrame *dst_buffer, int frame_count);
@@ -293,6 +299,7 @@ public:
 	void set_render_target(TextureRect *target);
 	void reset_render_target();
 	Ref<AudioStream> get_audio_stream();
+	Array get_audio_streams();
 	void reset_audio_stream(bool free_stream = false);
 
 	/* 输入相关封装：将 Limelight 的输入 API 暴露给 Godot */
@@ -419,6 +426,15 @@ private:
 	bool is_hw_decode_active = false;
 	// --- 音频状态 ---
 	Ref<AudioStreamMoonlight> audio_stream;
+
+	// 多声道支持：按 Limelight 约定将每个输出声道单独分离为一个 `AudioStreamMoonlight` 实例。
+	// 声道顺序（索引->声道）参考 Limelight 文档/头文件：
+	// 0 - 左前, 1 - 右前, 2 - 中置, 3 - 低音炮, 4 - 左后, 5 - 右后, 6 - 左侧, 7 - 右侧
+	// 注意：最多支持 AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT 个声道（通常为 8）。
+	// 性能说明：调用 `get_audio_streams()` 会为每个声道创建/保留单独的 `AudioStreamMoonlight` 实例，
+	// 这可能增加解码/内存/调度开销；在不需要每通道单独处理时请使用原有的 `get_audio_stream()`。
+	Vector<Ref<AudioStreamMoonlight>> audio_streams;
+
 	// --- FFmpeg 视频上下文 ---
 	const AVCodec *v_codec = nullptr;
 	AVCodecContext *v_codec_ctx = nullptr;
@@ -435,6 +451,7 @@ private:
 	AVFrame *a_frame = nullptr;
 	AVPacket *a_packet = nullptr;
 	SwrContext *swr_ctx = nullptr;
+	SwrContext *swr_ctx_multi = nullptr; // for producing multichannel float output
 	// --- 内部方法 ---
 	int _probe_video_format(VideoCodecConfig preference);
 	Vector<String> _get_candidate_decoders(int codec_family);

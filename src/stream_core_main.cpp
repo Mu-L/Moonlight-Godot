@@ -400,11 +400,56 @@ Ref<AudioStream> MoonlightStreamCore::get_audio_stream() {
 		audio_stream.instantiate();
 	return audio_stream;
 }
+
+// 返回一个包含每个声道单独 AudioStream 的数组（最多 AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT 个）
+// 顺序按照 Limelight 约定：0=L,1=R,2=C,3=LFE,4=Ls,5=Rs,6=SideL,7=SideR
+Array MoonlightStreamCore::get_audio_streams() {
+	// 从当前 stream_config 中读取协商的音频配置以获取声道数。
+	int ac = stream_config.audioConfiguration;
+	int channel_count = (ac >> 8) & 0xFF;
+	if (channel_count <= 0)
+		channel_count = 2; // 回退到立体声
+	if (channel_count > AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT)
+		channel_count = AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT;
+
+	// 确保 vector 大小
+	if ((int)audio_streams.size() < channel_count) {
+		audio_streams.resize(channel_count);
+	}
+
+	// 为每个声道实例化 AudioStreamMoonlight（如果尚未实例化）
+	Array out;
+	Ref<AudioStreamMoonlight> *arr = audio_streams.ptrw();
+	for (int i = 0; i < channel_count; i++) {
+		Ref<AudioStreamMoonlight> &r = arr[i];
+		if (r.is_null()) {
+			r.instantiate();
+			r->set_channel_count(1); // 每个单声道实例期望单声道样本
+		}
+		out.push_back(r);
+	}
+	return out;
+}
 void MoonlightStreamCore::reset_audio_stream(bool free_stream) {
 	if (audio_stream.is_valid()) {
 		audio_stream->clear_buffer();
 		if (free_stream)
 			audio_stream.unref();
+	}
+	// 清理按声道分配的单声道流（如果存在）
+	if (audio_streams.size() > 0) {
+		Ref<AudioStreamMoonlight> *arr = audio_streams.ptrw();
+		for (int i = 0; i < (int)audio_streams.size(); i++) {
+			Ref<AudioStreamMoonlight> &r = arr[i];
+			if (r.is_valid()) {
+				r->clear_buffer();
+				if (free_stream)
+					r.unref();
+			}
+		}
+		if (free_stream) {
+			audio_streams.clear();
+		}
 	}
 }
 
@@ -467,6 +512,7 @@ void MoonlightStreamCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_render_target", "texture_rect"), &MoonlightStreamCore::set_render_target);
 	ClassDB::bind_method(D_METHOD("reset_render_target"), &MoonlightStreamCore::reset_render_target);
 	ClassDB::bind_method(D_METHOD("get_audio_stream"), &MoonlightStreamCore::get_audio_stream);
+	ClassDB::bind_method(D_METHOD("get_audio_streams"), &MoonlightStreamCore::get_audio_streams);
 	ClassDB::bind_method(D_METHOD("reset_audio_stream", "free_stream"), &MoonlightStreamCore::reset_audio_stream, DEFVAL(false));
 
 	// 输入 API 绑定

@@ -33,7 +33,8 @@ void AudioStreamPlaybackMoonlight::_bind_methods() {}
 
 AudioStreamMoonlight::AudioStreamMoonlight() : mix_rate(48000) {
 	buffer_mutex.instantiate();
-	rb_capacity = 48000 * 2 * 0.2; // 200毫秒缓冲
+	// 以最大支持声道数为基准分配环形缓冲（单位：float）
+	rb_capacity = (int)(48000 * AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT * 0.2); // 200ms
 	ring_buffer.resize(rb_capacity);
 	ring_buffer.fill(0);
 }
@@ -48,6 +49,7 @@ Ref<AudioStreamPlayback> AudioStreamMoonlight::_instantiate_playback() const {
 String AudioStreamMoonlight::_get_stream_name() const { return "Moonlight Audio"; }
 
 void AudioStreamMoonlight::push_audio(const float *samples, int count) {
+	// `count` is number of floats (interleaved samples)
 	buffer_mutex->lock();
 	int free_space = rb_capacity - rb_used;
 	if (count > free_space) {
@@ -68,22 +70,35 @@ void AudioStreamMoonlight::push_audio(const float *samples, int count) {
 
 int AudioStreamMoonlight::read_samples(AudioFrame *dst_buffer, int frame_count) {
 	buffer_mutex->lock();
-	int available_frames = rb_used / 2;
+	int available_frames = 0;
+	if (channel_count > 0)
+		available_frames = rb_used / channel_count;
 	int frames_to_read = MIN(frame_count, available_frames);
 	const float *ptr = ring_buffer.ptr();
 	int current_pos = rb_read_pos;
 	for (int i = 0; i < frames_to_read; i++) {
-		float l = ptr[current_pos];
+		float ch0 = ptr[current_pos];
 		current_pos = (current_pos + 1) % rb_capacity;
-		float r = ptr[current_pos];
-		current_pos = (current_pos + 1) % rb_capacity;
-		dst_buffer[i].left = l;
-		dst_buffer[i].right = r;
+		float ch1 = 0.0f;
+		if (channel_count > 1) {
+			ch1 = ptr[current_pos];
+			current_pos = (current_pos + 1) % rb_capacity;
+			// 跳过剩余通道样本以对齐到下一帧
+			for (int c = 2; c < channel_count; c++) {
+				current_pos = (current_pos + 1) % rb_capacity;
+			}
+		}
+		if (channel_count == 1) {
+			dst_buffer[i].left = ch0;
+			dst_buffer[i].right = ch0;
+		} else {
+			dst_buffer[i].left = ch0;
+			dst_buffer[i].right = ch1;
+		}
 	}
 	rb_read_pos = current_pos;
-	rb_used -= (frames_to_read * 2);
+	rb_used -= (frames_to_read * channel_count);
 	buffer_mutex->unlock();
-	// 如不足则填充静音
 	if (frames_to_read < frame_count) {
 		for (int i = frames_to_read; i < frame_count; i++) {
 			dst_buffer[i].left = 0.0f;
@@ -144,29 +159,46 @@ int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 	a_frame = av_frame_alloc();
 	a_packet = av_packet_alloc();
 	swr_ctx = swr_alloc();
+	swr_ctx_multi = swr_alloc();
 
-	// 输出仍下混为立体声以兼容现有音频管线
-	AVChannelLayout out_layout;
-	av_channel_layout_default(&out_layout, 2);
-	if (in_channels > 2) {
-		UtilityFunctions::print(LOG_PREFIX "Downmixing multichannel audio to stereo");
-	}
+	// 输出 downmix 到立体声以兼容现有音频管线
+	AVChannelLayout out_layout_downmix;
+	av_channel_layout_default(&out_layout_downmix, 2);
 
-	// 配置重采样：输入（协商声道）-> 输出（Godot 浮点立体声）
+	// 配置 downmix swr_ctx：输入（协商声道）-> 输出（立体声浮点）
 	av_opt_set_chlayout(swr_ctx, "in_chlayout", &a_codec_ctx->ch_layout, 0);
 	av_opt_set_int(swr_ctx, "in_sample_rate", 48000, 0);
 	av_opt_set_sample_fmt(swr_ctx, "in_sample_fmt", a_codec_ctx->sample_fmt, 0);
-
-	av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_layout, 0);
+	av_opt_set_chlayout(swr_ctx, "out_chlayout", &out_layout_downmix, 0);
 	av_opt_set_int(swr_ctx, "out_sample_rate", 48000, 0);
-	av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0); // Godot uses Float
+	av_opt_set_sample_fmt(swr_ctx, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
 
-	if (swr_init(swr_ctx) < 0) {
+	// 配置 multichannel swr_ctx_multi：输入（协商声道）-> 输出（原始通道数，浮点）
+	av_opt_set_chlayout(swr_ctx_multi, "in_chlayout", &a_codec_ctx->ch_layout, 0);
+	av_opt_set_int(swr_ctx_multi, "in_sample_rate", 48000, 0);
+	av_opt_set_sample_fmt(swr_ctx_multi, "in_sample_fmt", a_codec_ctx->sample_fmt, 0);
+	av_opt_set_chlayout(swr_ctx_multi, "out_chlayout", &a_codec_ctx->ch_layout, 0);
+	av_opt_set_int(swr_ctx_multi, "out_sample_rate", 48000, 0);
+	av_opt_set_sample_fmt(swr_ctx_multi, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
+
+	if (swr_init(swr_ctx) < 0 || swr_init(swr_ctx_multi) < 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Failed to init Audio Resampler");
+		if (swr_ctx) {
+			swr_free(&swr_ctx);
+			swr_ctx = nullptr;
+		}
+		if (swr_ctx_multi) {
+			swr_free(&swr_ctx_multi);
+			swr_ctx_multi = nullptr;
+		}
 		return -1;
 	}
 
-	UtilityFunctions::print(LOG_PREFIX "Audio Initialized: Opus 48kHz, input channels=", in_channels, " (downmix to stereo)");
+	if (in_channels > 2) {
+		UtilityFunctions::print(LOG_PREFIX "Audio Initialized: Opus 48kHz, input channels=", in_channels, " (downmix to stereo + multichannel available)");
+	} else {
+		UtilityFunctions::print(LOG_PREFIX "Audio Initialized: Opus 48kHz, input channels=", in_channels);
+	}
 	return 0;
 }
 
@@ -208,12 +240,45 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 				av_free(out_buf);
 		}
 	}
+
+		// 如果配置了 multichannel resampler 且请求了按通道流，则生成多通道浮点缓冲并分发到每个单声道 AudioStream
+		int in_ch = a_codec_ctx ? a_codec_ctx->ch_layout.nb_channels : 2;
+		if (swr_ctx_multi && audio_streams.size() > 0) {
+			int max_out_samples_multi = swr_get_out_samples(swr_ctx_multi, a_frame->nb_samples);
+			if (max_out_samples_multi > 0) {
+				size_t buf_bytes = (size_t)max_out_samples_multi * in_ch * sizeof(float);
+				float *multi_buf = (float *)av_malloc(buf_bytes);
+				if (multi_buf) {
+					int out_samples_multi = swr_convert(swr_ctx_multi, (uint8_t **)&multi_buf, max_out_samples_multi, (const uint8_t **)a_frame->data, a_frame->nb_samples);
+					if (out_samples_multi > 0) {
+						// 对每个通道提取并推送到对应的单声道流
+						for (int ch = 0; ch < in_ch; ch++) {
+							if (ch < (int)audio_streams.size() && audio_streams[ch].is_valid()) {
+								float *chan_buf = (float *)av_malloc(out_samples_multi * sizeof(float));
+								if (!chan_buf)
+									continue;
+								for (int s = 0; s < out_samples_multi; s++) {
+									chan_buf[s] = multi_buf[s * in_ch + ch];
+								}
+								audio_streams[ch]->push_audio(chan_buf, out_samples_multi);
+								av_free(chan_buf);
+							}
+						}
+					}
+					av_free(multi_buf);
+				}
+			}
+		}
 }
 
 void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 	if (swr_ctx) {
 		swr_free(&swr_ctx);
 		swr_ctx = nullptr;
+	}
+	if (swr_ctx_multi) {
+		swr_free(&swr_ctx_multi);
+		swr_ctx_multi = nullptr;
 	}
 	if (a_codec_ctx) {
 		avcodec_free_context(&a_codec_ctx);
