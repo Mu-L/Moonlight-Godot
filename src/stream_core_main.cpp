@@ -11,6 +11,46 @@ MoonlightStreamCore *singleton_instance = nullptr;
 }
 Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 
+static int _video_mask_to_server_codec_mode_support(int video_mask) {
+	int scm_mask = 0;
+
+	if (video_mask & VIDEO_FORMAT_MASK_H264)
+		scm_mask |= SCM_MASK_H264;
+	if (video_mask & VIDEO_FORMAT_MASK_H265)
+		scm_mask |= SCM_MASK_HEVC;
+	if (video_mask & VIDEO_FORMAT_MASK_AV1)
+		scm_mask |= SCM_MASK_AV1;
+	if (video_mask & VIDEO_FORMAT_MASK_10BIT)
+		scm_mask |= SCM_MASK_10BIT;
+	if (video_mask & VIDEO_FORMAT_MASK_YUV444)
+		scm_mask |= SCM_MASK_YUV444;
+
+	return scm_mask;
+}
+
+static bool _apply_remote_input_keys_from_response(const Dictionary &response, STREAM_CONFIGURATION &cfg) {
+	if (!response.has("rikey") || !response.has("rikeyid")) {
+		return false;
+	}
+
+	String rikey_hex = response.get("rikey", "");
+	PackedByteArray key_bytes = rikey_hex.hex_decode();
+	if (key_bytes.size() < 16) {
+		return false;
+	}
+
+	int64_t rikeyid = (int64_t)response.get("rikeyid", 0);
+
+	memcpy(cfg.remoteInputAesKey, key_bytes.ptr(), 16);
+	memset(cfg.remoteInputAesIv, 0, 16);
+	cfg.remoteInputAesIv[0] = (char)((rikeyid >> 24) & 0xFF);
+	cfg.remoteInputAesIv[1] = (char)((rikeyid >> 16) & 0xFF);
+	cfg.remoteInputAesIv[2] = (char)((rikeyid >> 8) & 0xFF);
+	cfg.remoteInputAesIv[3] = (char)(rikeyid & 0xFF);
+
+	return true;
+}
+
 MoonlightStreamCore::MoonlightStreamCore() {
 	// 默认参数设定
 	singleton_instance = this;
@@ -221,7 +261,10 @@ void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<Moonlig
 	server_info.rtspSessionUrl = session_url_storage.c_str();
 	server_info.serverInfoAppVersion = app_version_storage.c_str();
 	server_info.serverInfoGfeVersion = gfe_version_storage.c_str();
-	server_info.serverCodecModeSupport = cfg.is_valid() ? cfg->get_supported_video_formats() : 0;
+	server_info.serverCodecModeSupport = _video_mask_to_server_codec_mode_support(stream_config.supportedVideoFormats);
+	if (server_info.serverCodecModeSupport == 0) {
+		server_info.serverCodecModeSupport = SCM_MASK_H264;
+	}
 	is_streaming.store(true);
 
 	if (verbose_requests) {
@@ -276,6 +319,10 @@ void MoonlightStreamCore::_on_establish_stream_completed(Dictionary response) {
 	// 成功：设置 session_url / ip 等并启动线程
 	String session_url = response.get("session_url", "");
 	String ip = response.get("ip", "");
+	String app_version = response.get("app_version", "");
+	String gfe_version = response.get("gfe_version", "");
+	int server_codec_mode_support = (int)response.get("server_codec_mode_support", server_info.serverCodecModeSupport);
+	bool keys_applied = _apply_remote_input_keys_from_response(response, stream_config);
 	if (session_url.is_empty()) {
 		UtilityFunctions::print(LOG_PREFIX "No session_url returned by ComputerManager");
 		is_streaming.store(false);
@@ -284,8 +331,22 @@ void MoonlightStreamCore::_on_establish_stream_completed(Dictionary response) {
 
 	session_url_storage = std::string(session_url.utf8().get_data());
 	ip_storage = std::string(ip.utf8().get_data());
+	if (!app_version.is_empty()) {
+		app_version_storage = std::string(app_version.utf8().get_data());
+	}
+	if (!gfe_version.is_empty()) {
+		gfe_version_storage = std::string(gfe_version.utf8().get_data());
+	}
+	if (server_codec_mode_support != 0) {
+		server_info.serverCodecModeSupport = server_codec_mode_support;
+	}
 	server_info.rtspSessionUrl = session_url_storage.c_str();
 	server_info.address = ip_storage.c_str();
+	server_info.serverInfoAppVersion = app_version_storage.c_str();
+	server_info.serverInfoGfeVersion = gfe_version_storage.c_str();
+	if (strstr(server_info.rtspSessionUrl, "rtspenc://") != nullptr && !keys_applied) {
+		UtilityFunctions::printerr(LOG_PREFIX "Warning: encrypted RTSP session detected but rikey/rikeyid missing; handshake may fail.");
+	}
 
 	// 启动连接与解码线程（同之前逻辑）
 	if (connection_thread.is_valid()) {

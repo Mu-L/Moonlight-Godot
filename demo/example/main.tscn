@@ -136,6 +136,16 @@ theme_override_font_sizes/font_size = 21
 text = "view 
 appdata"
 
+[node name="AudioBypassButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=222222001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Audio Bypass: OFF"
+
+[node name="AudioPauseButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=222222002]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Audio Bypass Pause"
+
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer" unique_id=1243422997]
 autoplay = true
 
@@ -166,3 +176,5 @@ access = 1
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button12" to="." method="test_pause_streram"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button13" to="." method="test_stop_stream"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button14" to="." method="view_data"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/AudioBypassButton" to="." method="test_toggle_audio_bypass"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/AudioPauseButton" to="." method="test_toggle_audio_pause"]

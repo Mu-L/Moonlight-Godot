@@ -12,6 +12,12 @@ func _ready() -> void:
     @warning_ignore("standalone_ternary")
     moonlightstreamcore.hdr_mode_changed.connect(func(enable,data):print("[Moonlight-Godot-MoonlightStreamCore-HDR]",data) if enable else push_warning("[Moonlight-Godot-MoonlightStreamCore-HDR]",data))
     $ScrollContainer/GridContainer/LineEdit.text = configmanager.get_hosts()[0].localaddress
+    # 初始化音频直通按钮文本
+    if $ScrollContainer/GridContainer.has_node("AudioBypassButton"):
+        $ScrollContainer/GridContainer/AudioBypassButton.text = "Audio Bypass: ON" if moonlightstreamcore.is_native_audio_bypass_running() else "Audio Bypass: OFF"
+    if $ScrollContainer/GridContainer.has_node("AudioPauseButton"):
+        var paused = moonlightstreamcore.is_native_audio_bypass_paused()
+        $ScrollContainer/GridContainer/AudioPauseButton.text = "Resume" if paused else "Pause"
 func on_pair_complete(success,message):
     if success:
         print("[Moonlight-Godot-ComputerManager]",message)
@@ -86,40 +92,25 @@ func test_connect_to_server() -> void:
 
 
 func test_establish_stream() -> void:
-    var options = {
-        "width": "1920",
-        "height": "1080",
-        "fps": "60",
-        "additionalStates": "1",
-        "sops": "1",
-        "surroundAudioInfo": "65536",
-        "remoteControllersBitmap": "15",
-        "gcmap": "1",
-        "gcpersist": "1",
-        "video_codec": $ScrollContainer/GridContainer/OptionButton.get_selected_id(),
-        "disable_hw_acceleration": not $ScrollContainer/GridContainer/CheckButton.button_pressed,
-        "bitrate": int($ScrollContainer/GridContainer/LineEdit2.text) * 10000,
-        "debug_idr_log":false
-    }
-# delay(s)
-# WITH CHANGE:
-    # SW decode:
-    #   H264:0.13
-    #   H265:0.13
-    # HW decode:
-    #`  H264:0.27
-    #   H265:0.23
-# WITHOUT CHANGE:
-    # SW decode:
-    #   H264:0.14
-    #   H265:0.09
-    # HW decode:
-    #`  H264:0.27
-    #   H265:0.27
+    # 使用 Resource API 构建两个配置类并直接启动播放
+    var cfg = MoonlightStreamConfigurationResource.new()
+    cfg.set_width(1920)
+    cfg.set_height(1080)
+    cfg.set_fps(60)
+    cfg.set_bitrate(int($ScrollContainer/GridContainer/LineEdit2.text) * 10000)
+    # 可选：设置 packet_size 或 audio_configuration 等（使用默认则可）
+    # cfg.set_packet_size(1392)
+
+    var add_opts = MoonlightAdditionalStreamOptions.new()
+    add_opts.set_video_codec($ScrollContainer/GridContainer/OptionButton.get_selected_id())
+    add_opts.set_disable_hw_acceleration(not $ScrollContainer/GridContainer/CheckButton.button_pressed)
+
     moonlightstreamcore.set_render_target($ScrollContainer/GridContainer/Screen)
-    $ScrollContainer/GridContainer/AudioStreamPlayer.stream=moonlightstreamcore.get_audio_stream()
-    computermamager.establish_stream(1,1191261554,options,func(info): print(info);moonlightstreamcore.start_play_stream(info))
-    await get_tree().create_timer(2).timeout
+    $ScrollContainer/GridContainer/AudioStreamPlayer.stream = moonlightstreamcore.get_audio_stream()
+
+    # 直接开始播放（host_id 与 app_id 仍使用示例中的固定值）
+    moonlightstreamcore.start_play_stream(1, 1191261554, cfg, add_opts)
+    await get_tree().create_timer(1).timeout
     $ScrollContainer/GridContainer/AudioStreamPlayer.play()
 
 func test_stop_stream() -> void:
@@ -140,3 +131,24 @@ func _on_line_edit_editing_toggled(toggled_on: bool) -> void:
     if toggled_on:
         return
     configmanager.update_host(1,{"localaddress":$ScrollContainer/GridContainer/LineEdit.text})
+
+
+func test_toggle_audio_bypass() -> void:
+    if moonlightstreamcore.is_native_audio_bypass_running():
+        moonlightstreamcore.stop_native_audio_bypass()
+        $ScrollContainer/GridContainer/AudioBypassButton.text = "Audio Bypass: OFF"
+    else:
+        var ok = moonlightstreamcore.start_native_audio_bypass()
+        $ScrollContainer/GridContainer/AudioBypassButton.text = "Audio Bypass: ON" if ok else "Audio Bypass: FAILED"
+
+
+func test_toggle_audio_pause() -> void:
+    if not moonlightstreamcore.is_native_audio_bypass_running():
+        push_warning("Native audio bypass not running")
+        return
+    if moonlightstreamcore.is_native_audio_bypass_paused():
+        moonlightstreamcore.resume_native_audio_bypass()
+        $ScrollContainer/GridContainer/AudioPauseButton.text = "Audio Bypass Pause"
+    else:
+        moonlightstreamcore.pause_native_audio_bypass()
+        $ScrollContainer/GridContainer/AudioPauseButton.text = "Audio Bypass Resume"

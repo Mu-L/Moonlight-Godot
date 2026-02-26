@@ -278,6 +278,27 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 			if (out_samples > 0) {
 				// 推送交错的浮点立体声样本
 				audio_stream->push_audio(out_buf, out_samples * 2);
+
+				// 如果启用了原生旁路音频，则也写入 native 环形缓冲（立体声路径）
+				if (native_audio_bypass_enabled) {
+					native_audio_mutex->lock();
+					int samples_to_write_st = out_samples * 2;
+					int free_space_st = native_rb_capacity - native_rb_used;
+					if (samples_to_write_st > free_space_st) {
+						int overflow = samples_to_write_st - free_space_st;
+						native_rb_read_pos = (native_rb_read_pos + overflow) % native_rb_capacity;
+						native_rb_used -= overflow;
+					}
+					int first_chunk_st = MIN(samples_to_write_st, native_rb_capacity - native_rb_write_pos);
+					int second_chunk_st = samples_to_write_st - first_chunk_st;
+					float *ringptr_st = native_audio_ring.ptrw();
+					memcpy(ringptr_st + native_rb_write_pos, out_buf, first_chunk_st * sizeof(float));
+					if (second_chunk_st > 0)
+						memcpy(ringptr_st, out_buf + first_chunk_st, second_chunk_st * sizeof(float));
+					native_rb_write_pos = (native_rb_write_pos + samples_to_write_st) % native_rb_capacity;
+					native_rb_used += samples_to_write_st;
+					native_audio_mutex->unlock();
+				}
 			}
 			if (huge_frame)
 				av_free(out_buf);
