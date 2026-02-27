@@ -152,32 +152,37 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "Toggle Keyboard"
 
-[node name="FullscreenButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555001]
+[node name="ToggleVideoButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555001]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "Fullscreen"
+toggle_mode = true
+button_pressed = true
+text = "Video: ON"
 
-[node name="ToggleVideoButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555002]
+[node name="ToggleAudioButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555002]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "Disable Video"
+toggle_mode = true
+button_pressed = true
+text = "Audio: ON"
 
-[node name="ToggleAudioButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555003]
+[node name="ToggleInputButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555003]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "Disable Audio"
+toggle_mode = true
+button_pressed = true
+text = "Input: ON"
 
-[node name="ToggleInputButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555004]
+[node name="FullscreenButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555004]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "Disable Input"
+text = "Full Screen"
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer" unique_id=1243422997]
-volume_db = 16.0
 autoplay = true
 
 [node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=428695045]
-custom_minimum_size = Vector2(1680, 1050)
+custom_minimum_size = Vector2(1600, 900)
 layout_mode = 2
 focus_mode = 2
 expand_mode = 1
@@ -191,7 +196,6 @@ file_mode = 3
 access = 1
 
 [node name="KeyboardLayer" type="CanvasLayer" parent="." unique_id=444444001]
-layer = 10
 visible = false
 
 [node name="KeyboardPanel" type="PanelContainer" parent="KeyboardLayer" unique_id=444444002]
@@ -227,33 +231,23 @@ layout_mode = 2
 alignment = 1
 
 [node name="FullscreenLayer" type="CanvasLayer" parent="." unique_id=666666001]
-layer = 5
 visible = false
 
-[node name="ColorRect" type="ColorRect" parent="FullscreenLayer" unique_id=666666002]
+[node name="FullscreenScreen" type="TextureRect" parent="FullscreenLayer" unique_id=666666002]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 1)
-
-[node name="FullscreenScreen" type="TextureRect" parent="FullscreenLayer" unique_id=666666003]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-focus_mode = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="ExitFullscreenButton" type="Button" parent="FullscreenLayer" unique_id=666666004]
+[node name="ExitFullscreenButton" type="Button" parent="FullscreenLayer" unique_id=666666003]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -50.0
-offset_bottom = 50.0
+offset_left = -60.0
+offset_bottom = 60.0
 grow_horizontal = 0
 theme_override_font_sizes/font_size = 30
 text = "X"
@@ -276,4 +270,10 @@ text = "X"
 [connection signal="pressed" from="ScrollContainer/GridContainer/AudioBypassButton" to="." method="test_toggle_audio_bypass"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/AudioPauseButton" to="." method="test_toggle_audio_pause"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/KeyboardButton" to="." method="test_toggle_keyboard"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/ToggleVideoButton" to="." method="_on_toggle_video"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/ToggleAudioButton" to="." method="_on_toggle_audio"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/ToggleInputButton" to="." method="_on_toggle_input"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/FullscreenButton" to="." method="_on_fullscreen_pressed"]
 [connection signal="gui_input" from="ScrollContainer/GridContainer/Screen" to="." method="_on_screen_gui_input"]
+[connection signal="gui_input" from="FullscreenLayer/FullscreenScreen" to="." method="_on_fullscreen_screen_gui_input"]
+[connection signal="pressed" from="FullscreenLayer/ExitFullscreenButton" to="." method="_on_exit_fullscreen_pressed"]

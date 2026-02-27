@@ -713,7 +713,7 @@ void MoonlightStreamCore::_render_thread_cleanup_resources() {
 }
 
 void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
-	if (!frame || !video_enabled.load())
+	if (!frame)
 		return;
 
 	// Use RenderingServer for thread-safe updates without memory allocation overhead.
