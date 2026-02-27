@@ -33,40 +33,67 @@ func _ready() -> void:
     _setup_virtual_keyboard()
 
 func _setup_virtual_keyboard() -> void:
+    var row0 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row0
     var row1 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row1
     var row2 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row2
     var row3 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row3
     var row4 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row4
+    var row5 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row5
     
-    var keys_r1 = [
-        {"text": "F1", "code": MoonlightInput.VK_F1}, {"text": "F2", "code": MoonlightInput.VK_F2}, {"text": "F3", "code": MoonlightInput.VK_F3},
-        {"text": "F4", "code": MoonlightInput.VK_F4}, {"text": "F5", "code": MoonlightInput.VK_F5}, {"text": "F6", "code": MoonlightInput.VK_F6},
-        {"text": "F7", "code": MoonlightInput.VK_F7}, {"text": "F8", "code": MoonlightInput.VK_F8}, {"text": "F9", "code": MoonlightInput.VK_F9},
-        {"text": "F10", "code": MoonlightInput.VK_F10}, {"text": "F11", "code": MoonlightInput.VK_F11}, {"text": "F12", "code": MoonlightInput.VK_F12},
+    var keys_r0 = [
+        {"text": "Esc", "code": MoonlightInput.VK_ESCAPE}, {"blank": true, "w": 25},
+        {"text": "F1", "code": MoonlightInput.VK_F1}, {"text": "F2", "code": MoonlightInput.VK_F2}, {"text": "F3", "code": MoonlightInput.VK_F3}, {"text": "F4", "code": MoonlightInput.VK_F4}, {"blank": true, "w": 25},
+        {"text": "F5", "code": MoonlightInput.VK_F5}, {"text": "F6", "code": MoonlightInput.VK_F6}, {"text": "F7", "code": MoonlightInput.VK_F7}, {"text": "F8", "code": MoonlightInput.VK_F8}, {"blank": true, "w": 25},
+        {"text": "F9", "code": MoonlightInput.VK_F9}, {"text": "F10", "code": MoonlightInput.VK_F10}, {"text": "F11", "code": MoonlightInput.VK_F11}, {"text": "F12", "code": MoonlightInput.VK_F12}, {"blank": true, "w": 25},
+        {"text": "PrtSc", "code": MoonlightInput.VK_PRINT}, {"text": "ScrLk", "code": MoonlightInput.VK_SCROLL}, {"text": "Pause", "code": MoonlightInput.VK_PAUSE}, {"blank": true, "w": 25},
         {"text": "Hide", "code": -1}
     ]
+    var keys_r1 = [
+        {"text": "`", "code": MoonlightInput.VK_OEM_3}, {"text": "1", "code": MoonlightInput.VK_1}, {"text": "2", "code": MoonlightInput.VK_2}, {"text": "3", "code": MoonlightInput.VK_3}, {"text": "4", "code": MoonlightInput.VK_4}, {"text": "5", "code": MoonlightInput.VK_5}, {"text": "6", "code": MoonlightInput.VK_6}, {"text": "7", "code": MoonlightInput.VK_7}, {"text": "8", "code": MoonlightInput.VK_8}, {"text": "9", "code": MoonlightInput.VK_9}, {"text": "0", "code": MoonlightInput.VK_0}, {"text": "-", "code": MoonlightInput.VK_OEM_MINUS}, {"text": "=", "code": MoonlightInput.VK_OEM_PLUS}, {"text": "Backspace", "code": MoonlightInput.VK_BACK, "w": 100},
+        {"blank": true, "w": 25},
+        {"text": "Ins", "code": MoonlightInput.VK_INSERT}, {"text": "Home", "code": MoonlightInput.VK_HOME}, {"text": "PgUp", "code": MoonlightInput.VK_PRIOR},
+        {"blank": true, "w": 25},
+        {"text": "NumLk", "code": MoonlightInput.VK_NUMLOCK}, {"text": "/", "code": MoonlightInput.VK_DIVIDE}, {"text": "*", "code": MoonlightInput.VK_MULTIPLY}, {"text": "-", "code": MoonlightInput.VK_SUBTRACT}
+    ]
     var keys_r2 = [
-        {"text": "1", "code": MoonlightInput.VK_1}, {"text": "2", "code": MoonlightInput.VK_2}, {"text": "3", "code": MoonlightInput.VK_3},
-        {"text": "4", "code": MoonlightInput.VK_4}, {"text": "5", "code": MoonlightInput.VK_5}, {"text": "6", "code": MoonlightInput.VK_6},
-        {"text": "7", "code": MoonlightInput.VK_7}, {"text": "8", "code": MoonlightInput.VK_8}, {"text": "9", "code": MoonlightInput.VK_9},
-        {"text": "0", "code": MoonlightInput.VK_0}
+        {"text": "Tab", "code": MoonlightInput.VK_TAB, "w": 75}, {"text": "Q", "code": MoonlightInput.VK_Q}, {"text": "W", "code": MoonlightInput.VK_W}, {"text": "E", "code": MoonlightInput.VK_E}, {"text": "R", "code": MoonlightInput.VK_R}, {"text": "T", "code": MoonlightInput.VK_T}, {"text": "Y", "code": MoonlightInput.VK_Y}, {"text": "U", "code": MoonlightInput.VK_U}, {"text": "I", "code": MoonlightInput.VK_I}, {"text": "O", "code": MoonlightInput.VK_O}, {"text": "P", "code": MoonlightInput.VK_P}, {"text": "[", "code": MoonlightInput.VK_OEM_4}, {"text": "]", "code": MoonlightInput.VK_OEM_6}, {"text": "\\", "code": MoonlightInput.VK_OEM_5, "w": 75},
+        {"blank": true, "w": 25},
+        {"text": "Del", "code": MoonlightInput.VK_DELETE}, {"text": "End", "code": MoonlightInput.VK_END}, {"text": "PgDn", "code": MoonlightInput.VK_NEXT},
+        {"blank": true, "w": 25},
+        {"text": "7", "code": MoonlightInput.VK_NUMPAD7}, {"text": "8", "code": MoonlightInput.VK_NUMPAD8}, {"text": "9", "code": MoonlightInput.VK_NUMPAD9}, {"text": "+", "code": MoonlightInput.VK_ADD}
     ]
     var keys_r3 = [
-        {"text": "A", "code": MoonlightInput.VK_A}, {"text": "C", "code": MoonlightInput.VK_C}, {"text": "V", "code": MoonlightInput.VK_V},
-        {"text": "Z", "code": MoonlightInput.VK_Z}, {"text": "X", "code": MoonlightInput.VK_X},
-        {"text": "? /", "code": MoonlightInput.VK_OEM_2}, {"text": "{ [", "code": MoonlightInput.VK_OEM_4}, {"text": "} ]", "code": MoonlightInput.VK_OEM_6}
+        {"text": "Caps", "code": MoonlightInput.VK_CAPITAL, "w": 90}, {"text": "A", "code": MoonlightInput.VK_A}, {"text": "S", "code": MoonlightInput.VK_S}, {"text": "D", "code": MoonlightInput.VK_D}, {"text": "F", "code": MoonlightInput.VK_F}, {"text": "G", "code": MoonlightInput.VK_G}, {"text": "H", "code": MoonlightInput.VK_H}, {"text": "J", "code": MoonlightInput.VK_J}, {"text": "K", "code": MoonlightInput.VK_K}, {"text": "L", "code": MoonlightInput.VK_L}, {"text": ";", "code": MoonlightInput.VK_OEM_1}, {"text": "'", "code": MoonlightInput.VK_OEM_7}, {"text": "Enter", "code": MoonlightInput.VK_RETURN, "w": 114},
+        {"blank": true, "w": 25},
+        {"blank": true, "w": 158},
+        {"blank": true, "w": 25},
+        {"text": "4", "code": MoonlightInput.VK_NUMPAD4}, {"text": "5", "code": MoonlightInput.VK_NUMPAD5}, {"text": "6", "code": MoonlightInput.VK_NUMPAD6}, {"blank": true, "w": 50}
     ]
     var keys_r4 = [
-        {"text": "Ctrl", "code": MoonlightInput.VK_CONTROL, "toggle": true},
-        {"text": "Shift", "code": MoonlightInput.VK_SHIFT, "toggle": true},
-        {"text": "Alt", "code": MoonlightInput.VK_MENU, "toggle": true},
-        {"text": "Meta", "code": MoonlightInput.VK_LWIN, "toggle": true}
+        {"text": "Shift", "code": MoonlightInput.VK_LSHIFT, "toggle": true, "w": 115}, {"text": "Z", "code": MoonlightInput.VK_Z}, {"text": "X", "code": MoonlightInput.VK_X}, {"text": "C", "code": MoonlightInput.VK_C}, {"text": "V", "code": MoonlightInput.VK_V}, {"text": "B", "code": MoonlightInput.VK_B}, {"text": "N", "code": MoonlightInput.VK_N}, {"text": "M", "code": MoonlightInput.VK_M}, {"text": ",", "code": MoonlightInput.VK_OEM_COMMA}, {"text": ".", "code": MoonlightInput.VK_OEM_PERIOD}, {"text": "/", "code": MoonlightInput.VK_OEM_2}, {"text": "Shift", "code": MoonlightInput.VK_RSHIFT, "toggle": true, "w": 143},
+        {"blank": true, "w": 25},
+        {"blank": true, "w": 50}, {"text": "↑", "code": MoonlightInput.VK_UP}, {"blank": true, "w": 50},
+        {"blank": true, "w": 25},
+        {"text": "1", "code": MoonlightInput.VK_NUMPAD1}, {"text": "2", "code": MoonlightInput.VK_NUMPAD2}, {"text": "3", "code": MoonlightInput.VK_NUMPAD3}, {"text": "Ent", "code": MoonlightInput.VK_RETURN}
+    ]
+    var keys_r5 = [
+        {"text": "Ctrl", "code": MoonlightInput.VK_LCONTROL, "toggle": true, "w": 60}, {"text": "Win", "code": MoonlightInput.VK_LWIN, "toggle": true, "w": 60}, {"text": "Alt", "code": MoonlightInput.VK_LMENU, "toggle": true, "w": 60}, {"text": "Space", "code": MoonlightInput.VK_SPACE, "w": 354}, {"text": "Alt", "code": MoonlightInput.VK_RMENU, "toggle": true, "w": 60}, {"text": "Win", "code": MoonlightInput.VK_RWIN, "toggle": true, "w": 60}, {"text": "Menu", "code": MoonlightInput.VK_APPS, "w": 60}, {"text": "Ctrl", "code": MoonlightInput.VK_RCONTROL, "toggle": true, "w": 60},
+        {"blank": true, "w": 25},
+        {"text": "←", "code": MoonlightInput.VK_LEFT}, {"text": "↓", "code": MoonlightInput.VK_DOWN}, {"text": "→", "code": MoonlightInput.VK_RIGHT},
+        {"blank": true, "w": 25},
+        {"text": "0", "code": MoonlightInput.VK_NUMPAD0, "w": 104}, {"text": ".", "code": MoonlightInput.VK_DECIMAL}, {"blank": true, "w": 50}
     ]
     
     var create_btn = func(k: Dictionary, parent: Node):
+        if k.get("blank", false):
+            var spacer = Control.new()
+            spacer.custom_minimum_size = Vector2(k.get("w", 50), 50)
+            parent.add_child(spacer)
+            return
+            
         var btn = Button.new()
         btn.text = k["text"]
-        btn.custom_minimum_size = Vector2(50, 50)
+        btn.custom_minimum_size = Vector2(k.get("w", 50), 50)
         btn.focus_mode = Control.FOCUS_NONE
         if k.get("toggle", false):
             btn.toggle_mode = true
@@ -78,19 +105,21 @@ func _setup_virtual_keyboard() -> void:
             btn.button_up.connect(func(): _on_vk_key_event(k["code"], false))
         parent.add_child(btn)
         
+    for k in keys_r0: create_btn.call(k, row0)
     for k in keys_r1: create_btn.call(k, row1)
     for k in keys_r2: create_btn.call(k, row2)
     for k in keys_r3: create_btn.call(k, row3)
     for k in keys_r4: create_btn.call(k, row4)
+    for k in keys_r5: create_btn.call(k, row5)
 
 var vk_modifiers: int = 0
 
 func _on_vk_modifier_toggled(keycode: int, pressed: bool) -> void:
     var mod_bit = 0
-    if keycode == MoonlightInput.VK_CONTROL: mod_bit = MoonlightInput.MODIFIER_CTRL_BIT
-    elif keycode == MoonlightInput.VK_SHIFT: mod_bit = MoonlightInput.MODIFIER_SHIFT_BIT
-    elif keycode == MoonlightInput.VK_MENU: mod_bit = MoonlightInput.MODIFIER_ALT_BIT
-    elif keycode == MoonlightInput.VK_LWIN: mod_bit = MoonlightInput.MODIFIER_META_BIT
+    if keycode == MoonlightInput.VK_LCONTROL or keycode == MoonlightInput.VK_RCONTROL: mod_bit = MoonlightInput.MODIFIER_CTRL_BIT
+    elif keycode == MoonlightInput.VK_LSHIFT or keycode == MoonlightInput.VK_RSHIFT: mod_bit = MoonlightInput.MODIFIER_SHIFT_BIT
+    elif keycode == MoonlightInput.VK_LMENU or keycode == MoonlightInput.VK_RMENU: mod_bit = MoonlightInput.MODIFIER_ALT_BIT
+    elif keycode == MoonlightInput.VK_LWIN or keycode == MoonlightInput.VK_RWIN: mod_bit = MoonlightInput.MODIFIER_META_BIT
     
     if pressed:
         vk_modifiers |= mod_bit
@@ -179,6 +208,8 @@ func test_connect_to_server() -> void:
     
 
 
+var current_stream_config: MoonlightStreamConfigurationResource = null
+
 func test_establish_stream() -> void:
     # 使用 Resource API 构建两个配置类并直接启动播放
     var cfg = MoonlightStreamConfigurationResource.new()
@@ -188,6 +219,8 @@ func test_establish_stream() -> void:
     cfg.set_bitrate(int($ScrollContainer/GridContainer/LineEdit2.text) * 10000)
     # 可选：设置 packet_size 或 audio_configuration 等（使用默认则可）
     # cfg.set_packet_size(1392)
+    
+    current_stream_config = cfg
 
     video_enabled = $ScrollContainer/GridContainer/ToggleVideoButton.button_pressed
     audio_enabled = $ScrollContainer/GridContainer/ToggleAudioButton.button_pressed
@@ -310,14 +343,50 @@ func _on_screen_gui_input(event: InputEvent) -> void:
 func _on_fullscreen_pressed() -> void:
     is_fullscreen = true
     $FullscreenLayer.visible = true
+    
+    var screen = $FullscreenLayer/CenterContainer/FullscreenScreen
+    
+    # 无论是否禁用视频，都手动设置 TextureRect 的最小尺寸以匹配串流参数比例
+    # 这样可以确保画面或输入区域始终保持正确的比例并缩放到全屏
+    var stream_width = 1920.0
+    var stream_height = 1080.0
+    if current_stream_config != null:
+        stream_width = float(current_stream_config.get_width())
+        stream_height = float(current_stream_config.get_height())
+        
+    var stream_ratio = stream_width / stream_height
+    
+    var window_size = get_viewport().get_visible_rect().size
+    var window_ratio = window_size.x / window_size.y
+    
+    var target_size = Vector2()
+    if window_ratio > stream_ratio:
+        # 窗口更宽，以高度为基准
+        target_size.y = window_size.y
+        target_size.x = target_size.y * stream_ratio
+    else:
+        # 窗口更高，以宽度为基准
+        target_size.x = window_size.x
+        target_size.y = target_size.x / stream_ratio
+        
+    screen.custom_minimum_size = target_size
+
     if video_enabled:
-        moonlightstreamcore.set_render_target($FullscreenLayer/CenterContainer/FullscreenScreen)
+        moonlightstreamcore.set_render_target(screen)
 
 func _on_exit_fullscreen_pressed() -> void:
     is_fullscreen = false
     $FullscreenLayer.visible = false
+    
+    var screen = $FullscreenLayer/CenterContainer/FullscreenScreen
+    screen.custom_minimum_size = Vector2(0, 0) # 恢复默认
+    
     if video_enabled:
         moonlightstreamcore.set_render_target($ScrollContainer/GridContainer/Screen)
 
 func _on_toggle_input_pressed() -> void:
     input_enabled = $ScrollContainer/GridContainer/ToggleInputButton.button_pressed
+
+
+func _on_check_button_2_toggled(toggled_on: bool) -> void:
+    $ScrollContainer/GridContainer/AudioStreamPlayer.playing = toggled_on

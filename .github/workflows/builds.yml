@@ -199,7 +199,13 @@ jobs:
             exit 0
           fi
           if [ -d "$GITHUB_WORKSPACE/vcpkg_cache" ]; then
-            bytes=$(du -sb "$GITHUB_WORKSPACE/vcpkg_cache" | cut -f1)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+              # macOS du doesn't support -b
+              bytes=$(du -sk "$GITHUB_WORKSPACE/vcpkg_cache" | cut -f1)
+              bytes=$((bytes * 1024))
+            else
+              bytes=$(du -sb "$GITHUB_WORKSPACE/vcpkg_cache" | cut -f1)
+            fi
           else
             bytes=0
           fi
