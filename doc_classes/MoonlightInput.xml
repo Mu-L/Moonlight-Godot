@@ -1,0 +1,826 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="MoonlightInput" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		包含 MoonlightStreamCore 所有与输入相关的常量的资源类。
+	</brief_description>
+	<description>
+		该类为各种输入事件提供了枚举，包括鼠标按钮、键盘动作、触摸事件、控制器按钮以及 Sunshine 服务器使用的 Win32 虚拟键码。
+	</description>
+	<tutorials>
+	</tutorials>
+	<constants>
+		<constant name="MOUSE_BUTTON_LEFT" value="1" enum="MouseButton">
+			鼠标左键。
+		</constant>
+		<constant name="MOUSE_BUTTON_MIDDLE" value="2" enum="MouseButton">
+			鼠标中键。
+		</constant>
+		<constant name="MOUSE_BUTTON_RIGHT" value="3" enum="MouseButton">
+			鼠标右键。
+		</constant>
+		<constant name="MOUSE_BUTTON_X1" value="4" enum="MouseButton">
+			鼠标 X1 键。
+		</constant>
+		<constant name="MOUSE_BUTTON_X2" value="5" enum="MouseButton">
+			鼠标 X2 键。
+		</constant>
+		<constant name="MOUSE_BUTTON_ACTION_PRESS" value="7" enum="MouseButtonAction">
+			鼠标按钮按下动作。
+		</constant>
+		<constant name="MOUSE_BUTTON_ACTION_RELEASE" value="8" enum="MouseButtonAction">
+			鼠标按钮释放动作。
+		</constant>
+		<constant name="KEY_ACTION_DOWN_LIMIT" value="3" enum="KeyboardAction">
+			按键按下动作。
+		</constant>
+		<constant name="KEY_ACTION_UP_LIMIT" value="4" enum="KeyboardAction">
+			按键弹起动作。
+		</constant>
+		<constant name="MODIFIER_NONE" value="0" enum="KeyboardModifier">
+			无修饰键。
+		</constant>
+		<constant name="MODIFIER_SHIFT_BIT" value="1" enum="KeyboardModifier">
+			Shift 修饰键。
+		</constant>
+		<constant name="MODIFIER_CTRL_BIT" value="2" enum="KeyboardModifier">
+			Ctrl 修饰键。
+		</constant>
+		<constant name="MODIFIER_ALT_BIT" value="4" enum="KeyboardModifier">
+			Alt 修饰键。
+		</constant>
+		<constant name="MODIFIER_META_BIT" value="8" enum="KeyboardModifier">
+			Meta (Windows/Command) 修饰键。
+		</constant>
+		<constant name="TOUCH_EVENT_HOVER" value="0" enum="TouchEventType">
+			触摸悬停事件。
+		</constant>
+		<constant name="TOUCH_EVENT_DOWN" value="1" enum="TouchEventType">
+			触摸按下事件。
+		</constant>
+		<constant name="TOUCH_EVENT_UP" value="2" enum="TouchEventType">
+			触摸抬起事件。
+		</constant>
+		<constant name="TOUCH_EVENT_MOVE" value="3" enum="TouchEventType">
+			触摸移动事件。
+		</constant>
+		<constant name="TOUCH_EVENT_CANCEL" value="4" enum="TouchEventType">
+			触摸取消事件。
+		</constant>
+		<constant name="TOUCH_EVENT_BUTTON_ONLY" value="5" enum="TouchEventType">
+			仅按钮触摸事件。
+		</constant>
+		<constant name="TOUCH_EVENT_HOVER_LEAVE" value="6" enum="TouchEventType">
+			触摸悬停离开事件。
+		</constant>
+		<constant name="TOUCH_EVENT_CANCEL_ALL" value="7" enum="TouchEventType">
+			取消所有触摸事件。
+		</constant>
+		<constant name="TOOL_TYPE_UNKNOWN" value="0" enum="PenToolType">
+			未知笔工具类型。
+		</constant>
+		<constant name="TOOL_TYPE_PEN" value="1" enum="PenToolType">
+			笔工具类型。
+		</constant>
+		<constant name="TOOL_TYPE_ERASER" value="2" enum="PenToolType">
+			橡皮擦工具类型。
+		</constant>
+		<constant name="PEN_BUTTON_PRIMARY" value="1" enum="PenButton">
+			主笔按钮。
+		</constant>
+		<constant name="PEN_BUTTON_SECONDARY" value="2" enum="PenButton">
+			次笔按钮。
+		</constant>
+		<constant name="PEN_BUTTON_TERTIARY" value="4" enum="PenButton">
+			第三笔按钮。
+		</constant>
+		<constant name="CONTROLLER_A" value="4096" enum="ControllerButton">
+			游戏手柄 A 键。
+		</constant>
+		<constant name="CONTROLLER_B" value="8192" enum="ControllerButton">
+			游戏手柄 B 键。
+		</constant>
+		<constant name="CONTROLLER_X" value="16384" enum="ControllerButton">
+			游戏手柄 X 键。
+		</constant>
+		<constant name="CONTROLLER_Y" value="32768" enum="ControllerButton">
+			游戏手柄 Y 键。
+		</constant>
+		<constant name="CONTROLLER_UP" value="1" enum="ControllerButton">
+			游戏手柄方向键上键。
+		</constant>
+		<constant name="CONTROLLER_DOWN" value="2" enum="ControllerButton">
+			游戏手柄方向键下键。
+		</constant>
+		<constant name="CONTROLLER_LEFT" value="4" enum="ControllerButton">
+			游戏手柄方向键左键。
+		</constant>
+		<constant name="CONTROLLER_RIGHT" value="8" enum="ControllerButton">
+			游戏手柄方向键右键。
+		</constant>
+		<constant name="CONTROLLER_LB" value="256" enum="ControllerButton">
+			游戏手柄左肩键。
+		</constant>
+		<constant name="CONTROLLER_RB" value="512" enum="ControllerButton">
+			游戏手柄右肩键。
+		</constant>
+		<constant name="CONTROLLER_PLAY" value="16" enum="ControllerButton">
+			游戏手柄播放/开始键。
+		</constant>
+		<constant name="CONTROLLER_BACK" value="32" enum="ControllerButton">
+			游戏手柄返回/选择键。
+		</constant>
+		<constant name="CONTROLLER_LS_CLK" value="64" enum="ControllerButton">
+			游戏手柄左摇杆按下键。
+		</constant>
+		<constant name="CONTROLLER_RS_CLK" value="128" enum="ControllerButton">
+			游戏手柄右摇杆按下键。
+		</constant>
+		<constant name="CONTROLLER_SPECIAL" value="1024" enum="ControllerButton">
+			游戏手柄特殊/引导键。
+		</constant>
+		<constant name="CONTROLLER_PADDLE1" value="65536" enum="ControllerButton">
+			游戏手柄背键 1。
+		</constant>
+		<constant name="CONTROLLER_PADDLE2" value="131072" enum="ControllerButton">
+			游戏手柄背键 2。
+		</constant>
+		<constant name="CONTROLLER_PADDLE3" value="262144" enum="ControllerButton">
+			游戏手柄背键 3。
+		</constant>
+		<constant name="CONTROLLER_PADDLE4" value="524288" enum="ControllerButton">
+			游戏手柄背键 4。
+		</constant>
+		<constant name="CONTROLLER_TOUCHPAD" value="1048576" enum="ControllerButton">
+			游戏手柄触摸板按键。
+		</constant>
+		<constant name="CONTROLLER_MISC" value="2097152" enum="ControllerButton">
+			游戏手柄杂项/分享/麦克风键。
+		</constant>
+		<constant name="CONTROLLER_TYPE_UNKNOWN" value="0" enum="ControllerType">
+			未知控制器类型。
+		</constant>
+		<constant name="CONTROLLER_TYPE_XBOX" value="1" enum="ControllerType">
+			Xbox 控制器类型。
+		</constant>
+		<constant name="CONTROLLER_TYPE_PS" value="2" enum="ControllerType">
+			PlayStation 控制器类型。
+		</constant>
+		<constant name="CONTROLLER_TYPE_NINTENDO" value="3" enum="ControllerType">
+			Nintendo 控制器类型。
+		</constant>
+		<constant name="CONTROLLER_CAP_ANALOG_TRIGGERS" value="1" enum="ControllerCapability">
+			控制器具有模拟扳机键。
+		</constant>
+		<constant name="CONTROLLER_CAP_RUMBLE" value="2" enum="ControllerCapability">
+			控制器支持震动。
+		</constant>
+		<constant name="CONTROLLER_CAP_TRIGGER_RUMBLE" value="4" enum="ControllerCapability">
+			控制器支持扳机震动。
+		</constant>
+		<constant name="CONTROLLER_CAP_TOUCHPAD" value="8" enum="ControllerCapability">
+			控制器带有触摸板。
+		</constant>
+		<constant name="CONTROLLER_CAP_ACCEL" value="16" enum="ControllerCapability">
+			控制器带有加速度计。
+		</constant>
+		<constant name="CONTROLLER_CAP_GYRO" value="32" enum="ControllerCapability">
+			控制器带有陀螺仪。
+		</constant>
+		<constant name="CONTROLLER_CAP_BATTERY_STATE" value="64" enum="ControllerCapability">
+			控制器可以报告电池状态。
+		</constant>
+		<constant name="CONTROLLER_CAP_RGB_LED" value="128" enum="ControllerCapability">
+			控制器带有 RGB LED。
+		</constant>
+		<constant name="MOTION_TYPE_ACCEL" value="1" enum="MotionType">
+			加速度计运动类型。
+		</constant>
+		<constant name="MOTION_TYPE_GYRO" value="2" enum="MotionType">
+			陀螺仪运动类型。
+		</constant>
+		<constant name="BATTERY_STATE_UNKNOWN" value="0" enum="BatteryState">
+			未知电池状态。
+		</constant>
+		<constant name="BATTERY_STATE_NOT_PRESENT" value="1" enum="BatteryState">
+			电池不存在。
+		</constant>
+		<constant name="BATTERY_STATE_DISCHARGING" value="2" enum="BatteryState">
+			电池放电中。
+		</constant>
+		<constant name="BATTERY_STATE_CHARGING" value="3" enum="BatteryState">
+			电池充电中。
+		</constant>
+		<constant name="BATTERY_STATE_NOT_CHARGING" value="4" enum="BatteryState">
+			电池未在充电。
+		</constant>
+		<constant name="BATTERY_STATE_FULL" value="5" enum="BatteryState">
+			电池已充满。
+		</constant>
+		<constant name="INPUT_ROT_UNKNOWN" value="65535" enum="InputSpecialConstant">
+			未知旋转。
+		</constant>
+		<constant name="INPUT_TILT_UNKNOWN" value="255" enum="InputSpecialConstant">
+			未知倾斜。
+		</constant>
+		<constant name="INPUT_BATTERY_PERCENTAGE_UNKNOWN" value="255" enum="InputSpecialConstant">
+			未知电池百分比。
+		</constant>
+		<constant name="INPUT_ERR_UNSUPPORTED" value="-5501" enum="InputSpecialConstant">
+			不支持的输入特性。
+		</constant>
+		<constant name="VK_LBUTTON" value="1" enum="VirtualKey">
+			鼠标左键。
+		</constant>
+		<constant name="VK_RBUTTON" value="2" enum="VirtualKey">
+			鼠标右键。
+		</constant>
+		<constant name="VK_CANCEL" value="3" enum="VirtualKey">
+			控制中断处理。
+		</constant>
+		<constant name="VK_MBUTTON" value="4" enum="VirtualKey">
+			鼠标中键。
+		</constant>
+		<constant name="VK_XBUTTON1" value="5" enum="VirtualKey">
+			X1 鼠标键。
+		</constant>
+		<constant name="VK_XBUTTON2" value="6" enum="VirtualKey">
+			X2 鼠标键。
+		</constant>
+		<constant name="VK_BACK" value="8" enum="VirtualKey">
+			退格键。
+		</constant>
+		<constant name="VK_TAB" value="9" enum="VirtualKey">
+			制表键。
+		</constant>
+		<constant name="VK_CLEAR" value="12" enum="VirtualKey">
+			清除键。
+		</constant>
+		<constant name="VK_RETURN" value="13" enum="VirtualKey">
+			回车键。
+		</constant>
+		<constant name="VK_SHIFT" value="16" enum="VirtualKey">
+			Shift 键。
+		</constant>
+		<constant name="VK_CONTROL" value="17" enum="VirtualKey">
+			Ctrl 键。
+		</constant>
+		<constant name="VK_MENU" value="18" enum="VirtualKey">
+			Alt 键。
+		</constant>
+		<constant name="VK_PAUSE" value="19" enum="VirtualKey">
+			暂停键。
+		</constant>
+		<constant name="VK_CAPITAL" value="20" enum="VirtualKey">
+			Caps Lock 键。
+		</constant>
+		<constant name="VK_KANA" value="21" enum="VirtualKey">
+			IME 假名模式。
+		</constant>
+		<constant name="VK_HANGUL" value="21" enum="VirtualKey">
+			IME 韩文模式。
+		</constant>
+		<constant name="VK_IME_ON" value="22" enum="VirtualKey">
+			IME 开启。
+		</constant>
+		<constant name="VK_JUNJA" value="23" enum="VirtualKey">
+			IME Junja 模式。
+		</constant>
+		<constant name="VK_FINAL" value="24" enum="VirtualKey">
+			IME 最终模式。
+		</constant>
+		<constant name="VK_HANJA" value="25" enum="VirtualKey">
+			IME 韩文汉字模式。
+		</constant>
+		<constant name="VK_KANJI" value="25" enum="VirtualKey">
+			IME 日文汉字模式。
+		</constant>
+		<constant name="VK_IME_OFF" value="26" enum="VirtualKey">
+			IME 关闭。
+		</constant>
+		<constant name="VK_ESCAPE" value="27" enum="VirtualKey">
+			Esc 键。
+		</constant>
+		<constant name="VK_CONVERT" value="28" enum="VirtualKey">
+			IME 转换。
+		</constant>
+		<constant name="VK_NONCONVERT" value="29" enum="VirtualKey">
+			IME 不转换。
+		</constant>
+		<constant name="VK_ACCEPT" value="30" enum="VirtualKey">
+			IME 接受。
+		</constant>
+		<constant name="VK_MODECHANGE" value="31" enum="VirtualKey">
+			IME 模式更改请求。
+		</constant>
+		<constant name="VK_SPACE" value="32" enum="VirtualKey">
+			空格键。
+		</constant>
+		<constant name="VK_PRIOR" value="33" enum="VirtualKey">
+			Page Up 键。
+		</constant>
+		<constant name="VK_NEXT" value="34" enum="VirtualKey">
+			Page Down 键。
+		</constant>
+		<constant name="VK_END" value="35" enum="VirtualKey">
+			End 键。
+		</constant>
+		<constant name="VK_HOME" value="36" enum="VirtualKey">
+			Home 键。
+		</constant>
+		<constant name="VK_LEFT" value="37" enum="VirtualKey">
+			左箭头键。
+		</constant>
+		<constant name="VK_UP" value="38" enum="VirtualKey">
+			上箭头键。
+		</constant>
+		<constant name="VK_RIGHT" value="39" enum="VirtualKey">
+			右箭头键。
+		</constant>
+		<constant name="VK_DOWN" value="40" enum="VirtualKey">
+			下箭头键。
+		</constant>
+		<constant name="VK_SELECT" value="41" enum="VirtualKey">
+			Select 键。
+		</constant>
+		<constant name="VK_PRINT" value="42" enum="VirtualKey">
+			Print 键。
+		</constant>
+		<constant name="VK_EXECUTE" value="43" enum="VirtualKey">
+			Execute 键。
+		</constant>
+		<constant name="VK_SNAPSHOT" value="44" enum="VirtualKey">
+			Print Screen 键。
+		</constant>
+		<constant name="VK_INSERT" value="45" enum="VirtualKey">
+			Insert 键。
+		</constant>
+		<constant name="VK_DELETE" value="46" enum="VirtualKey">
+			Delete 键。
+		</constant>
+		<constant name="VK_HELP" value="47" enum="VirtualKey">
+			Help 键。
+		</constant>
+		<constant name="VK_0" value="48" enum="VirtualKey">
+			0 键。
+		</constant>
+		<constant name="VK_1" value="49" enum="VirtualKey">
+			1 键。
+		</constant>
+		<constant name="VK_2" value="50" enum="VirtualKey">
+			2 键。
+		</constant>
+		<constant name="VK_3" value="51" enum="VirtualKey">
+			3 键。
+		</constant>
+		<constant name="VK_4" value="52" enum="VirtualKey">
+			4 键。
+		</constant>
+		<constant name="VK_5" value="53" enum="VirtualKey">
+			5 键。
+		</constant>
+		<constant name="VK_6" value="54" enum="VirtualKey">
+			6 键。
+		</constant>
+		<constant name="VK_7" value="55" enum="VirtualKey">
+			7 键。
+		</constant>
+		<constant name="VK_8" value="56" enum="VirtualKey">
+			8 键。
+		</constant>
+		<constant name="VK_9" value="57" enum="VirtualKey">
+			9 键。
+		</constant>
+		<constant name="VK_A" value="65" enum="VirtualKey">
+			A 键。
+		</constant>
+		<constant name="VK_B" value="66" enum="VirtualKey">
+			B 键。
+		</constant>
+		<constant name="VK_C" value="67" enum="VirtualKey">
+			C 键。
+		</constant>
+		<constant name="VK_D" value="68" enum="VirtualKey">
+			D 键。
+		</constant>
+		<constant name="VK_E" value="69" enum="VirtualKey">
+			E 键。
+		</constant>
+		<constant name="VK_F" value="70" enum="VirtualKey">
+			F 键。
+		</constant>
+		<constant name="VK_G" value="71" enum="VirtualKey">
+			G 键。
+		</constant>
+		<constant name="VK_H" value="72" enum="VirtualKey">
+			H 键。
+		</constant>
+		<constant name="VK_I" value="73" enum="VirtualKey">
+			I 键。
+		</constant>
+		<constant name="VK_J" value="74" enum="VirtualKey">
+			J 键。
+		</constant>
+		<constant name="VK_K" value="75" enum="VirtualKey">
+			K 键。
+		</constant>
+		<constant name="VK_L" value="76" enum="VirtualKey">
+			L 键。
+		</constant>
+		<constant name="VK_M" value="77" enum="VirtualKey">
+			M 键。
+		</constant>
+		<constant name="VK_N" value="78" enum="VirtualKey">
+			N 键。
+		</constant>
+		<constant name="VK_O" value="79" enum="VirtualKey">
+			O 键。
+		</constant>
+		<constant name="VK_P" value="80" enum="VirtualKey">
+			P 键。
+		</constant>
+		<constant name="VK_Q" value="81" enum="VirtualKey">
+			Q 键。
+		</constant>
+		<constant name="VK_R" value="82" enum="VirtualKey">
+			R 键。
+		</constant>
+		<constant name="VK_S" value="83" enum="VirtualKey">
+			S 键。
+		</constant>
+		<constant name="VK_T" value="84" enum="VirtualKey">
+			T 键。
+		</constant>
+		<constant name="VK_U" value="85" enum="VirtualKey">
+			U 键。
+		</constant>
+		<constant name="VK_V" value="86" enum="VirtualKey">
+			V 键。
+		</constant>
+		<constant name="VK_W" value="87" enum="VirtualKey">
+			W 键。
+		</constant>
+		<constant name="VK_X" value="88" enum="VirtualKey">
+			X 键。
+		</constant>
+		<constant name="VK_Y" value="89" enum="VirtualKey">
+			Y 键。
+		</constant>
+		<constant name="VK_Z" value="90" enum="VirtualKey">
+			Z 键。
+		</constant>
+		<constant name="VK_LWIN" value="91" enum="VirtualKey">
+			左 Windows 键。
+		</constant>
+		<constant name="VK_RWIN" value="92" enum="VirtualKey">
+			右 Windows 键。
+		</constant>
+		<constant name="VK_APPS" value="93" enum="VirtualKey">
+			应用程序键。
+		</constant>
+		<constant name="VK_SLEEP" value="95" enum="VirtualKey">
+			电脑睡眠键。
+		</constant>
+		<constant name="VK_NUMPAD0" value="96" enum="VirtualKey">
+			数字小键盘 0 键。
+		</constant>
+		<constant name="VK_NUMPAD1" value="97" enum="VirtualKey">
+			数字小键盘 1 键。
+		</constant>
+		<constant name="VK_NUMPAD2" value="98" enum="VirtualKey">
+			数字小键盘 2 键。
+		</constant>
+		<constant name="VK_NUMPAD3" value="99" enum="VirtualKey">
+			数字小键盘 3 键。
+		</constant>
+		<constant name="VK_NUMPAD4" value="100" enum="VirtualKey">
+			数字小键盘 4 键。
+		</constant>
+		<constant name="VK_NUMPAD5" value="101" enum="VirtualKey">
+			数字小键盘 5 键。
+		</constant>
+		<constant name="VK_NUMPAD6" value="102" enum="VirtualKey">
+			数字小键盘 6 键。
+		</constant>
+		<constant name="VK_NUMPAD7" value="103" enum="VirtualKey">
+			数字小键盘 7 键。
+		</constant>
+		<constant name="VK_NUMPAD8" value="104" enum="VirtualKey">
+			数字小键盘 8 键。
+		</constant>
+		<constant name="VK_NUMPAD9" value="105" enum="VirtualKey">
+			数字小键盘 9 键。
+		</constant>
+		<constant name="VK_MULTIPLY" value="106" enum="VirtualKey">
+			乘号键。
+		</constant>
+		<constant name="VK_ADD" value="107" enum="VirtualKey">
+			加号键。
+		</constant>
+		<constant name="VK_SEPARATOR" value="108" enum="VirtualKey">
+			分隔符键。
+		</constant>
+		<constant name="VK_SUBTRACT" value="109" enum="VirtualKey">
+			减号键。
+		</constant>
+		<constant name="VK_DECIMAL" value="110" enum="VirtualKey">
+			小数点键。
+		</constant>
+		<constant name="VK_DIVIDE" value="111" enum="VirtualKey">
+			除号键。
+		</constant>
+		<constant name="VK_F1" value="112" enum="VirtualKey">
+			F1 键。
+		</constant>
+		<constant name="VK_F2" value="113" enum="VirtualKey">
+			F2 键。
+		</constant>
+		<constant name="VK_F3" value="114" enum="VirtualKey">
+			F3 键。
+		</constant>
+		<constant name="VK_F4" value="115" enum="VirtualKey">
+			F4 键。
+		</constant>
+		<constant name="VK_F5" value="116" enum="VirtualKey">
+			F5 键。
+		</constant>
+		<constant name="VK_F6" value="117" enum="VirtualKey">
+			F6 键。
+		</constant>
+		<constant name="VK_F7" value="118" enum="VirtualKey">
+			F7 键。
+		</constant>
+		<constant name="VK_F8" value="119" enum="VirtualKey">
+			F8 键。
+		</constant>
+		<constant name="VK_F9" value="120" enum="VirtualKey">
+			F9 键。
+		</constant>
+		<constant name="VK_F10" value="121" enum="VirtualKey">
+			F10 键。
+		</constant>
+		<constant name="VK_F11" value="122" enum="VirtualKey">
+			F11 键。
+		</constant>
+		<constant name="VK_F12" value="123" enum="VirtualKey">
+			F12 键。
+		</constant>
+		<constant name="VK_F13" value="124" enum="VirtualKey">
+			F13 键。
+		</constant>
+		<constant name="VK_F14" value="125" enum="VirtualKey">
+			F14 键。
+		</constant>
+		<constant name="VK_F15" value="126" enum="VirtualKey">
+			F15 键。
+		</constant>
+		<constant name="VK_F16" value="127" enum="VirtualKey">
+			F16 键。
+		</constant>
+		<constant name="VK_F17" value="128" enum="VirtualKey">
+			F17 键。
+		</constant>
+		<constant name="VK_F18" value="129" enum="VirtualKey">
+			F18 键。
+		</constant>
+		<constant name="VK_F19" value="130" enum="VirtualKey">
+			F19 键。
+		</constant>
+		<constant name="VK_F20" value="131" enum="VirtualKey">
+			F20 键。
+		</constant>
+		<constant name="VK_F21" value="132" enum="VirtualKey">
+			F21 键。
+		</constant>
+		<constant name="VK_F22" value="133" enum="VirtualKey">
+			F22 键。
+		</constant>
+		<constant name="VK_F23" value="134" enum="VirtualKey">
+			F23 键。
+		</constant>
+		<constant name="VK_F24" value="135" enum="VirtualKey">
+			F24 键。
+		</constant>
+		<constant name="VK_NUMLOCK" value="144" enum="VirtualKey">
+			Num Lock 键。
+		</constant>
+		<constant name="VK_SCROLL" value="145" enum="VirtualKey">
+			Scroll Lock 键。
+		</constant>
+		<constant name="VK_LSHIFT" value="160" enum="VirtualKey">
+			左 Shift 键。
+		</constant>
+		<constant name="VK_RSHIFT" value="161" enum="VirtualKey">
+			右 Shift 键。
+		</constant>
+		<constant name="VK_LCONTROL" value="162" enum="VirtualKey">
+			左 Ctrl 键。
+		</constant>
+		<constant name="VK_RCONTROL" value="163" enum="VirtualKey">
+			右 Ctrl 键。
+		</constant>
+		<constant name="VK_LMENU" value="164" enum="VirtualKey">
+			左 Alt 键。
+		</constant>
+		<constant name="VK_RMENU" value="165" enum="VirtualKey">
+			右 Alt 键。
+		</constant>
+		<constant name="VK_BROWSER_BACK" value="166" enum="VirtualKey">
+			浏览器后退键。
+		</constant>
+		<constant name="VK_BROWSER_FORWARD" value="167" enum="VirtualKey">
+			浏览器前进键。
+		</constant>
+		<constant name="VK_BROWSER_REFRESH" value="168" enum="VirtualKey">
+			浏览器刷新键。
+		</constant>
+		<constant name="VK_BROWSER_STOP" value="169" enum="VirtualKey">
+			浏览器停止键。
+		</constant>
+		<constant name="VK_BROWSER_SEARCH" value="170" enum="VirtualKey">
+			浏览器搜索键。
+		</constant>
+		<constant name="VK_BROWSER_FAVORITES" value="171" enum="VirtualKey">
+			浏览器收藏夹键。
+		</constant>
+		<constant name="VK_BROWSER_HOME" value="172" enum="VirtualKey">
+			浏览器启动和主页键。
+		</constant>
+		<constant name="VK_VOLUME_MUTE" value="173" enum="VirtualKey">
+			音量静音键。
+		</constant>
+		<constant name="VK_VOLUME_DOWN" value="174" enum="VirtualKey">
+			音量减小键。
+		</constant>
+		<constant name="VK_VOLUME_UP" value="175" enum="VirtualKey">
+			音量增大键。
+		</constant>
+		<constant name="VK_MEDIA_NEXT_TRACK" value="176" enum="VirtualKey">
+			下一曲键。
+		</constant>
+		<constant name="VK_MEDIA_PREV_TRACK" value="177" enum="VirtualKey">
+			上一曲键。
+		</constant>
+		<constant name="VK_MEDIA_STOP" value="178" enum="VirtualKey">
+			媒体停止键。
+		</constant>
+		<constant name="VK_MEDIA_PLAY_PAUSE" value="179" enum="VirtualKey">
+			媒体播放/暂停键。
+		</constant>
+		<constant name="VK_LAUNCH_MAIL" value="180" enum="VirtualKey">
+			启动邮件键。
+		</constant>
+		<constant name="VK_LAUNCH_MEDIA_SELECT" value="181" enum="VirtualKey">
+			选择媒体键。
+		</constant>
+		<constant name="VK_LAUNCH_APP1" value="182" enum="VirtualKey">
+			启动应用程序 1 键。
+		</constant>
+		<constant name="VK_LAUNCH_APP2" value="183" enum="VirtualKey">
+			启动应用程序 2 键。
+		</constant>
+		<constant name="VK_OEM_1" value="186" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。对于美式标准键盘，是 ';:' 键。
+		</constant>
+		<constant name="VK_OEM_PLUS" value="187" enum="VirtualKey">
+			对于任何国家/地区，是 '+' 键。
+		</constant>
+		<constant name="VK_OEM_COMMA" value="188" enum="VirtualKey">
+			对于任何国家/地区，是 ',' 键。
+		</constant>
+		<constant name="VK_OEM_MINUS" value="189" enum="VirtualKey">
+			对于任何国家/地区，是 '-' 键。
+		</constant>
+		<constant name="VK_OEM_PERIOD" value="190" enum="VirtualKey">
+			对于任何国家/地区，是 '.' 键。
+		</constant>
+		<constant name="VK_OEM_2" value="191" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。对于美式标准键盘，是 '/?' 键。
+		</constant>
+		<constant name="VK_OEM_3" value="192" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。对于美式标准键盘，是 '`~' 键。
+		</constant>
+		<constant name="VK_GAMEPAD_A" value="195" enum="VirtualKey">
+			游戏手柄 A 键。
+		</constant>
+		<constant name="VK_GAMEPAD_B" value="196" enum="VirtualKey">
+			游戏手柄 B 键。
+		</constant>
+		<constant name="VK_GAMEPAD_X" value="197" enum="VirtualKey">
+			游戏手柄 X 键。
+		</constant>
+		<constant name="VK_GAMEPAD_Y" value="198" enum="VirtualKey">
+			游戏手柄 Y 键。
+		</constant>
+		<constant name="VK_GAMEPAD_RIGHT_SHOULDER" value="199" enum="VirtualKey">
+			游戏手柄右肩键。
+		</constant>
+		<constant name="VK_GAMEPAD_LEFT_SHOULDER" value="200" enum="VirtualKey">
+			游戏手柄左肩键。
+		</constant>
+		<constant name="VK_GAMEPAD_LEFT_TRIGGER" value="201" enum="VirtualKey">
+			游戏手柄左扳机键。
+		</constant>
+		<constant name="VK_GAMEPAD_RIGHT_TRIGGER" value="202" enum="VirtualKey">
+			游戏手柄右扳机键。
+		</constant>
+		<constant name="VK_GAMEPAD_DPAD_UP" value="203" enum="VirtualKey">
+			游戏手柄方向键上键。
+		</constant>
+		<constant name="VK_GAMEPAD_DPAD_DOWN" value="204" enum="VirtualKey">
+			游戏手柄方向键下键。
+		</constant>
+		<constant name="VK_GAMEPAD_DPAD_LEFT" value="205" enum="VirtualKey">
+			游戏手柄方向键左键。
+		</constant>
+		<constant name="VK_GAMEPAD_DPAD_RIGHT" value="206" enum="VirtualKey">
+			游戏手柄方向键右键。
+		</constant>
+		<constant name="VK_GAMEPAD_MENU" value="207" enum="VirtualKey">
+			游戏手柄菜单键。
+		</constant>
+		<constant name="VK_GAMEPAD_VIEW" value="208" enum="VirtualKey">
+			游戏手柄视图键。
+		</constant>
+		<constant name="VK_GAMEPAD_LEFT_THUMBSTICK_BUTTON" value="209" enum="VirtualKey">
+			游戏手柄左摇杆按下键。
+		</constant>
+		<constant name="VK_GAMEPAD_RIGHT_THUMBSTICK_BUTTON" value="210" enum="VirtualKey">
+			游戏手柄右摇杆按下键。
+		</constant>
+		<constant name="VK_GAMEPAD_LEFT_THUMBSTICK_UP" value="211" enum="VirtualKey">
+			游戏手柄左摇杆向上。
+		</constant>
+		<constant name="VK_GAMEPAD_LEFT_THUMBSTICK_DOWN" value="212" enum="VirtualKey">
+			游戏手柄左摇杆向下。
+		</constant>
+		<constant name="VK_GAMEPAD_LEFT_THUMBSTICK_RIGHT" value="213" enum="VirtualKey">
+			游戏手柄左摇杆向右。
+		</constant>
+		<constant name="VK_GAMEPAD_LEFT_THUMBSTICK_LEFT" value="214" enum="VirtualKey">
+			游戏手柄左摇杆向左。
+		</constant>
+		<constant name="VK_GAMEPAD_RIGHT_THUMBSTICK_UP" value="215" enum="VirtualKey">
+			游戏手柄右摇杆向上。
+		</constant>
+		<constant name="VK_GAMEPAD_RIGHT_THUMBSTICK_DOWN" value="216" enum="VirtualKey">
+			游戏手柄右摇杆向下。
+		</constant>
+		<constant name="VK_GAMEPAD_RIGHT_THUMBSTICK_RIGHT" value="217" enum="VirtualKey">
+			游戏手柄右摇杆向右。
+		</constant>
+		<constant name="VK_GAMEPAD_RIGHT_THUMBSTICK_LEFT" value="218" enum="VirtualKey">
+			游戏手柄右摇杆向左。
+		</constant>
+		<constant name="VK_OEM_4" value="219" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。对于美式标准键盘，是 '[{' 键。
+		</constant>
+		<constant name="VK_OEM_5" value="220" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。对于美式标准键盘，是 '\|' 键。
+		</constant>
+		<constant name="VK_OEM_6" value="221" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。对于美式标准键盘，是 ']}' 键。
+		</constant>
+		<constant name="VK_OEM_7" value="222" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。对于美式标准键盘，是 '单引号/双引号' 键。
+		</constant>
+		<constant name="VK_OEM_8" value="223" enum="VirtualKey">
+			用于杂项字符；可能因键盘而异。
+		</constant>
+		<constant name="VK_OEM_102" value="226" enum="VirtualKey">
+			可能是 RT 102 键键盘上的尖括号键或反斜杠键。
+		</constant>
+		<constant name="VK_PROCESSKEY" value="229" enum="VirtualKey">
+			IME 处理键。
+		</constant>
+		<constant name="VK_PACKET" value="231" enum="VirtualKey">
+			用于传递 Unicode 字符，模拟按键。
+		</constant>
+		<constant name="VK_ATTN" value="246" enum="VirtualKey">
+			Attn 键。
+		</constant>
+		<constant name="VK_CRSEL" value="247" enum="VirtualKey">
+			CrSel 键。
+		</constant>
+		<constant name="VK_EXSEL" value="248" enum="VirtualKey">
+			ExSel 键。
+		</constant>
+		<constant name="VK_EREOF" value="249" enum="VirtualKey">
+			Erase EOF 键。
+		</constant>
+		<constant name="VK_PLAY" value="250" enum="VirtualKey">
+			Play 键。
+		</constant>
+		<constant name="VK_ZOOM" value="251" enum="VirtualKey">
+			Zoom 键。
+		</constant>
+		<constant name="VK_NONAME" value="252" enum="VirtualKey">
+			保留。
+		</constant>
+		<constant name="VK_PA1" value="253" enum="VirtualKey">
+			PA1 键。
+		</constant>
+		<constant name="VK_OEM_CLEAR" value="254" enum="VirtualKey">
+			Clear 键。
+		</constant>
+	</constants>
+</class>

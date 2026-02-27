@@ -37,12 +37,13 @@ clear_button_enabled = true
 
 [node name="CheckButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=940442173]
 layout_mode = 2
+button_pressed = true
 text = "Hardware 
 Decode"
 
 [node name="OptionButton" type="OptionButton" parent="ScrollContainer/GridContainer" unique_id=679843856]
 layout_mode = 2
-selected = 1
+selected = 2
 item_count = 4
 popup/item_0/text = "AUTO"
 popup/item_0/id = 0
@@ -146,12 +147,20 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "Audio Bypass Pause"
 
+[node name="KeyboardButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=333333001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Toggle Keyboard"
+
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer" unique_id=1243422997]
+volume_db = 16.0
 autoplay = true
 
 [node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=428695045]
-custom_minimum_size = Vector2(1280, 720)
+custom_minimum_size = Vector2(1600, 900)
 layout_mode = 2
+focus_mode = 2
+expand_mode = 1
 
 [node name="FileDialog" type="FileDialog" parent="ScrollContainer" unique_id=1291668764]
 oversampling_override = 1.0
@@ -160,6 +169,41 @@ initial_position = 1
 size = Vector2i(640, 480)
 file_mode = 3
 access = 1
+
+[node name="KeyboardLayer" type="CanvasLayer" parent="." unique_id=444444001]
+visible = false
+
+[node name="KeyboardPanel" type="PanelContainer" parent="KeyboardLayer" unique_id=444444002]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -250.0
+offset_right = 400.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="KeyboardLayer/KeyboardPanel" unique_id=444444003]
+layout_mode = 2
+
+[node name="Row1" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444004]
+layout_mode = 2
+alignment = 1
+
+[node name="Row2" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444005]
+layout_mode = 2
+alignment = 1
+
+[node name="Row3" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444006]
+layout_mode = 2
+alignment = 1
+
+[node name="Row4" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444007]
+layout_mode = 2
+alignment = 1
 
 [connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit" to="." method="_on_line_edit_editing_toggled"]
 [connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit2" to="." method="_on_line_edit_editing_toggled"]
@@ -178,3 +222,5 @@ access = 1
 [connection signal="pressed" from="ScrollContainer/GridContainer/Button14" to="." method="view_data"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/AudioBypassButton" to="." method="test_toggle_audio_bypass"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/AudioPauseButton" to="." method="test_toggle_audio_pause"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/KeyboardButton" to="." method="test_toggle_keyboard"]
+[connection signal="gui_input" from="ScrollContainer/GridContainer/Screen" to="." method="_on_screen_gui_input"]

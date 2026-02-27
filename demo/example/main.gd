@@ -18,6 +18,81 @@ func _ready() -> void:
     if $ScrollContainer/GridContainer.has_node("AudioPauseButton"):
         var paused = moonlightstreamcore.is_native_audio_bypass_paused()
         $ScrollContainer/GridContainer/AudioPauseButton.text = "Resume" if paused else "Pause"
+    
+    _setup_virtual_keyboard()
+
+func _setup_virtual_keyboard() -> void:
+    var row1 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row1
+    var row2 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row2
+    var row3 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row3
+    var row4 = $KeyboardLayer/KeyboardPanel/VBoxContainer/Row4
+    
+    var keys_r1 = [
+        {"text": "F1", "code": MoonlightInput.VK_F1}, {"text": "F2", "code": MoonlightInput.VK_F2}, {"text": "F3", "code": MoonlightInput.VK_F3},
+        {"text": "F4", "code": MoonlightInput.VK_F4}, {"text": "F5", "code": MoonlightInput.VK_F5}, {"text": "F6", "code": MoonlightInput.VK_F6},
+        {"text": "F7", "code": MoonlightInput.VK_F7}, {"text": "F8", "code": MoonlightInput.VK_F8}, {"text": "F9", "code": MoonlightInput.VK_F9},
+        {"text": "F10", "code": MoonlightInput.VK_F10}, {"text": "F11", "code": MoonlightInput.VK_F11}, {"text": "F12", "code": MoonlightInput.VK_F12},
+        {"text": "Hide", "code": -1}
+    ]
+    var keys_r2 = [
+        {"text": "1", "code": MoonlightInput.VK_1}, {"text": "2", "code": MoonlightInput.VK_2}, {"text": "3", "code": MoonlightInput.VK_3},
+        {"text": "4", "code": MoonlightInput.VK_4}, {"text": "5", "code": MoonlightInput.VK_5}, {"text": "6", "code": MoonlightInput.VK_6},
+        {"text": "7", "code": MoonlightInput.VK_7}, {"text": "8", "code": MoonlightInput.VK_8}, {"text": "9", "code": MoonlightInput.VK_9},
+        {"text": "0", "code": MoonlightInput.VK_0}
+    ]
+    var keys_r3 = [
+        {"text": "A", "code": MoonlightInput.VK_A}, {"text": "C", "code": MoonlightInput.VK_C}, {"text": "V", "code": MoonlightInput.VK_V},
+        {"text": "Z", "code": MoonlightInput.VK_Z}, {"text": "X", "code": MoonlightInput.VK_X},
+        {"text": "? /", "code": MoonlightInput.VK_OEM_2}, {"text": "{ [", "code": MoonlightInput.VK_OEM_4}, {"text": "} ]", "code": MoonlightInput.VK_OEM_6}
+    ]
+    var keys_r4 = [
+        {"text": "Ctrl", "code": MoonlightInput.VK_CONTROL, "toggle": true},
+        {"text": "Shift", "code": MoonlightInput.VK_SHIFT, "toggle": true},
+        {"text": "Alt", "code": MoonlightInput.VK_MENU, "toggle": true},
+        {"text": "Meta", "code": MoonlightInput.VK_LWIN, "toggle": true}
+    ]
+    
+    var create_btn = func(k: Dictionary, parent: Node):
+        var btn = Button.new()
+        btn.text = k["text"]
+        btn.custom_minimum_size = Vector2(50, 50)
+        btn.focus_mode = Control.FOCUS_NONE
+        if k.get("toggle", false):
+            btn.toggle_mode = true
+            btn.toggled.connect(func(toggled_on): _on_vk_modifier_toggled(k["code"], toggled_on))
+        elif k["code"] == -1:
+            btn.pressed.connect(func(): $KeyboardLayer.visible = false)
+        else:
+            btn.button_down.connect(func(): _on_vk_key_event(k["code"], true))
+            btn.button_up.connect(func(): _on_vk_key_event(k["code"], false))
+        parent.add_child(btn)
+        
+    for k in keys_r1: create_btn.call(k, row1)
+    for k in keys_r2: create_btn.call(k, row2)
+    for k in keys_r3: create_btn.call(k, row3)
+    for k in keys_r4: create_btn.call(k, row4)
+
+var vk_modifiers: int = 0
+
+func _on_vk_modifier_toggled(keycode: int, pressed: bool) -> void:
+    var mod_bit = 0
+    if keycode == MoonlightInput.VK_CONTROL: mod_bit = MoonlightInput.MODIFIER_CTRL_BIT
+    elif keycode == MoonlightInput.VK_SHIFT: mod_bit = MoonlightInput.MODIFIER_SHIFT_BIT
+    elif keycode == MoonlightInput.VK_MENU: mod_bit = MoonlightInput.MODIFIER_ALT_BIT
+    elif keycode == MoonlightInput.VK_LWIN: mod_bit = MoonlightInput.MODIFIER_META_BIT
+    
+    if pressed:
+        vk_modifiers |= mod_bit
+    else:
+        vk_modifiers &= ~mod_bit
+
+func _on_vk_key_event(keycode: int, pressed: bool) -> void:
+    var action = MoonlightInput.KEY_ACTION_DOWN_LIMIT if pressed else MoonlightInput.KEY_ACTION_UP_LIMIT
+    moonlightstreamcore.send_keyboard_event(keycode, action, vk_modifiers)
+
+func test_toggle_keyboard() -> void:
+    $KeyboardLayer.visible = not $KeyboardLayer.visible
+
 func on_pair_complete(success,message):
     if success:
         print("[Moonlight-Godot-ComputerManager]",message)
@@ -152,3 +227,56 @@ func test_toggle_audio_pause() -> void:
     else:
         moonlightstreamcore.pause_native_audio_bypass()
         $ScrollContainer/GridContainer/AudioPauseButton.text = "Audio Bypass Resume"
+
+func _on_screen_gui_input(event: InputEvent) -> void:
+    var screen = $ScrollContainer/GridContainer/Screen
+    var screen_width = int(screen.size.x)
+    var screen_height = int(screen.size.y)
+
+    #if event is InputEventMouseMotion:
+        #moonlightstreamcore.send_mouse_position_event(int(event.position.x), int(event.position.y), screen_width, screen_height)
+    #elif event is InputEventMouseButton:
+        #var action = MoonlightStreamCore.MOUSE_BUTTON_ACTION_PRESS if event.pressed else MoonlightStreamCore.MOUSE_BUTTON_ACTION_RELEASE
+        #var button = 0
+        #match event.button_index:
+            #MOUSE_BUTTON_LEFT:
+                #button = MoonlightStreamCore.MOUSE_BUTTON_LEFT
+            #MOUSE_BUTTON_RIGHT:
+                #button = MoonlightStreamCore.MOUSE_BUTTON_RIGHT
+            #MOUSE_BUTTON_MIDDLE:
+                #button = MoonlightStreamCore.MOUSE_BUTTON_MIDDLE
+            #MOUSE_BUTTON_WHEEL_UP:
+                #moonlightstreamcore.send_scroll_event(1)
+                #return
+            #MOUSE_BUTTON_WHEEL_DOWN:
+                #moonlightstreamcore.send_scroll_event(-1)
+                #return
+            #MOUSE_BUTTON_XBUTTON1:
+                #button = MoonlightStreamCore.MOUSE_BUTTON_X1
+            #MOUSE_BUTTON_XBUTTON2:
+                #button = MoonlightStreamCore.MOUSE_BUTTON_X2
+        #if button != 0:
+            #moonlightstreamcore.send_mouse_button_event(action, button)
+    if event is InputEventKey:
+        var action = MoonlightInput.KEY_ACTION_DOWN_LIMIT if event.pressed else MoonlightInput.KEY_ACTION_UP_LIMIT
+        var modifiers = 0
+        if event.shift_pressed:
+            modifiers |= MoonlightInput.MODIFIER_SHIFT_BIT
+        if event.ctrl_pressed:
+            modifiers |= MoonlightInput.MODIFIER_CTRL_BIT
+        if event.alt_pressed:
+            modifiers |= MoonlightInput.MODIFIER_ALT_BIT
+        if event.meta_pressed:
+            modifiers |= MoonlightInput.MODIFIER_META_BIT
+        
+        # Godot keycode to Limelight keycode mapping
+        var keycode = event.keycode
+        # Basic mapping for common keys, Limelight uses standard USB HID keycodes or similar
+        # For simplicity in this test, we pass the Godot keycode directly, 
+        # but in a real app, a full mapping table is needed.
+        moonlightstreamcore.send_keyboard_event(keycode, action, modifiers)
+    elif event is InputEventScreenTouch:
+        var action = MoonlightInput.TOUCH_EVENT_DOWN if event.pressed else MoonlightInput.TOUCH_EVENT_UP
+        moonlightstreamcore.send_touch_event(action, event.index, event.position.x / screen_width, event.position.y / screen_height, 1.0, 0.0, 0.0, 0)
+    elif event is InputEventScreenDrag:
+        moonlightstreamcore.send_touch_event(MoonlightInput.TOUCH_EVENT_MOVE, event.index, event.position.x / screen_width, event.position.y / screen_height, 1.0, 0.0, 0.0, 0)
