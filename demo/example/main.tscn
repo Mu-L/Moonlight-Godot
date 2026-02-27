@@ -152,12 +152,32 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "Toggle Keyboard"
 
+[node name="FullscreenButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Fullscreen"
+
+[node name="ToggleVideoButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555002]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Disable Video"
+
+[node name="ToggleAudioButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555003]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Disable Audio"
+
+[node name="ToggleInputButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555004]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Disable Input"
+
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ScrollContainer/GridContainer" unique_id=1243422997]
 volume_db = 16.0
 autoplay = true
 
 [node name="Screen" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=428695045]
-custom_minimum_size = Vector2(1600, 900)
+custom_minimum_size = Vector2(1680, 1050)
 layout_mode = 2
 focus_mode = 2
 expand_mode = 1
@@ -171,6 +191,7 @@ file_mode = 3
 access = 1
 
 [node name="KeyboardLayer" type="CanvasLayer" parent="." unique_id=444444001]
+layer = 10
 visible = false
 
 [node name="KeyboardPanel" type="PanelContainer" parent="KeyboardLayer" unique_id=444444002]
@@ -204,6 +225,38 @@ alignment = 1
 [node name="Row4" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444007]
 layout_mode = 2
 alignment = 1
+
+[node name="FullscreenLayer" type="CanvasLayer" parent="." unique_id=666666001]
+layer = 5
+visible = false
+
+[node name="ColorRect" type="ColorRect" parent="FullscreenLayer" unique_id=666666002]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+[node name="FullscreenScreen" type="TextureRect" parent="FullscreenLayer" unique_id=666666003]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ExitFullscreenButton" type="Button" parent="FullscreenLayer" unique_id=666666004]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -50.0
+offset_bottom = 50.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 30
+text = "X"
 
 [connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit" to="." method="_on_line_edit_editing_toggled"]
 [connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit2" to="." method="_on_line_edit_editing_toggled"]

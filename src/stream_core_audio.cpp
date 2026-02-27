@@ -275,7 +275,7 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 			if (huge_frame)
 				out_buf = (float *)av_malloc(max_out_samples * 8);
 			int out_samples = swr_convert(swr_ctx, (uint8_t **)&out_buf, max_out_samples, (const uint8_t **)a_frame->data, a_frame->nb_samples);
-			if (out_samples > 0) {
+			if (out_samples > 0 && audio_enabled.load()) {
 				// 推送交错的浮点立体声样本
 				audio_stream->push_audio(out_buf, out_samples * 2);
 
@@ -314,7 +314,7 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 				float *multi_buf = (float *)av_malloc(buf_bytes);
 				if (multi_buf) {
 					int out_samples_multi = swr_convert(swr_ctx_multi, (uint8_t **)&multi_buf, max_out_samples_multi, (const uint8_t **)a_frame->data, a_frame->nb_samples);
-					if (out_samples_multi > 0) {
+					if (out_samples_multi > 0 && audio_enabled.load()) {
 						// 对每个通道提取并推送到对应的单声道流
 						for (int ch = 0; ch < in_ch; ch++) {
 							if (ch < (int)audio_streams.size() && audio_streams[ch].is_valid()) {
