@@ -246,7 +246,7 @@ int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 }
 
 void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len) {
-	if (!a_codec_ctx || audio_stream.is_null())
+	if (!a_codec_ctx)
 		return;
 	// 准备包裹
 	av_packet_unref(a_packet);
@@ -277,10 +277,12 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 			int out_samples = swr_convert(swr_ctx, (uint8_t **)&out_buf, max_out_samples, (const uint8_t **)a_frame->data, a_frame->nb_samples);
 			if (out_samples > 0) {
 				// 推送交错的浮点立体声样本
-				audio_stream->push_audio(out_buf, out_samples * 2);
+				if (audio_stream.is_valid()) {
+					audio_stream->push_audio(out_buf, out_samples * 2);
+				}
 
-				// 如果启用了原生旁路音频，则也写入 native 环形缓冲（立体声路径）
-				if (native_audio_bypass_enabled) {
+				// 如果启用了原生旁路音频，且原生通道数为2，则也写入 native 环形缓冲（立体声路径）
+				if (native_audio_bypass_enabled && native_audio_channel_count == 2) {
 					native_audio_mutex->lock();
 					int samples_to_write_st = out_samples * 2;
 					int free_space_st = native_rb_capacity - native_rb_used;
@@ -303,11 +305,10 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 			if (huge_frame)
 				av_free(out_buf);
 		}
-	}
 
-		// 如果配置了 multichannel resampler 且请求了按通道流，则生成多通道浮点缓冲并分发到每个单声道 AudioStream
+		// 如果配置了 multichannel resampler 且请求了按通道流或原生旁路需要多声道，则生成多通道浮点缓冲
 		int in_ch = a_codec_ctx ? a_codec_ctx->ch_layout.nb_channels : 2;
-		if (swr_ctx_multi && audio_streams.size() > 0) {
+		if (swr_ctx_multi && (audio_streams.size() > 0 || (native_audio_bypass_enabled && native_audio_channel_count > 2))) {
 			int max_out_samples_multi = swr_get_out_samples(swr_ctx_multi, a_frame->nb_samples);
 			if (max_out_samples_multi > 0) {
 				size_t buf_bytes = (size_t)max_out_samples_multi * in_ch * sizeof(float);
@@ -329,8 +330,8 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 							}
 						}
 
-						// 如果启用了原生旁路音频，则将交错多声道样本写入 native 环形缓冲
-						if (native_audio_bypass_enabled) {
+						// 如果启用了原生旁路音频且需要多声道，则将交错多声道样本写入 native 环形缓冲
+						if (native_audio_bypass_enabled && native_audio_channel_count > 2) {
 							native_audio_mutex->lock();
 							int samples_to_write = out_samples_multi * in_ch;
 							int free_space = native_rb_capacity - native_rb_used;
@@ -354,6 +355,7 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 				}
 			}
 		}
+	}
 }
 
 void MoonlightStreamCore::_cleanup_ffmpeg_audio() {

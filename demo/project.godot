@@ -15,6 +15,10 @@ run/main_scene="uid://dc1tsui4v3770"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
 
+[audio]
+
+buses/default_bus_layout="uid://cqdumj6lpc86m"
+
 [dotnet]
 
 project/assembly_name="Moonlight-Godot"

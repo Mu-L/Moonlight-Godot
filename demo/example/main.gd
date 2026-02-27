@@ -242,6 +242,8 @@ func test_establish_stream() -> void:
     moonlightstreamcore.start_play_stream(1, 1191261554, cfg, add_opts)
     await get_tree().create_timer(1).timeout
     if audio_enabled:
+        var streams = moonlightstreamcore.get_audio_streams()
+        #$ScrollContainer/GridContainer/AudioStreamPlayer.stream = streams[0]
         $ScrollContainer/GridContainer/AudioStreamPlayer.play()
 
 func test_stop_stream() -> void:
