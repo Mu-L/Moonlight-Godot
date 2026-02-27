@@ -188,6 +188,24 @@ jobs:
           path: ${{ github.workspace }}/vcpkg_cache
           key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/workflows/cacheVer.txt') }}
 
+      - name: Compute restored cache size
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.build-cache-restore.outputs.cache-hit }}
+        run: |
+          if [ "${CACHE_HIT}" != "true" ]; then
+            echo "RESTORED_CACHE_SIZE_BYTES=0" >> $GITHUB_ENV
+            echo "No cache restored"
+            exit 0
+          fi
+          if [ -d "$GITHUB_WORKSPACE/vcpkg_cache" ]; then
+            bytes=$(du -sb "$GITHUB_WORKSPACE/vcpkg_cache" | cut -f1)
+          else
+            bytes=0
+          fi
+          echo "RESTORED_CACHE_SIZE_BYTES=$bytes" >> $GITHUB_ENV
+          echo "Restored cache size: $bytes bytes"
+
       - name: Run CMake
         uses: lukka/run-cmake@v10
         with:
@@ -198,38 +216,42 @@ jobs:
           # build 阶段不应携带 -D 参数
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
-      - name: Update cacheVer if cache hit and build > 10min
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const cacheHit = `${{ steps.build-cache-restore.outputs.cache-hit }}` === 'true';
-            const start = parseInt(process.env.BUILD_START_TIME || '0', 10);
-            const elapsed = Math.floor(Date.now()/1000) - start;
-            if (cacheHit && elapsed > 600) {
-              const path = '.github/workflows/cacheVer.txt';
-              const owner = context.repo.owner;
-              const repo = context.repo.repo;
-              const { data: content } = await github.rest.repos.getContent({ owner, repo, path });
-              const decoded = Buffer.from(content.content, 'base64').toString();
-              const lines = decoded.split(/\r?\n/);
-              while (lines.length < 2) lines.push('');
-              const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
-              lines[1] = dateStr;
-              const newContent = lines.join('\n');
-              await github.rest.repos.createOrUpdateFileContents({
-                owner,
-                repo,
-                path,
-                message: 'ci: bump cacheVer (auto)',
-                content: Buffer.from(newContent).toString('base64'),
-                sha: content.sha,
-                branch: context.ref.replace('refs/heads/','')
-              });
-              console.log(`Updated ${path} to ${dateStr}`);
-            } else {
-              console.log(`No update needed: cacheHit=${cacheHit} elapsed=${elapsed}`);
-            }
+      - name: Possibly update cacheVer and push
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.build-cache-restore.outputs.cache-hit }}
+          RESTORED_BYTES: ${{ env.RESTORED_CACHE_SIZE_BYTES }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          if [ "${CACHE_HIT}" != "true" ]; then
+            echo "Cache not hit; skipping cacheVer update"
+            exit 0
+          fi
+          start=${BUILD_START_TIME:-0}
+          elapsed=$(( $(date +%s) - start ))
+          echo "Elapsed: $elapsed seconds, Restored bytes: ${RESTORED_BYTES}"
+          if [ "$elapsed" -le 600 ] && [ -n "${RESTORED_BYTES}" ] && [ "${RESTORED_BYTES}" -ge 104857600 ]; then
+            echo "No update needed"
+            exit 0
+          fi
+          dateStr=$(date +%Y%m%d)
+          if [ -f .github/workflows/cacheVer.txt ]; then
+            firstLine=$(sed -n '1p' .github/workflows/cacheVer.txt || true)
+          else
+            firstLine=""
+            mkdir -p .github/workflows
+          fi
+          printf "%s\n%s\n" "$firstLine" "$dateStr" > .github/workflows/cacheVer.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/cacheVer.txt
+          if git commit -m "ci: bump cacheVer (auto)" .github/workflows/cacheVer.txt; then
+            git push origin HEAD
+            echo "Updated cacheVer to $dateStr and pushed."
+          else
+            echo "No changes to commit."
+          fi
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4

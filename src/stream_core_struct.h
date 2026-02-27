@@ -138,6 +138,8 @@ private:
 	bool prefer_hw_decoder = false;
 	bool verbose = false;
 	int video_codec = 1; // default to H.264 (matches existing CODEC_H264 == 1)
+	bool disable_video = false;
+	bool disable_audio = false;
 
 public:
 	MoonlightAdditionalStreamOptions() {}
@@ -149,6 +151,10 @@ public:
 	bool get_verbose() const { return verbose; }
 	void set_video_codec(int v) { video_codec = v; }
 	int get_video_codec() const { return video_codec; }
+	void set_disable_video(bool v) { disable_video = v; }
+	bool get_disable_video() const { return disable_video; }
+	void set_disable_audio(bool v) { disable_audio = v; }
+	bool get_disable_audio() const { return disable_audio; }
 };
 
 } // namespace godot

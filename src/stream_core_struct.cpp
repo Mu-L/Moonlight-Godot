@@ -122,6 +122,14 @@ void MoonlightAdditionalStreamOptions::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_video_codec", "v"), &MoonlightAdditionalStreamOptions::set_video_codec);
 	ClassDB::bind_method(D_METHOD("get_video_codec"), &MoonlightAdditionalStreamOptions::get_video_codec);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "video_codec"), "set_video_codec", "get_video_codec");
+
+	ClassDB::bind_method(D_METHOD("set_disable_video", "v"), &MoonlightAdditionalStreamOptions::set_disable_video);
+	ClassDB::bind_method(D_METHOD("get_disable_video"), &MoonlightAdditionalStreamOptions::get_disable_video);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "disable_video"), "set_disable_video", "get_disable_video");
+
+	ClassDB::bind_method(D_METHOD("set_disable_audio", "v"), &MoonlightAdditionalStreamOptions::set_disable_audio);
+	ClassDB::bind_method(D_METHOD("get_disable_audio"), &MoonlightAdditionalStreamOptions::get_disable_audio);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "disable_audio"), "set_disable_audio", "get_disable_audio");
 }
 
 } // namespace godot

@@ -152,26 +152,23 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "Toggle Keyboard"
 
-[node name="ToggleVideoButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555001]
+[node name="ToggleVideoButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=555555001]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-toggle_mode = true
 button_pressed = true
-text = "Video: ON"
+text = "Video"
 
-[node name="ToggleAudioButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555002]
+[node name="ToggleAudioButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=555555002]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-toggle_mode = true
 button_pressed = true
-text = "Audio: ON"
+text = "Audio"
 
-[node name="ToggleInputButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555003]
+[node name="ToggleInputButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=555555003]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-toggle_mode = true
 button_pressed = true
-text = "Input: ON"
+text = "Input"
 
 [node name="FullscreenButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555004]
 layout_mode = 2
@@ -233,14 +230,23 @@ alignment = 1
 [node name="FullscreenLayer" type="CanvasLayer" parent="." unique_id=666666001]
 visible = false
 
-[node name="FullscreenScreen" type="TextureRect" parent="FullscreenLayer" unique_id=666666002]
+[node name="ColorRect" type="ColorRect" parent="FullscreenLayer" unique_id=666666004]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-expand_mode = 1
-stretch_mode = 5
+color = Color(0, 0, 0, 1)
+
+[node name="CenterContainer" type="CenterContainer" parent="FullscreenLayer" unique_id=666666005]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="FullscreenScreen" type="TextureRect" parent="FullscreenLayer/CenterContainer" unique_id=666666002]
+layout_mode = 2
 
 [node name="ExitFullscreenButton" type="Button" parent="FullscreenLayer" unique_id=666666003]
 anchors_preset = 1
@@ -275,5 +281,5 @@ text = "X"
 [connection signal="pressed" from="ScrollContainer/GridContainer/ToggleInputButton" to="." method="_on_toggle_input"]
 [connection signal="pressed" from="ScrollContainer/GridContainer/FullscreenButton" to="." method="_on_fullscreen_pressed"]
 [connection signal="gui_input" from="ScrollContainer/GridContainer/Screen" to="." method="_on_screen_gui_input"]
-[connection signal="gui_input" from="FullscreenLayer/FullscreenScreen" to="." method="_on_fullscreen_screen_gui_input"]
+[connection signal="gui_input" from="FullscreenLayer/CenterContainer/FullscreenScreen" to="." method="_on_screen_gui_input"]
 [connection signal="pressed" from="FullscreenLayer/ExitFullscreenButton" to="." method="_on_exit_fullscreen_pressed"]

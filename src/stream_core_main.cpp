@@ -556,7 +556,19 @@ bool MoonlightStreamCore::is_native_audio_bypass_paused() const {
 
 // 线程逻辑
 void MoonlightStreamCore::_thread_func_connection() {
-	int res = LiStartConnection(&server_info, &stream_config, &cl_callbacks, &dr_callbacks, &ar_callbacks, this, 0, this, 0);
+	PDECODER_RENDERER_CALLBACKS p_dr_callbacks = &dr_callbacks;
+	PAUDIO_RENDERER_CALLBACKS p_ar_callbacks = &ar_callbacks;
+
+	if (pending_add_opts.is_valid()) {
+		if (pending_add_opts->get_disable_video()) {
+			p_dr_callbacks = nullptr;
+		}
+		if (pending_add_opts->get_disable_audio()) {
+			p_ar_callbacks = nullptr;
+		}
+	}
+
+	int res = LiStartConnection(&server_info, &stream_config, &cl_callbacks, p_dr_callbacks, p_ar_callbacks, this, 0, this, 0);
 	if (res != 0) {
 		if (verbose_requests)
 			UtilityFunctions::printerr(LOG_PREFIX "Connection failed with error: ", res);

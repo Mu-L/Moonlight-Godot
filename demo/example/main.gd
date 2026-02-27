@@ -26,11 +26,9 @@ func _ready() -> void:
     
     if $ScrollContainer/GridContainer.has_node("FullscreenButton"):
         $ScrollContainer/GridContainer/FullscreenButton.pressed.connect(_on_fullscreen_pressed)
-        $ScrollContainer/GridContainer/ToggleVideoButton.pressed.connect(_on_toggle_video_pressed)
-        $ScrollContainer/GridContainer/ToggleAudioButton.pressed.connect(_on_toggle_audio_pressed)
         $ScrollContainer/GridContainer/ToggleInputButton.pressed.connect(_on_toggle_input_pressed)
         $FullscreenLayer/ExitFullscreenButton.pressed.connect(_on_exit_fullscreen_pressed)
-        $FullscreenLayer/FullscreenScreen.gui_input.connect(_on_screen_gui_input)
+        $FullscreenLayer/CenterContainer/FullscreenScreen.gui_input.connect(_on_screen_gui_input)
     
     _setup_virtual_keyboard()
 
@@ -191,15 +189,21 @@ func test_establish_stream() -> void:
     # 可选：设置 packet_size 或 audio_configuration 等（使用默认则可）
     # cfg.set_packet_size(1392)
 
+    video_enabled = $ScrollContainer/GridContainer/ToggleVideoButton.button_pressed
+    audio_enabled = $ScrollContainer/GridContainer/ToggleAudioButton.button_pressed
+
     var add_opts = MoonlightAdditionalStreamOptions.new()
     add_opts.set_video_codec($ScrollContainer/GridContainer/OptionButton.get_selected_id())
     add_opts.set_disable_hw_acceleration(not $ScrollContainer/GridContainer/CheckButton.button_pressed)
+    add_opts.set_disable_video(not video_enabled)
+    add_opts.set_disable_audio(not audio_enabled)
 
     if video_enabled:
-        var target = $FullscreenLayer/FullscreenScreen if is_fullscreen else $ScrollContainer/GridContainer/Screen
+        var target = $FullscreenLayer/CenterContainer/FullscreenScreen if is_fullscreen else $ScrollContainer/GridContainer/Screen
         moonlightstreamcore.set_render_target(target)
         
-    $ScrollContainer/GridContainer/AudioStreamPlayer.stream = moonlightstreamcore.get_audio_stream()
+    if audio_enabled:
+        $ScrollContainer/GridContainer/AudioStreamPlayer.stream = moonlightstreamcore.get_audio_stream()
 
     # 直接开始播放（host_id 与 app_id 仍使用示例中的固定值）
     moonlightstreamcore.start_play_stream(1, 1191261554, cfg, add_opts)
@@ -251,35 +255,35 @@ func _on_screen_gui_input(event: InputEvent) -> void:
     if not input_enabled:
         return
         
-    var screen = $FullscreenLayer/FullscreenScreen if is_fullscreen else $ScrollContainer/GridContainer/Screen
+    var screen = $FullscreenLayer/CenterContainer/FullscreenScreen if is_fullscreen else $ScrollContainer/GridContainer/Screen
     var screen_width = int(screen.size.x)
     var screen_height = int(screen.size.y)
 
-    #if event is InputEventMouseMotion:
-        #moonlightstreamcore.send_mouse_position_event(int(event.position.x), int(event.position.y), screen_width, screen_height)
-    #elif event is InputEventMouseButton:
-        #var action = MoonlightStreamCore.MOUSE_BUTTON_ACTION_PRESS if event.pressed else MoonlightStreamCore.MOUSE_BUTTON_ACTION_RELEASE
-        #var button = 0
-        #match event.button_index:
-            #MOUSE_BUTTON_LEFT:
-                #button = MoonlightStreamCore.MOUSE_BUTTON_LEFT
-            #MOUSE_BUTTON_RIGHT:
-                #button = MoonlightStreamCore.MOUSE_BUTTON_RIGHT
-            #MOUSE_BUTTON_MIDDLE:
-                #button = MoonlightStreamCore.MOUSE_BUTTON_MIDDLE
-            #MOUSE_BUTTON_WHEEL_UP:
-                #moonlightstreamcore.send_scroll_event(1)
-                #return
-            #MOUSE_BUTTON_WHEEL_DOWN:
-                #moonlightstreamcore.send_scroll_event(-1)
-                #return
-            #MOUSE_BUTTON_XBUTTON1:
-                #button = MoonlightStreamCore.MOUSE_BUTTON_X1
-            #MOUSE_BUTTON_XBUTTON2:
-                #button = MoonlightStreamCore.MOUSE_BUTTON_X2
-        #if button != 0:
-            #moonlightstreamcore.send_mouse_button_event(action, button)
-    if event is InputEventKey:
+    if event is InputEventMouseMotion:
+        moonlightstreamcore.send_mouse_position_event(int(event.position.x), int(event.position.y), screen_width, screen_height)
+    elif event is InputEventMouseButton:
+        var action = MoonlightInput.MouseButtonAction.MOUSE_BUTTON_ACTION_PRESS if event.pressed else MoonlightInput.MouseButtonAction.MOUSE_BUTTON_ACTION_RELEASE
+        var button = 0
+        match event.button_index:
+            MOUSE_BUTTON_LEFT:
+                button = MoonlightInput.MouseButton.MOUSE_BUTTON_LEFT
+            MOUSE_BUTTON_RIGHT:
+                button = MoonlightInput.MouseButton.MOUSE_BUTTON_RIGHT
+            MOUSE_BUTTON_MIDDLE:
+                button = MoonlightInput.MouseButton.MOUSE_BUTTON_MIDDLE
+            MOUSE_BUTTON_WHEEL_UP:
+                moonlightstreamcore.send_scroll_event(1)
+                return
+            MOUSE_BUTTON_WHEEL_DOWN:
+                moonlightstreamcore.send_scroll_event(-1)
+                return
+            MOUSE_BUTTON_XBUTTON1:
+                button = MoonlightInput.MouseButton.MOUSE_BUTTON_X1
+            MOUSE_BUTTON_XBUTTON2:
+                button = MoonlightInput.MouseButton.MOUSE_BUTTON_X2
+        if button != 0:
+            moonlightstreamcore.send_mouse_button_event(action, button)
+    elif event is InputEventKey:
         var action = MoonlightInput.KEY_ACTION_DOWN_LIMIT if event.pressed else MoonlightInput.KEY_ACTION_UP_LIMIT
         var modifiers = 0
         if event.shift_pressed:
@@ -307,7 +311,7 @@ func _on_fullscreen_pressed() -> void:
     is_fullscreen = true
     $FullscreenLayer.visible = true
     if video_enabled:
-        moonlightstreamcore.set_render_target($FullscreenLayer/FullscreenScreen)
+        moonlightstreamcore.set_render_target($FullscreenLayer/CenterContainer/FullscreenScreen)
 
 func _on_exit_fullscreen_pressed() -> void:
     is_fullscreen = false
@@ -315,32 +319,5 @@ func _on_exit_fullscreen_pressed() -> void:
     if video_enabled:
         moonlightstreamcore.set_render_target($ScrollContainer/GridContainer/Screen)
 
-func _on_toggle_video_pressed() -> void:
-    video_enabled = not video_enabled
-    if video_enabled:
-        $ScrollContainer/GridContainer/ToggleVideoButton.text = "Disable Video"
-        var target = $FullscreenLayer/FullscreenScreen if is_fullscreen else $ScrollContainer/GridContainer/Screen
-        moonlightstreamcore.set_render_target(target)
-    else:
-        $ScrollContainer/GridContainer/ToggleVideoButton.text = "Enable Video"
-        moonlightstreamcore.reset_render_target()
-
-func _on_toggle_audio_pressed() -> void:
-    audio_enabled = not audio_enabled
-    if audio_enabled:
-        $ScrollContainer/GridContainer/ToggleAudioButton.text = "Disable Audio"
-        $ScrollContainer/GridContainer/AudioStreamPlayer.play()
-        if moonlightstreamcore.is_native_audio_bypass_running() and moonlightstreamcore.is_native_audio_bypass_paused():
-            moonlightstreamcore.resume_native_audio_bypass()
-    else:
-        $ScrollContainer/GridContainer/ToggleAudioButton.text = "Enable Audio"
-        $ScrollContainer/GridContainer/AudioStreamPlayer.stop()
-        if moonlightstreamcore.is_native_audio_bypass_running() and not moonlightstreamcore.is_native_audio_bypass_paused():
-            moonlightstreamcore.pause_native_audio_bypass()
-
 func _on_toggle_input_pressed() -> void:
-    input_enabled = not input_enabled
-    if input_enabled:
-        $ScrollContainer/GridContainer/ToggleInputButton.text = "Disable Input"
-    else:
-        $ScrollContainer/GridContainer/ToggleInputButton.text = "Enable Input"
+    input_enabled = $ScrollContainer/GridContainer/ToggleInputButton.button_pressed
