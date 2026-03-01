@@ -16,6 +16,9 @@ public:
 	MoonlightInput() {}
 	~MoonlightInput() {}
 
+	// 将 Godot 键码转换为 Win32 虚拟键码（返回 VirtualKey 枚举值或 0 表示未知）
+	static int godot_to_virtual_key(int godot_key);
+
 	enum MouseButton {
 		MOUSE_BUTTON_LEFT = BUTTON_LEFT,
 		MOUSE_BUTTON_MIDDLE = BUTTON_MIDDLE,

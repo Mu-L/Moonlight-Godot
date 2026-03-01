@@ -44,6 +44,83 @@ static inline void ma_device_uninit(ma_device *) {}
 #endif
 using namespace godot;
 
+namespace {
+
+static int _find_channel_index_with_fallback(const AVChannelLayout &layout, AVChannel primary, AVChannel fallback_a = AV_CHAN_UNKNOWN, AVChannel fallback_b = AV_CHAN_UNKNOWN) {
+	int idx = av_channel_layout_index_from_channel(&layout, primary);
+	if (idx >= 0)
+		return idx;
+	if (fallback_a != AV_CHAN_UNKNOWN) {
+		idx = av_channel_layout_index_from_channel(&layout, fallback_a);
+		if (idx >= 0)
+			return idx;
+	}
+	if (fallback_b != AV_CHAN_UNKNOWN) {
+		idx = av_channel_layout_index_from_channel(&layout, fallback_b);
+		if (idx >= 0)
+			return idx;
+	}
+	return -1;
+}
+
+static Vector<int> _build_limelight_channel_map(const AVChannelLayout &layout, int channel_count, const Vector<int> &opus_mapping_fallback) {
+	Vector<int> map;
+	if (channel_count <= 0)
+		return map;
+
+	map.resize(channel_count);
+	int *mapw = map.ptrw();
+	for (int i = 0; i < channel_count; i++)
+		mapw[i] = i;
+
+	if (layout.nb_channels <= 0)
+		return map;
+
+	const AVChannel desired[8] = {
+		AV_CHAN_FRONT_LEFT,
+		AV_CHAN_FRONT_RIGHT,
+		AV_CHAN_FRONT_CENTER,
+		AV_CHAN_LOW_FREQUENCY,
+		AV_CHAN_BACK_LEFT,
+		AV_CHAN_BACK_RIGHT,
+		AV_CHAN_SIDE_LEFT,
+		AV_CHAN_SIDE_RIGHT,
+	};
+
+	for (int ch = 0; ch < channel_count; ch++) {
+		int src_idx = -1;
+		switch (ch) {
+			case 4:
+				src_idx = _find_channel_index_with_fallback(layout, desired[ch], AV_CHAN_SIDE_LEFT);
+				break;
+			case 5:
+				src_idx = _find_channel_index_with_fallback(layout, desired[ch], AV_CHAN_SIDE_RIGHT);
+				break;
+			case 6:
+				src_idx = _find_channel_index_with_fallback(layout, desired[ch], AV_CHAN_BACK_LEFT);
+				break;
+			case 7:
+				src_idx = _find_channel_index_with_fallback(layout, desired[ch], AV_CHAN_BACK_RIGHT);
+				break;
+			default:
+				src_idx = _find_channel_index_with_fallback(layout, desired[ch]);
+				break;
+		}
+
+		if (src_idx < 0 && opus_mapping_fallback.size() == channel_count) {
+			src_idx = opus_mapping_fallback[ch];
+		}
+		if (src_idx < 0 || src_idx >= channel_count) {
+			src_idx = ch;
+		}
+		mapw[ch] = src_idx;
+	}
+
+	return map;
+}
+
+} // namespace
+
 // Moonlight 流核心：音频 
 
 // 音频：Playback implemention
@@ -163,7 +240,7 @@ void AudioStreamMoonlight::_bind_methods() {}
 
 // 音频流核心
 
-int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
+int MoonlightStreamCore::_handle_ar_init(int audio_cfg, const POPUS_MULTISTREAM_CONFIGURATION opus_config) {
 	_cleanup_ffmpeg_audio();
 	const AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_OPUS);
 	if (!codec) {
@@ -175,6 +252,46 @@ int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 	if (!a_codec_ctx)
 		return -1;
 
+	// 如果提供了 Opus 多流配置且通道数 > 2，必须设置 extradata 供 FFmpeg 识别映射
+	if (opus_config && opus_config->channelCount > 2) {
+		// 构建 OpusHead (libopus decoder in FFmpeg requires it for multichannel)
+		// Header size: 19 bytes (base) + 2 bytes (stream info) + N bytes mapping = 21 + N
+		int header_size = 21 + opus_config->channelCount;
+		a_codec_ctx->extradata = (uint8_t *)av_mallocz(header_size + AV_INPUT_BUFFER_PADDING_SIZE);
+		a_codec_ctx->extradata_size = header_size;
+
+		uint8_t *data = a_codec_ctx->extradata;
+		memcpy(data, "OpusHead", 8);
+		data[8] = 1; // Version
+		data[9] = opus_config->channelCount; // Channel Count
+		// Pre-skip (2 bytes) = 0
+		data[10] = 0;
+		data[11] = 0;
+		// Input Sample Rate (4 bytes) = 48000
+		uint32_t sample_rate = 48000;
+		memcpy(data + 12, &sample_rate, 4);
+		// Output Gain (2 bytes) = 0
+		data[16] = 0;
+		data[17] = 0;
+		// Channel Mapping Family (1 byte)
+		data[18] = 1; // Family 1 (multichannel)
+		// Stream Count (1 byte)
+		data[19] = opus_config->streams;
+		// Coupled Stream Count (1 byte)
+		data[20] = opus_config->coupledStreams;
+		// Channel Mapping Table (N bytes)
+		memcpy(data + 21, opus_config->mapping, opus_config->channelCount);
+
+		UtilityFunctions::print(LOG_PREFIX "Opus Extradata set for multichannel: ch=", opus_config->channelCount, " streams=", opus_config->streams, " coupled=", opus_config->coupledStreams, " size=", header_size);
+
+		// 保存 Opus mapping 到内部向量，用于后续解码时按 Limelight 期望顺序分配
+		opus_channel_mapping.clear();
+		for (int i = 0; i < opus_config->channelCount; i++) {
+			opus_channel_mapping.push_back(opus_config->mapping[i]);
+		}
+		UtilityFunctions::print(LOG_PREFIX "Opus channel mapping saved: ", opus_channel_mapping.size());
+	}
+	// 继续设置 a_codec_ctx->flags etc...
 	// 优化：音频解码延迟设置
 	a_codec_ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
 	// Opus 解码极快，单线程足以应付且抖动更小
@@ -192,12 +309,31 @@ int MoonlightStreamCore::_handle_ar_init(int audio_cfg) {
 	} else {
 		av_channel_layout_default(&a_codec_ctx->ch_layout, in_channels);
 	}
+	// 记录实际协商的音频配置，供 Godot 端查询（避免保持默认立体声）
+	stream_config.audioConfiguration = audio_cfg;
+	// 确保按声道流向量大小匹配协商声道数
+	get_audio_streams();
+
+	// 如果原生旁路已启用且当前设备声道数与协商值不符，则重新创建输出设备
+	int negotiated_channels = a_codec_ctx->ch_layout.nb_channels > 0 ? a_codec_ctx->ch_layout.nb_channels : in_channels;
+	if (negotiated_channels <= 0)
+		negotiated_channels = 2;
+	if (native_audio_bypass_enabled && native_audio_channel_count != negotiated_channels) {
+		_native_audio_stop();
+		int start_res = _native_audio_start(negotiated_channels);
+		if (start_res == 0) {
+			native_audio_paused = false;
+		}
+	}
 	a_codec_ctx->sample_rate = 48000;
 
 	if (avcodec_open2(a_codec_ctx, codec, nullptr) < 0) {
 		UtilityFunctions::printerr(LOG_PREFIX "Failed to open Opus codec");
 		return -1;
 	}
+
+	// 生成解码输出 -> Limelight 顺序映射（用于单通道流与原生旁路）
+	decoded_to_limelight_map = _build_limelight_channel_map(a_codec_ctx->ch_layout, negotiated_channels, opus_channel_mapping);
 
 	a_frame = av_frame_alloc();
 	a_packet = av_packet_alloc();
@@ -307,23 +443,50 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 		}
 
 		// 如果配置了 multichannel resampler 且请求了按通道流或原生旁路需要多声道，则生成多通道浮点缓冲
-		int in_ch = a_codec_ctx ? a_codec_ctx->ch_layout.nb_channels : 2;
+		int expected_ch = 0;
+		if (a_frame && a_frame->ch_layout.nb_channels > 0) {
+			expected_ch = a_frame->ch_layout.nb_channels;
+		} else if (a_codec_ctx && a_codec_ctx->ch_layout.nb_channels > 0) {
+			expected_ch = a_codec_ctx->ch_layout.nb_channels;
+		} else if (stream_config.audioConfiguration) {
+			expected_ch = (stream_config.audioConfiguration >> 8) & 0xFF;
+		}
+		if (expected_ch <= 0)
+			expected_ch = 2;
+
 		if (swr_ctx_multi && (audio_streams.size() > 0 || (native_audio_bypass_enabled && native_audio_channel_count > 2))) {
 			int max_out_samples_multi = swr_get_out_samples(swr_ctx_multi, a_frame->nb_samples);
 			if (max_out_samples_multi > 0) {
-				size_t buf_bytes = (size_t)max_out_samples_multi * in_ch * sizeof(float);
+				size_t buf_bytes = (size_t)max_out_samples_multi * expected_ch * sizeof(float);
 				float *multi_buf = (float *)av_malloc(buf_bytes);
 				if (multi_buf) {
 					int out_samples_multi = swr_convert(swr_ctx_multi, (uint8_t **)&multi_buf, max_out_samples_multi, (const uint8_t **)a_frame->data, a_frame->nb_samples);
 					if (out_samples_multi > 0) {
+						if ((int)decoded_to_limelight_map.size() != expected_ch) {
+							decoded_to_limelight_map = _build_limelight_channel_map(a_frame->ch_layout, expected_ch, opus_channel_mapping);
+						}
+
+						if (native_audio_bypass_enabled && native_audio_channel_count != expected_ch) {
+							_native_audio_stop();
+							if (_native_audio_start(expected_ch) == 0) {
+								native_audio_paused = false;
+							}
+						}
+
 						// 对每个通道提取并推送到对应的单声道流
-						for (int ch = 0; ch < in_ch; ch++) {
+						for (int ch = 0; ch < expected_ch; ch++) {
 							if (ch < (int)audio_streams.size() && audio_streams[ch].is_valid()) {
+								int src_idx = ch;
+								if (decoded_to_limelight_map.size() == expected_ch) {
+									src_idx = decoded_to_limelight_map[ch];
+									if (src_idx < 0 || src_idx >= expected_ch)
+										src_idx = ch;
+								}
 								float *chan_buf = (float *)av_malloc(out_samples_multi * sizeof(float));
 								if (!chan_buf)
 									continue;
 								for (int s = 0; s < out_samples_multi; s++) {
-									chan_buf[s] = multi_buf[s * in_ch + ch];
+									chan_buf[s] = multi_buf[s * expected_ch + src_idx];
 								}
 								audio_streams[ch]->push_audio(chan_buf, out_samples_multi);
 								av_free(chan_buf);
@@ -333,7 +496,7 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 						// 如果启用了原生旁路音频且需要多声道，则将交错多声道样本写入 native 环形缓冲
 						if (native_audio_bypass_enabled && native_audio_channel_count > 2) {
 							native_audio_mutex->lock();
-							int samples_to_write = out_samples_multi * in_ch;
+							int samples_to_write = out_samples_multi * expected_ch;
 							int free_space = native_rb_capacity - native_rb_used;
 							if (samples_to_write > free_space) {
 								int overflow = samples_to_write - free_space;
@@ -343,9 +506,33 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 							int first_chunk = MIN(samples_to_write, native_rb_capacity - native_rb_write_pos);
 							int second_chunk = samples_to_write - first_chunk;
 							float *ringptr = native_audio_ring.ptrw();
-							memcpy(ringptr + native_rb_write_pos, multi_buf, first_chunk * sizeof(float));
-							if (second_chunk > 0)
-								memcpy(ringptr, multi_buf + first_chunk, second_chunk * sizeof(float));
+							// If we have a decode->Limelight map, remap channels per-frame into a temporary buffer
+							if (decoded_to_limelight_map.size() == expected_ch) {
+								float *remap_buf = (float *)av_malloc(samples_to_write * sizeof(float));
+								if (remap_buf) {
+									for (int f = 0; f < out_samples_multi; f++) {
+										for (int ch = 0; ch < expected_ch; ch++) {
+											int src_idx = decoded_to_limelight_map[ch];
+											if (src_idx < 0 || src_idx >= expected_ch)
+												src_idx = ch;
+											remap_buf[f * expected_ch + ch] = multi_buf[f * expected_ch + src_idx];
+										}
+									}
+									int rc_first = MIN(first_chunk, samples_to_write);
+									memcpy(ringptr + native_rb_write_pos, remap_buf, rc_first * sizeof(float));
+									if (second_chunk > 0)
+										memcpy(ringptr, remap_buf + rc_first, second_chunk * sizeof(float));
+									av_free(remap_buf);
+								} else {
+									memcpy(ringptr + native_rb_write_pos, multi_buf, first_chunk * sizeof(float));
+									if (second_chunk > 0)
+										memcpy(ringptr, multi_buf + first_chunk, second_chunk * sizeof(float));
+								}
+							} else {
+								memcpy(ringptr + native_rb_write_pos, multi_buf, first_chunk * sizeof(float));
+								if (second_chunk > 0)
+									memcpy(ringptr, multi_buf + first_chunk, second_chunk * sizeof(float));
+							}
 							native_rb_write_pos = (native_rb_write_pos + samples_to_write) % native_rb_capacity;
 							native_rb_used += samples_to_write;
 							native_audio_mutex->unlock();
@@ -379,10 +566,13 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 		av_packet_free(&a_packet);
 		a_packet = nullptr;
 	}
+	// 清理保存的 Opus mapping
+	opus_channel_mapping.clear();
+	decoded_to_limelight_map.clear();
 }
 
 // 静态回调与绑定
-int MoonlightStreamCore::_ar_init(int cfg, const POPUS_MULTISTREAM_CONFIGURATION opus, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_ar_init(cfg); }
+int MoonlightStreamCore::_ar_init(int cfg, const POPUS_MULTISTREAM_CONFIGURATION opus, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_ar_init(cfg, opus); }
 void MoonlightStreamCore::_ar_cleanup(void) {
 	if (singleton_instance)
 		singleton_instance->_cleanup_ffmpeg_audio();

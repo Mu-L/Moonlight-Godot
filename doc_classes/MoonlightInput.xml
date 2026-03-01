@@ -8,6 +8,14 @@
 	</description>
 	<tutorials>
 	</tutorials>
+	<methods>
+		<method name="godot_to_virtual_key">
+			<brief_description>将 Godot 键码转换为 Win32 虚拟键码。</brief_description>
+			<description>接受 Godot 键码（例如 `KEY_A` 或 `KEY_ESCAPE`）并返回对应的 Win32 虚拟键码值，用于在 Windows 上发送键盘事件。若无法映射，则返回 0。</description>
+			<argument name="godot_key" type="int" />
+			<return type="int">映射后的虚拟键码 (VirtualKey 枚举值)，或 0 表示未知。</return>
+		</method>
+	</methods>
 	<constants>
 		<constant name="MOUSE_BUTTON_LEFT" value="1" enum="MouseButton">
 			鼠标左键。

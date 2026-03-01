@@ -69,3 +69,4 @@ bin/*
 demo/addons/moonlight-godot/bin/*
 vcpkg_installed/*
 src/doc_classes.cpp
+demo/addons/godot-steam-audio/*

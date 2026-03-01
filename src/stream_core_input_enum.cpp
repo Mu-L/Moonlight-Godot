@@ -290,4 +290,212 @@ void MoonlightInput::_bind_methods() {
 	BIND_ENUM_CONSTANT(VK_NONAME);
 	BIND_ENUM_CONSTANT(VK_PA1);
 	BIND_ENUM_CONSTANT(VK_OEM_CLEAR);
+
+	// 绑定静态方法以便 GDScript 调用：将 Godot 键码转换为 Win32 虚拟键码
+	ClassDB::bind_static_method("MoonlightInput",
+			D_METHOD("godot_to_virtual_key", "godot_key"),
+			&MoonlightInput::godot_to_virtual_key);
+}
+
+int MoonlightInput::godot_to_virtual_key(int godot_key) {
+	// 常见 ASCII 字母与数字直接映射到对应的 VK_* 值
+	if (godot_key >= 65 && godot_key <= 90) { // A-Z
+		return godot_key; // VK_A..VK_Z == 0x41..0x5A
+	}
+	if (godot_key >= 48 && godot_key <= 57) { // 0-9
+		return godot_key; // VK_0..VK_9 == 0x30..0x39
+	}
+
+	switch (godot_key) {
+		case 32:
+			return VK_SPACE;
+		case 33:
+			return VK_1; // '!' -> 1 + Shift
+		case 34:
+			return VK_OEM_7; // '"'
+		case 35:
+			return VK_OEM_3; // '#'
+		case 36:
+			return VK_OEM_4; // '$' (approx)
+		case 37:
+			return VK_OEM_5; // '%'
+		case 38:
+			return VK_7; // '&' -> 7 + Shift
+		case 39:
+			return VK_OEM_7; // '\''
+		case 40:
+			return VK_9; // '('
+		case 41:
+			return VK_0; // ')'
+		case 42:
+			return VK_MULTIPLY; // '*'
+		case 43:
+			return VK_OEM_PLUS; // '+'
+		case 44:
+			return VK_OEM_COMMA; // ','
+		case 45:
+			return VK_OEM_MINUS; // '-'
+		case 46:
+			return VK_OEM_PERIOD; // '.'
+		case 47:
+			return VK_OEM_2; // '/'
+
+		// Godot 的高位特殊键（多数从 4194304 起）
+		case 4194305:
+			return VK_ESCAPE; // KEY_ESCAPE
+		case 4194306:
+			return VK_TAB; // KEY_TAB
+		case 4194307:
+			return VK_TAB; // KEY_BACKTAB -> treat as TAB
+		case 4194308:
+			return VK_BACK; // KEY_BACKSPACE
+		case 4194309:
+			return VK_RETURN; // KEY_ENTER
+		case 4194310:
+			return VK_RETURN; // KEY_KP_ENTER
+		case 4194311:
+			return VK_INSERT; // KEY_INSERT
+		case 4194312:
+			return VK_DELETE; // KEY_DELETE
+		case 4194313:
+			return VK_PAUSE; // KEY_PAUSE
+		case 4194314:
+			return VK_SNAPSHOT; // KEY_PRINT
+		case 4194316:
+			return VK_CLEAR; // KEY_CLEAR
+		case 4194317:
+			return VK_HOME; // KEY_HOME
+		case 4194318:
+			return VK_END; // KEY_END
+		case 4194319:
+			return VK_LEFT; // KEY_LEFT
+		case 4194320:
+			return VK_UP; // KEY_UP
+		case 4194321:
+			return VK_RIGHT; // KEY_RIGHT
+		case 4194322:
+			return VK_DOWN; // KEY_DOWN
+		case 4194323:
+			return VK_PRIOR; // KEY_PAGEUP
+		case 4194324:
+			return VK_NEXT; // KEY_PAGEDOWN
+
+		case 4194325:
+			return VK_SHIFT; // KEY_SHIFT
+		case 4194326:
+			return VK_CONTROL; // KEY_CTRL
+		case 4194327:
+			return VK_LWIN; // KEY_META -> map to LWIN
+		case 4194328:
+			return VK_MENU; // KEY_ALT
+		case 4194329:
+			return VK_CAPITAL; // KEY_CAPSLOCK
+		case 4194330:
+			return VK_NUMLOCK; // KEY_NUMLOCK
+		case 4194331:
+			return VK_SCROLL; // KEY_SCROLLLOCK
+
+		// Function keys（Windows 支持到 F24）
+		case 4194332:
+			return VK_F1;
+		case 4194333:
+			return VK_F2;
+		case 4194334:
+			return VK_F3;
+		case 4194335:
+			return VK_F4;
+		case 4194336:
+			return VK_F5;
+		case 4194337:
+			return VK_F6;
+		case 4194338:
+			return VK_F7;
+		case 4194339:
+			return VK_F8;
+		case 4194340:
+			return VK_F9;
+		case 4194341:
+			return VK_F10;
+		case 4194342:
+			return VK_F11;
+		case 4194343:
+			return VK_F12;
+		case 4194344:
+			return VK_F13;
+		case 4194345:
+			return VK_F14;
+		case 4194346:
+			return VK_F15;
+		case 4194347:
+			return VK_F16;
+		case 4194348:
+			return VK_F17;
+		case 4194349:
+			return VK_F18;
+		case 4194350:
+			return VK_F19;
+		case 4194351:
+			return VK_F20;
+		case 4194352:
+			return VK_F21;
+		case 4194353:
+			return VK_F22;
+		case 4194354:
+			return VK_F23;
+		case 4194355:
+			return VK_F24;
+
+		// Numpad keys
+		case 4194433:
+			return VK_MULTIPLY; // KEY_KP_MULTIPLY
+		case 4194434:
+			return VK_DIVIDE; // KEY_KP_DIVIDE
+		case 4194435:
+			return VK_SUBTRACT; // KEY_KP_SUBTRACT
+		case 4194436:
+			return VK_DECIMAL; // KEY_KP_PERIOD
+		case 4194437:
+			return VK_ADD; // KEY_KP_ADD
+		case 4194438:
+			return VK_NUMPAD0; // KEY_KP_0
+		case 4194439:
+			return VK_NUMPAD1; // KEY_KP_1
+		case 4194440:
+			return VK_NUMPAD2; // KEY_KP_2
+		case 4194441:
+			return VK_NUMPAD3; // KEY_KP_3
+		case 4194442:
+			return VK_NUMPAD4; // KEY_KP_4
+		case 4194443:
+			return VK_NUMPAD5; // KEY_KP_5
+		case 4194444:
+			return VK_NUMPAD6; // KEY_KP_6
+		case 4194445:
+			return VK_NUMPAD7; // KEY_KP_7
+		case 4194446:
+			return VK_NUMPAD8; // KEY_KP_8
+		case 4194447:
+			return VK_NUMPAD9; // KEY_KP_9
+
+		// 媒体 / 启动键（常见映射）
+		case 4194380:
+			return VK_VOLUME_DOWN;
+		case 4194381:
+			return VK_VOLUME_MUTE;
+		case 4194382:
+			return VK_VOLUME_UP;
+		case 4194388:
+			return VK_MEDIA_PLAY_PAUSE;
+		case 4194389:
+			return VK_MEDIA_STOP;
+		case 4194390:
+			return VK_MEDIA_PREV_TRACK;
+		case 4194391:
+			return VK_MEDIA_NEXT_TRACK;
+		case 4194392:
+			return VK_MEDIA_STOP; // MEDIARECORD -> map to stop
+
+		default:
+			return 0; // 未知或未映射
+	}
 }

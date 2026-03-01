@@ -32,10 +32,43 @@ shading_mode = 0
 [sub_resource type="QuadMesh" id="QuadMesh_screen"]
 size = Vector2(3.2, 1.8)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_FL"]
+shading_mode = 0
+albedo_color = Color(1, 0, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_C"]
+shading_mode = 0
+albedo_color = Color(0, 0, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_FR"]
+shading_mode = 0
+albedo_color = Color(0, 1, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_SR"]
+shading_mode = 0
+albedo_color = Color(0, 1, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_RR"]
+shading_mode = 0
+albedo_color = Color(0.5, 0, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_SL"]
+shading_mode = 0
+albedo_color = Color(1, 0, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_LFE"]
+shading_mode = 0
+albedo_color = Color(1, 1, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_RL"]
+shading_mode = 0
+albedo_color = Color(1, 0.5, 0, 1)
+
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 
-[node name="Main3D" type="Node3D" unique_id=1123588099]
+[node name="Main3D" type="Node3D" unique_id=1123588099 node_paths=PackedStringArray("audio_players")]
 script = ExtResource("1_main3d")
+audio_players = [NodePath("TVModel/AudioFL"), NodePath("TVModel/AudioC"), NodePath("TVModel/AudioFR"), NodePath("TVModel/AudioSR"), NodePath("TVModel/AudioRR"), NodePath("TVModel/AudioSL"), NodePath("TVModel/AudioLFE"), NodePath("TVModel/AudioRL")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1850260676]
 environment = SubResource("Environment_1")
@@ -45,6 +78,7 @@ transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75
 shadow_enabled = true
 
 [node name="Floor" type="MeshInstance3D" parent="." unique_id=199544846]
+transform = Transform3D(10, 0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0)
 mesh = SubResource("PlaneMesh_floor")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="Floor" unique_id=1714267041]
@@ -59,17 +93,117 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -4)
 material_override = SubResource("StandardMaterial3D_screen")
 mesh = SubResource("QuadMesh_screen")
 
-[node name="AudioLeft" type="AudioStreamPlayer3D" parent="TVModel" unique_id=11111001]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 0)
-unit_size = 20.0
+[node name="AudioFL" type="AudioStreamPlayer3D" parent="TVModel" unique_id=1138440272]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 1.4)
 autoplay = true
 doppler_tracking = 1
 
-[node name="AudioRight" type="AudioStreamPlayer3D" parent="TVModel" unique_id=11111002]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0, 0)
-unit_size = 20.0
+[node name="Box_FL" type="CSGBox3D" parent="TVModel/AudioFL" unique_id=329451611]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_FL")
+
+[node name="Label_FL" type="Label3D" parent="TVModel/AudioFL" unique_id=1494021637]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "FL"
+
+[node name="AudioC" type="AudioStreamPlayer3D" parent="TVModel" unique_id=1378871663]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1)
 autoplay = true
 doppler_tracking = 1
+
+[node name="Box_C" type="CSGBox3D" parent="TVModel/AudioC" unique_id=106193412]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_C")
+
+[node name="Label_C" type="Label3D" parent="TVModel/AudioC" unique_id=7747047]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "C"
+
+[node name="AudioFR" type="AudioStreamPlayer3D" parent="TVModel" unique_id=2108350446]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0, 1.4)
+autoplay = true
+doppler_tracking = 1
+
+[node name="Box_FR" type="CSGBox3D" parent="TVModel/AudioFR" unique_id=1326169986]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_FR")
+
+[node name="Label_FR" type="Label3D" parent="TVModel/AudioFR" unique_id=1875943063]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "FR"
+
+[node name="AudioSR" type="AudioStreamPlayer3D" parent="TVModel" unique_id=307184724]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 4)
+autoplay = true
+doppler_tracking = 1
+
+[node name="Box_SR" type="CSGBox3D" parent="TVModel/AudioSR" unique_id=523786727]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_SR")
+
+[node name="Label_SR" type="Label3D" parent="TVModel/AudioSR" unique_id=413010528]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "SR"
+
+[node name="AudioRR" type="AudioStreamPlayer3D" parent="TVModel" unique_id=1977587002]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.12, 0, 6.12)
+autoplay = true
+doppler_tracking = 1
+
+[node name="Box_RR" type="CSGBox3D" parent="TVModel/AudioRR" unique_id=355212193]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_RR")
+
+[node name="Label_RR" type="Label3D" parent="TVModel/AudioRR" unique_id=1595072740]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "RR"
+
+[node name="AudioSL" type="AudioStreamPlayer3D" parent="TVModel" unique_id=376225689]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 4)
+autoplay = true
+doppler_tracking = 1
+
+[node name="Box_SL" type="CSGBox3D" parent="TVModel/AudioSL" unique_id=1117129881]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_SL")
+
+[node name="Label_SL" type="Label3D" parent="TVModel/AudioSL" unique_id=378551705]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "SL"
+
+[node name="AudioLFE" type="AudioStreamPlayer3D" parent="TVModel" unique_id=1245984147]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, -1.5, 1)
+autoplay = true
+doppler_tracking = 1
+
+[node name="Box_LFE" type="CSGBox3D" parent="TVModel/AudioLFE" unique_id=2000072436]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_LFE")
+
+[node name="Label_LFE" type="Label3D" parent="TVModel/AudioLFE" unique_id=1336608971]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "LFE"
+
+[node name="AudioRL" type="AudioStreamPlayer3D" parent="TVModel" unique_id=1418410200]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.12, 0, 6.12)
+autoplay = true
+doppler_tracking = 1
+
+[node name="Box_RL" type="CSGBox3D" parent="TVModel/AudioRL" unique_id=1425856637]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_RL")
+
+[node name="Label_RL" type="Label3D" parent="TVModel/AudioRL" unique_id=1440438561]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "RL"
 
 [node name="Label3D" type="Label3D" parent="TVModel" unique_id=1435392099]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
@@ -122,7 +256,6 @@ grow_horizontal = 0
 text = "⚙ Config"
 
 [node name="SettingsPanel" type="PanelContainer" parent="UILayer" unique_id=999111]
-visible = false
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
@@ -338,6 +471,6 @@ access = 1
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button8" to="." method="test_get_applist"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button9" to="." method="test_get_app_texture"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button11" to="." method="test_establish_stream"]
-[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button12" to="." method="test_pause_streram"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button12" to="." method="test_pause_stream"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button13" to="." method="test_stop_stream"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button14" to="." method="view_data"]
