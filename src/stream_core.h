@@ -343,11 +343,6 @@ private:
 	// 这可能增加解码/内存/调度开销；在不需要每通道单独处理时请使用原有的 `get_audio_stream()`。
 	Vector<Ref<AudioStreamMoonlight>> audio_streams;
 
-	// 如果使用 Opus multistream，这里保存服务器提供的 channel mapping（用于将解码输出重映射到 Limelight 顺序）
-	Vector<int> opus_channel_mapping;
-	// 解码输出索引映射到 Limelight 期望顺序（target channel index -> decoded source index）
-	Vector<int> decoded_to_limelight_map;
-
 	// --- 原生旁路音频（miniaudio）支持 ---
 	// 当启用时，音频流会写入一个独立的环形缓冲并由 miniaudio 直接输出到默认设备，
 	// 以尽可能降低延迟。此功能为可选且与 Godot 的音频流并存。
