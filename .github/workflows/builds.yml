@@ -186,7 +186,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/workflows/cacheVer.txt') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/cacheVer.txt') }}
 
       - name: Compute restored cache size
         shell: bash
@@ -242,17 +242,17 @@ jobs:
             exit 0
           fi
           dateStr=$(date +%Y%m%d)
-          if [ -f .github/workflows/cacheVer.txt ]; then
-            firstLine=$(sed -n '1p' .github/workflows/cacheVer.txt || true)
+          if [ -f .github/cacheVer.txt ]; then
+            firstLine=$(sed -n '1p' .github/cacheVer.txt || true)
           else
             firstLine=""
-            mkdir -p .github/workflows
+            mkdir -p .github
           fi
-          printf "%s\n%s\n" "$firstLine" "$dateStr" > .github/workflows/cacheVer.txt
+          printf "%s\n%s\n" "$firstLine" "$dateStr" > .github/cacheVer.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/cacheVer.txt
-          if git commit -m "ci: bump cacheVer (auto)" .github/workflows/cacheVer.txt; then
+          git add .github/cacheVer.txt
+          if git commit -m "ci: bump cacheVer (auto)" .github/cacheVer.txt; then
             git push origin HEAD
             echo "Updated cacheVer to $dateStr and pushed."
           else
@@ -264,7 +264,7 @@ jobs:
         if: always() && matrix.target-type== 'template_debug'
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/workflows/cacheVer.txt') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/cacheVer.txt') }}
 
       # ——产物处理——
       - name: Windows - Cleanup

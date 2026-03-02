@@ -1,0 +1,179 @@
+[gd_scene format=3 uid="uid://6sgtpvtg5aic"]
+
+[ext_resource type="SteamAudioMaterial" uid="uid://dbai50r63k346" path="res://addons/godot-steam-audio/materials/rock_material.tres" id="1_m7xfv"]
+[ext_resource type="Script" uid="uid://c0t67wh0txs7g" path="res://example/steamaudio/src/door.gd" id="2_11rcm"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xa5je"]
+albedo_color = Color(0.203922, 0.0901961, 0, 1)
+metallic_specular = 0.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_1ds6j"]
+material = SubResource("StandardMaterial3D_xa5je")
+size = Vector3(4, 3, 0.5)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_fpg8h"]
+data = PackedVector3Array(-2, 1.5, 0.25, 2, 1.5, 0.25, -2, -1.5, 0.25, 2, 1.5, 0.25, 2, -1.5, 0.25, -2, -1.5, 0.25, 2, 1.5, -0.25, -2, 1.5, -0.25, 2, -1.5, -0.25, -2, 1.5, -0.25, -2, -1.5, -0.25, 2, -1.5, -0.25, 2, 1.5, 0.25, 2, 1.5, -0.25, 2, -1.5, 0.25, 2, 1.5, -0.25, 2, -1.5, -0.25, 2, -1.5, 0.25, -2, 1.5, -0.25, -2, 1.5, 0.25, -2, -1.5, -0.25, -2, 1.5, 0.25, -2, -1.5, 0.25, -2, -1.5, -0.25, 2, 1.5, 0.25, -2, 1.5, 0.25, 2, 1.5, -0.25, -2, 1.5, 0.25, -2, 1.5, -0.25, 2, 1.5, -0.25, -2, -1.5, 0.25, 2, -1.5, 0.25, -2, -1.5, -0.25, 2, -1.5, 0.25, 2, -1.5, -0.25, -2, -1.5, -0.25)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_skg14"]
+data = PackedVector3Array(-2, 1.5, 0.25, 2, 1.5, 0.25, -2, -1.5, 0.25, 2, 1.5, 0.25, 2, -1.5, 0.25, -2, -1.5, 0.25, 2, 1.5, -0.25, -2, 1.5, -0.25, 2, -1.5, -0.25, -2, 1.5, -0.25, -2, -1.5, -0.25, 2, -1.5, -0.25, 2, 1.5, 0.25, 2, 1.5, -0.25, 2, -1.5, 0.25, 2, 1.5, -0.25, 2, -1.5, -0.25, 2, -1.5, 0.25, -2, 1.5, -0.25, -2, 1.5, 0.25, -2, -1.5, -0.25, -2, 1.5, 0.25, -2, -1.5, 0.25, -2, -1.5, -0.25, 2, 1.5, 0.25, -2, 1.5, 0.25, 2, 1.5, -0.25, -2, 1.5, 0.25, -2, 1.5, -0.25, 2, 1.5, -0.25, -2, -1.5, 0.25, 2, -1.5, 0.25, -2, -1.5, -0.25, 2, -1.5, 0.25, 2, -1.5, -0.25, -2, -1.5, -0.25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_d7hv6"]
+material = SubResource("StandardMaterial3D_xa5je")
+size = Vector3(4, 4, 0.5)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_hotr4"]
+data = PackedVector3Array(-2, 2, 0.25, 2, 2, 0.25, -2, -2, 0.25, 2, 2, 0.25, 2, -2, 0.25, -2, -2, 0.25, 2, 2, -0.25, -2, 2, -0.25, 2, -2, -0.25, -2, 2, -0.25, -2, -2, -0.25, 2, -2, -0.25, 2, 2, 0.25, 2, 2, -0.25, 2, -2, 0.25, 2, 2, -0.25, 2, -2, -0.25, 2, -2, 0.25, -2, 2, -0.25, -2, 2, 0.25, -2, -2, -0.25, -2, 2, 0.25, -2, -2, 0.25, -2, -2, -0.25, 2, 2, 0.25, -2, 2, 0.25, 2, 2, -0.25, -2, 2, 0.25, -2, 2, -0.25, 2, 2, -0.25, -2, -2, 0.25, 2, -2, 0.25, -2, -2, -0.25, 2, -2, 0.25, 2, -2, -0.25, -2, -2, -0.25)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_p6xr4"]
+albedo_color = Color(0.203922, 0.0901961, 0, 1)
+metallic_specular = 0.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_fidcf"]
+material = SubResource("StandardMaterial3D_p6xr4")
+size = Vector3(0.5, 2.5, 1.2)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_8qyhk"]
+data = PackedVector3Array(-0.25, 1.25, 0.6, 0.25, 1.25, 0.6, -0.25, -1.25, 0.6, 0.25, 1.25, 0.6, 0.25, -1.25, 0.6, -0.25, -1.25, 0.6, 0.25, 1.25, -0.6, -0.25, 1.25, -0.6, 0.25, -1.25, -0.6, -0.25, 1.25, -0.6, -0.25, -1.25, -0.6, 0.25, -1.25, -0.6, 0.25, 1.25, 0.6, 0.25, 1.25, -0.6, 0.25, -1.25, 0.6, 0.25, 1.25, -0.6, 0.25, -1.25, -0.6, 0.25, -1.25, 0.6, -0.25, 1.25, -0.6, -0.25, 1.25, 0.6, -0.25, -1.25, -0.6, -0.25, 1.25, 0.6, -0.25, -1.25, 0.6, -0.25, -1.25, -0.6, 0.25, 1.25, 0.6, -0.25, 1.25, 0.6, 0.25, 1.25, -0.6, -0.25, 1.25, 0.6, -0.25, 1.25, -0.6, 0.25, 1.25, -0.6, -0.25, -1.25, 0.6, 0.25, -1.25, 0.6, -0.25, -1.25, -0.6, 0.25, -1.25, 0.6, 0.25, -1.25, -0.6, -0.25, -1.25, -0.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yveqw"]
+transparency = 1
+albedo_color = Color(0.745098, 1, 1, 0.0784314)
+
+[sub_resource type="BoxMesh" id="BoxMesh_34ffx"]
+material = SubResource("StandardMaterial3D_yveqw")
+size = Vector3(0.3, 2.5, 1.1)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_a1row"]
+data = PackedVector3Array(-0.15, 1.25, 0.55, 0.15, 1.25, 0.55, -0.15, -1.25, 0.55, 0.15, 1.25, 0.55, 0.15, -1.25, 0.55, -0.15, -1.25, 0.55, 0.15, 1.25, -0.55, -0.15, 1.25, -0.55, 0.15, -1.25, -0.55, -0.15, 1.25, -0.55, -0.15, -1.25, -0.55, 0.15, -1.25, -0.55, 0.15, 1.25, 0.55, 0.15, 1.25, -0.55, 0.15, -1.25, 0.55, 0.15, 1.25, -0.55, 0.15, -1.25, -0.55, 0.15, -1.25, 0.55, -0.15, 1.25, -0.55, -0.15, 1.25, 0.55, -0.15, -1.25, -0.55, -0.15, 1.25, 0.55, -0.15, -1.25, 0.55, -0.15, -1.25, -0.55, 0.15, 1.25, 0.55, -0.15, 1.25, 0.55, 0.15, 1.25, -0.55, -0.15, 1.25, 0.55, -0.15, 1.25, -0.55, 0.15, 1.25, -0.55, -0.15, -1.25, 0.55, 0.15, -1.25, 0.55, -0.15, -1.25, -0.55, 0.15, -1.25, 0.55, 0.15, -1.25, -0.55, -0.15, -1.25, -0.55)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v6p4c"]
+albedo_color = Color(0.690196, 0.164706, 0, 1)
+emission_enabled = true
+emission = Color(0.0509804, 0.0509804, 0.0509804, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_vcr5v"]
+material = SubResource("StandardMaterial3D_v6p4c")
+size = Vector3(0.21, 2.48, 1.165)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_025sg"]
+data = PackedVector3Array(-0.105, 1.24, 0.5825, 0.105, 1.24, 0.5825, -0.105, -1.24, 0.5825, 0.105, 1.24, 0.5825, 0.105, -1.24, 0.5825, -0.105, -1.24, 0.5825, 0.105, 1.24, -0.5825, -0.105, 1.24, -0.5825, 0.105, -1.24, -0.5825, -0.105, 1.24, -0.5825, -0.105, -1.24, -0.5825, 0.105, -1.24, -0.5825, 0.105, 1.24, 0.5825, 0.105, 1.24, -0.5825, 0.105, -1.24, 0.5825, 0.105, 1.24, -0.5825, 0.105, -1.24, -0.5825, 0.105, -1.24, 0.5825, -0.105, 1.24, -0.5825, -0.105, 1.24, 0.5825, -0.105, -1.24, -0.5825, -0.105, 1.24, 0.5825, -0.105, -1.24, 0.5825, -0.105, -1.24, -0.5825, 0.105, 1.24, 0.5825, -0.105, 1.24, 0.5825, 0.105, 1.24, -0.5825, -0.105, 1.24, 0.5825, -0.105, 1.24, -0.5825, 0.105, 1.24, -0.5825, -0.105, -1.24, 0.5825, 0.105, -1.24, 0.5825, -0.105, -1.24, -0.5825, 0.105, -1.24, 0.5825, 0.105, -1.24, -0.5825, -0.105, -1.24, -0.5825)
+
+[node name="Wooden House" type="Node3D" unique_id=786254067]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=2016223087]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 2)
+mesh = SubResource("BoxMesh_1ds6j")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D" unique_id=549009102]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D/StaticBody3D" unique_id=410121980]
+shape = SubResource("ConcavePolygonShape3D_fpg8h")
+
+[node name="SteamAudioGeometry" type="SteamAudioGeometry" parent="MeshInstance3D/StaticBody3D/CollisionShape3D" unique_id=1071032583]
+material = ExtResource("1_m7xfv")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=254316265]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -2)
+mesh = SubResource("BoxMesh_1ds6j")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D2" unique_id=1716179185]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D2/StaticBody3D" unique_id=1509642784]
+shape = SubResource("ConcavePolygonShape3D_skg14")
+
+[node name="SteamAudioGeometry3" type="SteamAudioGeometry" parent="MeshInstance3D2/StaticBody3D/CollisionShape3D" unique_id=233341013]
+material = ExtResource("1_m7xfv")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.19209e-07, 0, 4)
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="." unique_id=1739898454]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2.75, 0)
+mesh = SubResource("BoxMesh_d7hv6")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D4" unique_id=1603680010]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D4/StaticBody3D" unique_id=1881436184]
+shape = SubResource("ConcavePolygonShape3D_hotr4")
+
+[node name="SteamAudioGeometry4" type="SteamAudioGeometry" parent="MeshInstance3D4/StaticBody3D/CollisionShape3D" unique_id=1976401585]
+material = ExtResource("1_m7xfv")
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.19209e-07, 2, 1.25)
+
+[node name="MeshInstance3D7" type="MeshInstance3D" parent="." unique_id=90990838]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.75, 1.25, 1.15)
+mesh = SubResource("BoxMesh_fidcf")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D7" unique_id=1128329946]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D7/StaticBody3D" unique_id=1150948871]
+shape = SubResource("ConcavePolygonShape3D_8qyhk")
+
+[node name="SteamAudioGeometry3" type="SteamAudioGeometry" parent="MeshInstance3D7/StaticBody3D/CollisionShape3D" unique_id=1231384101]
+material = ExtResource("1_m7xfv")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0, -2.6)
+
+[node name="MeshInstance3D9" type="MeshInstance3D" parent="." unique_id=1713574070]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.75, 1.25, -1.15)
+mesh = SubResource("BoxMesh_fidcf")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D9" unique_id=1657964534]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D9/StaticBody3D" unique_id=1520254733]
+shape = SubResource("ConcavePolygonShape3D_8qyhk")
+
+[node name="SteamAudioGeometry3" type="SteamAudioGeometry" parent="MeshInstance3D9/StaticBody3D/CollisionShape3D" unique_id=1701804316]
+material = ExtResource("1_m7xfv")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0, -2.6)
+
+[node name="MeshInstance3D10" type="MeshInstance3D" parent="." unique_id=1427367169]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.75, 1.25, 1.15)
+mesh = SubResource("BoxMesh_fidcf")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D10" unique_id=1384578611]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D10/StaticBody3D" unique_id=1013998612]
+shape = SubResource("ConcavePolygonShape3D_8qyhk")
+
+[node name="SteamAudioGeometry3" type="SteamAudioGeometry" parent="MeshInstance3D10/StaticBody3D/CollisionShape3D" unique_id=1335813195]
+material = ExtResource("1_m7xfv")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0, -2.6)
+
+[node name="MeshInstance3D11" type="MeshInstance3D" parent="." unique_id=972913645]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.75, 1.25, -1.15)
+mesh = SubResource("BoxMesh_fidcf")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D11" unique_id=2136160262]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D11/StaticBody3D" unique_id=2146405391]
+shape = SubResource("ConcavePolygonShape3D_8qyhk")
+
+[node name="SteamAudioGeometry3" type="SteamAudioGeometry" parent="MeshInstance3D11/StaticBody3D/CollisionShape3D" unique_id=1169739533]
+material = ExtResource("1_m7xfv")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0, -2.6)
+
+[node name="MeshInstance3D8" type="MeshInstance3D" parent="." unique_id=1166967000]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.85, 1.25, 0)
+mesh = SubResource("BoxMesh_34ffx")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D8" unique_id=275128241]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D8/StaticBody3D" unique_id=324063316]
+shape = SubResource("ConcavePolygonShape3D_a1row")
+
+[node name="SteamAudioGeometry3" type="SteamAudioGeometry" parent="MeshInstance3D8/StaticBody3D/CollisionShape3D" unique_id=847081572]
+material = ExtResource("1_m7xfv")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0, -2.6)
+
+[node name="Door" type="MeshInstance3D" parent="." unique_id=800950359]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.75308, 1.25421, 0)
+mesh = SubResource("BoxMesh_vcr5v")
+script = ExtResource("2_11rcm")
+metadata/_edit_group_ = true
+
+[node name="StaticBody3D" type="StaticBody3D" parent="Door" unique_id=1123023234]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Door/StaticBody3D" unique_id=267517567]
+shape = SubResource("ConcavePolygonShape3D_025sg")
+
+[node name="SteamAudioGeometry" type="SteamAudioGeometry" parent="Door" unique_id=1067862937]
+material = ExtResource("1_m7xfv")

@@ -1,0 +1,63 @@
+[gd_scene format=3 uid="uid://bilxmr83dwsgw"]
+
+[ext_resource type="SteamAudioMaterial" uid="uid://oyakg0idhulv" path="res://addons/godot-steam-audio/materials/wood_material.tres" id="1_b0nem"]
+[ext_resource type="PackedScene" uid="uid://6sgtpvtg5aic" path="res://example/steamaudio/scenes/wooden_house.tscn" id="3_tysju"]
+[ext_resource type="Script" uid="uid://dhvhuu7sdk8m3" path="res://example/steamaudio/scenes/adjustPannel.gd" id="5_x0xbu"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ljilg"]
+albedo_color = Color(0, 0.278431, 0, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_8yuob"]
+material = SubResource("StandardMaterial3D_ljilg")
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_n75us"]
+data = PackedVector3Array(1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, -1, 0, -1, 1, 0, -1)
+
+[node name="Root" type="Node3D" unique_id=1696921572]
+
+[node name="SteamAudioConfig" type="SteamAudioConfig" parent="." unique_id=2059117682]
+reflection_threads = 4.0
+
+[node name="Ground" type="MeshInstance3D" parent="." unique_id=1926123888]
+transform = Transform3D(200, 0, 0, 0, 200, 0, 0, 0, 200, -0.0903759, -0.1312561, 0.0077466965)
+mesh = SubResource("PlaneMesh_8yuob")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="Ground" unique_id=1953912333]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground/StaticBody3D" unique_id=600887331]
+shape = SubResource("ConcavePolygonShape3D_n75us")
+
+[node name="SteamAudioGeometry" type="SteamAudioGeometry" parent="Ground/StaticBody3D/CollisionShape3D" unique_id=137161983]
+material = ExtResource("1_b0nem")
+
+[node name="Door House" parent="." unique_id=323379565 instance=ExtResource("3_tysju")]
+
+[node name="UI" type="Control" parent="." unique_id=2063700323]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI" unique_id=1447233994]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="RichTextLabel" type="RichTextLabel" parent="UI/VBoxContainer" unique_id=1390394880]
+layout_mode = 2
+text = "[↑↓←→] Move | [Space] Jump
+[Mouse] Look around
+[1] Toggle door| [2] Move door"
+fit_content = true
+scroll_active = false
+
+[node name="ParamsButton" type="Button" parent="UI/VBoxContainer" unique_id=1111111111]
+layout_mode = 2
+text = "Parameters"
+
+[node name="adjustPannel" type="PanelContainer" parent="UI/VBoxContainer" unique_id=1845546801]
+visible = false
+custom_minimum_size = Vector2(0, 500)
+layout_mode = 2
+script = ExtResource("5_x0xbu")

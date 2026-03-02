@@ -19,12 +19,12 @@ extends Node3D
 # 3D References
 @onready var player = $Player
 @onready var head = $Player/Head
+@onready var camera = $Player/Head/Camera3D
 @onready var screen_mesh = $TVModel/ScreenMesh
 @onready var stream_viewport = $StreamViewport
 @onready var stream_texture = $StreamViewport/StreamTexture
-@onready var audio_left = $TVModel/AudioLeft
-@onready var audio_right = $TVModel/AudioRight
-@onready var camera = $Player/Head/Camera3D
+#@onready var audio_left = $TVModel/AudioLeft
+#@onready var audio_right = $TVModel/AudioRight
 
 # Exported list of AudioStreamPlayer3D nodes (editable in Inspector)
 # Use string node paths so the editor won't attempt to construct NodePath/Node objects at parse time
@@ -49,7 +49,7 @@ enum PlayMode {
 }
 var current_mode = PlayMode.WALK
 
-# Mobile virtual joystick state
+# Mobile controls
 var is_mobile_platform: bool = false
 var mobile_controls: Control
 var joystick_base: ColorRect
@@ -64,6 +64,13 @@ var move_joystick_touch_id: int = -1
 var move_joystick_vector: Vector2 = Vector2.ZERO
 var jump_btn: Button
 var mobile_jump_requested: bool = false
+var close_door_btn: Button
+var hide_door_btn: Button
+
+# SteamAudio door references
+var steam_door: Node3D
+var steam_door_closed_pos: Vector3 = Vector3.ZERO
+var steam_door_hidden: bool = false
 
 func _ready() -> void:
     # --- ROBUST TEXTURE ASSIGNMENT ---
@@ -136,7 +143,7 @@ func _ready() -> void:
     
     # Connect Other Buttons
     connect_button_signal("FullscreenButton", "pressed", toggle_fullscreen)
-    connect_button_signal("CheckButton2", "toggled", Callable(self, "set_godot_audio_enabled")) # Godot Audio Switch
+    connect_button_signal("CheckButton2", "toggled", Callable(self , "set_godot_audio_enabled")) # Godot Audio Switch
     connect_button_signal("AudioBypassButton", "pressed", toggle_audio_bypass)
     connect_button_signal("AudioPauseButton", "pressed", toggle_pause_audio_bypass)
     connect_button_signal("KeyboardButton", "pressed", toggle_virtual_keyboard)
@@ -144,7 +151,10 @@ func _ready() -> void:
     # Sync Godot audio enabled state to ensure players are stopped/started accordingly
     set_godot_audio_enabled(godot_audio_enabled)
 
-    # Mobile controls
+    steam_door = get_node_or_null("Root/Door House/Door")
+    if steam_door:
+        steam_door_closed_pos = steam_door.position
+
     is_mobile_platform = OS.has_feature("mobile")
     if is_mobile_platform:
         setup_mobile_controls()
@@ -160,7 +170,6 @@ func setup_mobile_controls() -> void:
     joystick_base.name = "LookJoystickBase"
     joystick_base.color = Color(0.1, 0.1, 0.1, 0.35)
     joystick_base.custom_minimum_size = Vector2(150, 150)
-    joystick_base.position = Vector2(0, 0)
     joystick_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
     mobile_controls.add_child(joystick_base)
 
@@ -192,6 +201,20 @@ func setup_mobile_controls() -> void:
     jump_btn.button_down.connect(on_mobile_jump_pressed)
     mobile_controls.add_child(jump_btn)
 
+    close_door_btn = Button.new()
+    close_door_btn.name = "CloseDoorButton"
+    close_door_btn.text = "关门"
+    close_door_btn.custom_minimum_size = Vector2(120, 48)
+    close_door_btn.pressed.connect(on_mobile_close_door_pressed)
+    mobile_controls.add_child(close_door_btn)
+
+    hide_door_btn = Button.new()
+    hide_door_btn.name = "HideDoorButton"
+    hide_door_btn.text = "隐藏门"
+    hide_door_btn.custom_minimum_size = Vector2(120, 48)
+    hide_door_btn.pressed.connect(on_mobile_hide_door_pressed)
+    mobile_controls.add_child(hide_door_btn)
+
     update_mobile_controls_layout()
 
 func update_mobile_controls_layout() -> void:
@@ -205,6 +228,11 @@ func update_mobile_controls_layout() -> void:
     move_joystick_knob.position = (move_joystick_base.size - move_joystick_knob.size) * 0.5 + move_joystick_vector * move_joystick_radius
     if jump_btn:
         jump_btn.position = Vector2(vp_size.x - 140.0, vp_size.y - 300.0)
+
+    if close_door_btn:
+        close_door_btn.position = Vector2(24.0, 24.0)
+    if hide_door_btn:
+        hide_door_btn.position = Vector2(156.0, 24.0)
 
 func reset_joystick() -> void:
     joystick_touch_id = -1
@@ -262,6 +290,38 @@ func update_move_joystick_from_position(screen_pos: Vector2) -> void:
 
 func on_mobile_jump_pressed() -> void:
     mobile_jump_requested = true
+
+func set_steam_door_enabled(enabled: bool) -> void:
+    if not steam_door:
+        return
+    steam_door.visible = enabled
+
+    var col := steam_door.get_node_or_null("StaticBody3D/CollisionShape3D")
+    if col:
+        col.disabled = not enabled
+
+    var geo := steam_door.get_node_or_null("SteamAudioGeometry")
+    if geo:
+        geo.disabled = not enabled
+        if enabled:
+            geo.recalculate()
+
+func on_mobile_close_door_pressed() -> void:
+    if not steam_door:
+        return
+    steam_door.position = steam_door_closed_pos
+    steam_door_hidden = false
+    set_steam_door_enabled(true)
+    if hide_door_btn:
+        hide_door_btn.text = "隐藏门"
+
+func on_mobile_hide_door_pressed() -> void:
+    if not steam_door:
+        return
+    steam_door_hidden = not steam_door_hidden
+    set_steam_door_enabled(not steam_door_hidden)
+    if hide_door_btn:
+        hide_door_btn.text = "显示门" if steam_door_hidden else "隐藏门"
 
 func connect_button_signal(node_name: String, signal_name: String, callable: Callable):
     if grid_container.has_node(node_name):
@@ -555,25 +615,34 @@ func test_establish_stream() -> void:
         # Assign streams to exported audio players in order
         for i in range(audio_players.size()):
             var ap = audio_players[i]
-            if not ap or not (ap is AudioStreamPlayer3D):
+            if not ap:
                 continue
             if i < streams.size():
-                ap.stream = streams[i]
-                if godot_audio_enabled:
-                    ap.play()
-                else:
-                    ap.stop()
+                var s = streams[i]
+                if ap.has_method("play_stream"):
+                    # Use SteamAudio-friendly API to set inner stream and start playback
+                    ap.play_stream(s)
+                    if not godot_audio_enabled:
+                        ap.stop()
+                elif ap is AudioStreamPlayer3D:
+                    ap.stream = s
+                    if godot_audio_enabled:
+                        ap.play()
+                    else:
+                        ap.stop()
                 print("Assigned audio stream to player:", ap.name)
             else:
                 # No stream available for this player
-                ap.stream = null
-                ap.stop()
+                if ap.has_method("stop"):
+                    ap.stop()
         if streams.size() == 0:
             print("No audio streams received from moonlightstreamcore")
     else:
         # If audio disabled, ensure all players are stopped
         for ap in audio_players:
-            if ap and (ap is AudioStreamPlayer3D):
+            if not ap:
+                continue
+            if ap.has_method("stop"):
                 ap.stop()
 
     # Force update Viewport texture just in case

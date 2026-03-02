@@ -1,0 +1,529 @@
+[gd_scene format=3 uid="uid://cnywqq1etchyp"]
+
+[ext_resource type="Script" uid="uid://dwgv0qp7xypf6" path="res://example/steamaudio/main3D-SteamAudio.gd" id="1_fj51p"]
+[ext_resource type="PackedScene" uid="uid://bilxmr83dwsgw" path="res://example/steamaudio/scenes/demo.tscn" id="2_bs8di"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
+sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("ProceduralSkyMaterial_1")
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.188235, 0.188235, 0.188235, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_floor"]
+material = SubResource("StandardMaterial3D_floor")
+size = Vector2(20, 20)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_floor"]
+data = PackedVector3Array(10, 0, 10, -10, 0, 10, 10, 0, -10, -10, 0, 10, -10, 0, -10, 10, 0, -10)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_screen"]
+resource_local_to_scene = true
+shading_mode = 0
+
+[sub_resource type="QuadMesh" id="QuadMesh_screen"]
+size = Vector2(3.2, 1.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_FL"]
+shading_mode = 0
+albedo_color = Color(1, 0, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_FR"]
+shading_mode = 0
+albedo_color = Color(0, 1, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_C"]
+shading_mode = 0
+albedo_color = Color(0, 0, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_LFE"]
+shading_mode = 0
+albedo_color = Color(1, 1, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_RL"]
+shading_mode = 0
+albedo_color = Color(1, 0.5, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_RR"]
+shading_mode = 0
+albedo_color = Color(0.5, 0, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_SL"]
+shading_mode = 0
+albedo_color = Color(1, 0, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_SR"]
+shading_mode = 0
+albedo_color = Color(0, 1, 1, 1)
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+
+[node name="Main3D" type="Node3D" unique_id=1123588099 node_paths=PackedStringArray("audio_players")]
+script = ExtResource("1_fj51p")
+audio_players = [NodePath("TVModel/AudioFL"), NodePath("TVModel/AudioFR"), NodePath("TVModel/AudioC"), NodePath("TVModel/AudioLFE"), NodePath("TVModel/AudioRL"), NodePath("TVModel/AudioRR"), NodePath("TVModel/AudioSL"), NodePath("TVModel/AudioSR")]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1850260676]
+environment = SubResource("Environment_1")
+
+[node name="Root" parent="." unique_id=1696921572 instance=ExtResource("2_bs8di")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
+
+[node name="SpotLight3D" type="SpotLight3D" parent="Root" unique_id=182597648]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 5.5075665, 0)
+light_energy = 16.0
+shadow_enabled = true
+spot_range = 14.0
+spot_angle = 60.575832
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=539713452]
+transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=199544846]
+transform = Transform3D(15, 0, 0, 0, 15, 0, 0, 0, 15, 0, 0, 0)
+mesh = SubResource("PlaneMesh_floor")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="Floor" unique_id=1714267041]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor/StaticBody3D" unique_id=1551317570]
+shape = SubResource("ConcavePolygonShape3D_floor")
+
+[node name="TVModel" type="Node3D" parent="." unique_id=284758606]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -4)
+
+[node name="ScreenMesh" type="MeshInstance3D" parent="TVModel" unique_id=462702872]
+material_override = SubResource("StandardMaterial3D_screen")
+mesh = SubResource("QuadMesh_screen")
+
+[node name="AudioFL" type="SteamAudioPlayer" parent="TVModel" unique_id=63120262]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 1.4)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_FL" type="CSGBox3D" parent="TVModel/AudioFL" unique_id=329451611]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_FL")
+
+[node name="Label_FL" type="Label3D" parent="TVModel/AudioFL" unique_id=1494021637]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "FL"
+
+[node name="AudioFR" type="SteamAudioPlayer" parent="TVModel" unique_id=1898452320]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0, 1.4000001)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_FR" type="CSGBox3D" parent="TVModel/AudioFR" unique_id=1326169986]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_FR")
+
+[node name="Label_FR" type="Label3D" parent="TVModel/AudioFR" unique_id=1875943063]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "FR"
+
+[node name="AudioC" type="SteamAudioPlayer" parent="TVModel" unique_id=665450747]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_C" type="CSGBox3D" parent="TVModel/AudioC" unique_id=106193412]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_C")
+
+[node name="Label_C" type="Label3D" parent="TVModel/AudioC" unique_id=7747047]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "C"
+
+[node name="AudioLFE" type="SteamAudioPlayer" parent="TVModel" unique_id=735925870]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, -1.5, 1)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_LFE" type="CSGBox3D" parent="TVModel/AudioLFE" unique_id=2000072436]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_LFE")
+
+[node name="Label_LFE" type="Label3D" parent="TVModel/AudioLFE" unique_id=1336608971]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "LFE"
+
+[node name="AudioRL" type="SteamAudioPlayer" parent="TVModel" unique_id=221400944]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.12, 0, 6.12)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_RL" type="CSGBox3D" parent="TVModel/AudioRL" unique_id=1425856637]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_RL")
+
+[node name="Label_RL" type="Label3D" parent="TVModel/AudioRL" unique_id=1440438561]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "RL"
+
+[node name="AudioRR" type="SteamAudioPlayer" parent="TVModel" unique_id=1949840779]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.12, 0, 6.12)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_RR" type="CSGBox3D" parent="TVModel/AudioRR" unique_id=355212193]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_RR")
+
+[node name="Label_RR" type="Label3D" parent="TVModel/AudioRR" unique_id=1595072740]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "RR"
+
+[node name="AudioSL" type="SteamAudioPlayer" parent="TVModel" unique_id=1398233825]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 4)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_SL" type="CSGBox3D" parent="TVModel/AudioSL" unique_id=1117129881]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_SL")
+
+[node name="Label_SL" type="Label3D" parent="TVModel/AudioSL" unique_id=378551705]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "SL"
+
+[node name="AudioSR" type="SteamAudioPlayer" parent="TVModel" unique_id=1529356136]
+distance_attenuation = true
+air_absorption = true
+reflection = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 4)
+attenuation_model = 3
+volume_db = -5.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_SR" type="CSGBox3D" parent="TVModel/AudioSR" unique_id=523786727]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_SR")
+
+[node name="Label_SR" type="Label3D" parent="TVModel/AudioSR" unique_id=413010528]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "SR"
+
+[node name="Label3D" type="Label3D" parent="TVModel" unique_id=1435392099]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+text = "Moonlight Stream"
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=2084065448]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=1290442532]
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="Head" type="Node3D" parent="Player" unique_id=443376967]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+
+[node name="Camera3D" type="Camera3D" parent="Player/Head" unique_id=30551593]
+
+[node name="SteamAudioListener" type="SteamAudioListener" parent="Player/Head/Camera3D" unique_id=31397203]
+
+[node name="StreamViewport" type="SubViewport" parent="." unique_id=559997520]
+size = Vector2i(1920, 1080)
+render_target_update_mode = 4
+
+[node name="StreamTexture" type="TextureRect" parent="StreamViewport" unique_id=880372007]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=20526166]
+
+[node name="Tips" type="Label" parent="UILayer" unique_id=1928725062]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -150.0
+offset_right = 150.0
+offset_bottom = 23.0
+grow_horizontal = 2
+size_flags_horizontal = 4
+text = "TAB: Toggle Mode | ESC: Configuration"
+horizontal_alignment = 1
+
+[node name="SettingsButton" type="Button" parent="UILayer" unique_id=555123]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_bottom = 40.0
+grow_horizontal = 0
+text = "⚙ Config"
+
+[node name="SettingsPanel" type="PanelContainer" parent="UILayer" unique_id=999111]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -300.0
+offset_right = 300.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UILayer/SettingsPanel" unique_id=736037670]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="UILayer/SettingsPanel/VBoxContainer" unique_id=1996175874]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="UILayer/SettingsPanel/VBoxContainer/HBoxContainer" unique_id=485959968]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Configuration"
+horizontal_alignment = 1
+
+[node name="CloseButton" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/HBoxContainer" unique_id=69086000]
+layout_mode = 2
+text = " X "
+
+[node name="ScrollContainer" type="ScrollContainer" parent="UILayer/SettingsPanel/VBoxContainer" unique_id=34039684]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="GridContainer" type="HFlowContainer" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer" unique_id=1567672290]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="LineEdit" type="LineEdit" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=292676391]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "192.168.10.27"
+placeholder_text = "input host IP"
+context_menu_enabled = false
+emoji_menu_enabled = false
+clear_button_enabled = true
+
+[node name="LineEdit2" type="LineEdit" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1349395978]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "20"
+placeholder_text = "Bitrate（Mbps）"
+context_menu_enabled = false
+emoji_menu_enabled = false
+clear_button_enabled = true
+
+[node name="CheckButton" type="CheckButton" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=940442173]
+layout_mode = 2
+button_pressed = true
+text = "Hardware 
+Decode"
+
+[node name="OptionButton" type="OptionButton" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=679843856]
+layout_mode = 2
+selected = 2
+item_count = 4
+popup/item_0/text = "AUTO"
+popup/item_0/id = 0
+popup/item_1/text = "H264"
+popup/item_1/id = 1
+popup/item_2/text = "H265"
+popup/item_2/id = 2
+popup/item_3/text = "AV1"
+popup/item_3/id = 3
+
+[node name="Button" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=330310015]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+http request"
+
+[node name="Button2" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1873826582]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "!test 
+cert create"
+
+[node name="Button3" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=523297050]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+get host info"
+
+[node name="Button4" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1676248367]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "!test remove 
+host info"
+
+[node name="Button5" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1251294166]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+start pair"
+
+[node name="Button10" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1545997416]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test connect 
+to server"
+
+[node name="Button7" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=672315278]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+unpair"
+
+[node name="Button8" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=2039621653]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test
+ get applist"
+
+[node name="Button9" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=2137848920]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test
+ get app texture→"
+
+[node name="TextureRect" type="TextureRect" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1765905250]
+custom_minimum_size = Vector2(60, 80)
+layout_mode = 2
+expand_mode = 1
+
+[node name="Button11" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1019568175]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+establish stream"
+
+[node name="Button12" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1751002351]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test
+pause stream"
+
+[node name="Button13" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1725083854]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+stop stream"
+
+[node name="Button14" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1266637515]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "view 
+appdata"
+
+[node name="AudioBypassButton" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=222222001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Audio Bypass: OFF"
+
+[node name="CheckButton2" type="CheckButton" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=550264462]
+layout_mode = 2
+button_pressed = true
+text = "GodotAudio"
+
+[node name="AudioPauseButton" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=222222002]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Audio Bypass Pause"
+
+[node name="KeyboardButton" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=333333001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Toggle Keyboard"
+
+[node name="ToggleVideoButton" type="CheckButton" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=555555001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+button_pressed = true
+text = "Video"
+
+[node name="ToggleAudioButton" type="CheckButton" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=555555002]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+button_pressed = true
+text = "Audio"
+
+[node name="ToggleInputButton" type="CheckButton" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=555555003]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+button_pressed = true
+text = "Input"
+
+[node name="FileDialog" type="FileDialog" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer" unique_id=1291668764]
+oversampling_override = 1.0
+title = "Open a File or Directory"
+initial_position = 1
+size = Vector2i(640, 480)
+file_mode = 3
+access = 1
+
+[connection signal="editing_toggled" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/LineEdit" to="." method="_on_line_edit_editing_toggled"]
+[connection signal="editing_toggled" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/LineEdit2" to="." method="_on_line_edit_editing_toggled"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button4" to="." method="test_remove_host_info"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button5" to="." method="test_start_pair"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button10" to="." method="test_connect_to_server"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button7" to="." method="test_cancel_pair"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button8" to="." method="test_get_applist"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button9" to="." method="test_get_app_texture"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button11" to="." method="test_establish_stream"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button12" to="." method="test_pause_stream"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button13" to="." method="test_stop_stream"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button14" to="." method="view_data"]
