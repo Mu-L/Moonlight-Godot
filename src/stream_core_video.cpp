@@ -23,15 +23,15 @@ Vector<AVHWDeviceType> MoonlightStreamCore::_get_supported_hw_devices() {
 #if defined(__ANDROID__)
 	// Android: 返回空列表以优先使用 MediaCodec Buffer 模式
 #elif defined(_WIN32)
+	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
 	types.push_back(AV_HWDEVICE_TYPE_D3D11VA);
 	types.push_back(AV_HWDEVICE_TYPE_DXVA2);
-	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
 	types.push_back(AV_HWDEVICE_TYPE_CUDA);
 #elif defined(__APPLE__)
 	types.push_back(AV_HWDEVICE_TYPE_VIDEOTOOLBOX);
 #elif defined(__linux__)
-	types.push_back(AV_HWDEVICE_TYPE_VAAPI);
 	types.push_back(AV_HWDEVICE_TYPE_VULKAN);
+	types.push_back(AV_HWDEVICE_TYPE_VAAPI);
 	types.push_back(AV_HWDEVICE_TYPE_QSV);
 	types.push_back(AV_HWDEVICE_TYPE_CUDA);
 #endif
@@ -95,52 +95,71 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	Vector<String> candidates;
 #if defined(__ANDROID__)
 	// Android: prefer MediaCodec variants per codec family
-	if (codec_family == CODEC_FAMILY_H264) {
-		Vector<String> codec_names;
-		// JNI helper: collect MediaCodec component names
-		JNIEnv *env = GetJNIEnv();
-		if (env) {
-			jclass cls = env->FindClass("android/media/MediaCodecList");
-			if (cls) {
-				jmethodID mid = env->GetStaticMethodID(cls, "getCodecInfos", "()[Landroid/media/MediaCodecInfo;");
-				if (mid) {
-					jobjectArray arr = (jobjectArray)env->CallStaticObjectMethod(cls, mid);
-					if (arr) {
-						jsize len = env->GetArrayLength(arr);
-						for (jsize i = 0; i < len; i++) {
-							jobject info = env->GetObjectArrayElement(arr, i);
-							if (!info)
-								continue;
-							jclass infoCls = env->GetObjectClass(info);
-							jmethodID nameMid = env->GetMethodID(infoCls, "getName", "()Ljava/lang/String;");
-							if (nameMid) {
-								jstring jname = (jstring)env->CallObjectMethod(info, nameMid);
-								if (jname) {
-									const char *cname = env->GetStringUTFChars(jname, nullptr);
-									if (cname) {
-										codec_names.push_back(String(cname));
-										env->ReleaseStringUTFChars(jname, cname);
-									}
-									env->DeleteLocalRef(jname);
+	Vector<String> codec_names;
+	// JNI helper: collect MediaCodec component names
+	JNIEnv *env = GetJNIEnv();
+	if (env) {
+		jclass cls = env->FindClass("android/media/MediaCodecList");
+		if (cls) {
+			jmethodID mid = env->GetStaticMethodID(cls, "getCodecInfos", "()[Landroid/media/MediaCodecInfo;");
+			if (mid) {
+				jobjectArray arr = (jobjectArray)env->CallStaticObjectMethod(cls, mid);
+				if (arr) {
+					jsize len = env->GetArrayLength(arr);
+					for (jsize i = 0; i < len; i++) {
+						jobject info = env->GetObjectArrayElement(arr, i);
+						if (!info)
+							continue;
+						jclass infoCls = env->GetObjectClass(info);
+						jmethodID nameMid = env->GetMethodID(infoCls, "getName", "()Ljava/lang/String;");
+						if (nameMid) {
+							jstring jname = (jstring)env->CallObjectMethod(info, nameMid);
+							if (jname) {
+								const char *cname = env->GetStringUTFChars(jname, nullptr);
+								if (cname) {
+									codec_names.push_back(String(cname));
+									env->ReleaseStringUTFChars(jname, cname);
 								}
+								env->DeleteLocalRef(jname);
 							}
-							env->DeleteLocalRef(info);
 						}
+						env->DeleteLocalRef(info);
 					}
 				}
-				env->DeleteLocalRef(cls);
+			}
+			env->DeleteLocalRef(cls);
+		}
+	}
+
+	String base_codec_name;
+	if (codec_family == CODEC_FAMILY_H264) {
+		base_codec_name = "h264";
+	} else if (codec_family == CODEC_FAMILY_H265) {
+		base_codec_name = "hevc";
+	} else if (codec_family == CODEC_FAMILY_AV1) {
+		base_codec_name = "av1";
+	}
+
+	if (!base_codec_name.is_empty()) {
+		// Search for low_latency substrings and add candidates prioritizing them
+		for (int i = 0; i < codec_names.size(); i++) {
+			String kn = codec_names[i].to_lower();
+			bool matches_family = false;
+			if (codec_family == CODEC_FAMILY_H264 && (kn.find("avc") != -1 || kn.find("h264") != -1)) {
+				matches_family = true;
+			} else if (codec_family == CODEC_FAMILY_H265 && (kn.find("hevc") != -1 || kn.find("h265") != -1)) {
+				matches_family = true;
+			} else if (codec_family == CODEC_FAMILY_AV1 && kn.find("av1") != -1) {
+				matches_family = true;
+			}
+
+			if (matches_family && (kn.find("low_latency") != -1 || kn.find("low-latency") != -1)) {
+				candidates.push_back(base_codec_name + "_mediacodec_lowlat:" + codec_names[i]);
 			}
 		}
 
-		// Search for low_latency substrings and add candidates
-		for (int i = 0; i < codec_names.size(); i++) {
-			String kn = codec_names[i].to_lower();
-			if (kn.find("low_latency") != -1 || kn.find("low-latency") != -1) {
-				candidates.push_back("h264_mediacodec_lowlat:" + codec_names[i]);
-			}
-		}
-		// Generic MediaCodec fallback for H264
-		candidates.push_back("h264_mediacodec");
+		// Generic MediaCodec fallback
+		candidates.push_back(base_codec_name + "_mediacodec");
 
 		// Verbose: list discovered MediaCodec component names and generated candidates
 		if (singleton_instance && singleton_instance->verbose_decoders) {
@@ -151,10 +170,6 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 			for (int i = 0; i < candidates.size(); i++)
 				UtilityFunctions::print("  * ", candidates[i]);
 		}
-	} else if (codec_family == CODEC_FAMILY_H265) {
-		candidates.push_back("hevc_mediacodec");
-	} else if (codec_family == CODEC_FAMILY_AV1) {
-		candidates.push_back("av1_mediacodec");
 	}
 #endif
 
@@ -187,6 +202,16 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	if (sep != -1) {
 		base_name = codec_name.substr(0, sep);
 	}
+
+	// Strip the "_lowlat" suffix if it exists so we can find the base FFmpeg decoder
+	if (base_name.ends_with("_lowlat")) {
+		base_name = base_name.substr(0, base_name.length() - 7);
+	}
+
+	if (singleton_instance && singleton_instance->verbose_decoders) {
+		UtilityFunctions::print(LOG_PREFIX "_try_open_decoder base_name: ", base_name, " Original codec_name: ", codec_name);
+	}
+
 	const AVCodec *codec = avcodec_find_decoder_by_name(base_name.utf8().get_data());
 	if (!codec)
 		return -1;
@@ -293,6 +318,9 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		// We map to an AVDictionary option for mediacodec component selection. Key name may vary by FFmpeg build;
 		// common option used in builds exposing MediaCodec choice is "mediacodec_name".
 		av_dict_set(&opts, "mediacodec_name", special_component.utf8().get_data(), 0);
+		if (singleton_instance && singleton_instance->verbose_decoders) {
+			UtilityFunctions::print(LOG_PREFIX "Setting av_dict mediacodec_name=", special_component, " for decoder ", base_name);
+		}
 	}
 
 	if (avcodec_open2(ctx, codec, &opts) < 0) {
@@ -329,6 +357,16 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 		return -1;
 	}
 	Vector<String> candidates = _get_candidate_decoders(family);
+
+	if (OS::get_singleton()->is_debug_build() || verbose_decoders) {
+		String family_name = (family == CODEC_FAMILY_H264) ? "H.264" : (family == CODEC_FAMILY_H265) ? "H.265 (HEVC)"
+																									 : "AV1";
+		UtilityFunctions::print(LOG_PREFIX "Available decoders for ", family_name, ":");
+		for (int i = 0; i < candidates.size(); i++) {
+			UtilityFunctions::print("  - ", candidates[i]);
+		}
+	}
+
 	Vector<AVHWDeviceType> hw_devices;
 	if (!disable_hw_decoding) {
 		hw_devices = _get_supported_hw_devices();
@@ -363,8 +401,13 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 		codec_mutex->unlock(); // 失败时解锁
 		return -1;
 	}
-	if (verbose_decoders)
+
+	if (OS::get_singleton()->is_debug_build() || verbose_decoders) {
+		UtilityFunctions::print(LOG_PREFIX "Initialized / Selected Decoder: ", opened_name, " (", opened_hw, ")");
+	} else if (verbose_decoders) {
 		UtilityFunctions::print(LOG_PREFIX "Initialized FFmpeg Decoder: ", opened_name, " (", opened_hw, ")");
+	}
+
 	call_deferred("emit_signal", "log_message", "Decoder initialized: " + opened_name + " (" + opened_hw + ")");
 	if (v_codec_ctx) {
 		AVPixelFormat fmt = v_codec_ctx->pix_fmt;
