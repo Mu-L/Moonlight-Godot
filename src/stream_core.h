@@ -90,7 +90,8 @@ typedef unsigned int ma_uint32;
 namespace godot {
 
 class MoonlightStreamCore;
-extern MoonlightStreamCore *singleton_instance;
+extern Vector<MoonlightStreamCore *> active_instances;
+extern Mutex instances_mutex;
 
 class MoonlightStreamConfigurationResource;
 class MoonlightAdditionalStreamOptions;
@@ -192,7 +193,10 @@ public:
 
 	MoonlightStreamCore();
 	~MoonlightStreamCore();
-	void start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>());
+
+	void set_config_manager(Object *cm);
+
+	void start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>(), String custom_config_path = "");
 	void stop_play_stream();
 	void set_render_target(TextureRect *target);
 	void reset_render_target();
@@ -294,6 +298,7 @@ private:
 	Ref<Mutex> codec_mutex;
 
 	// --- Internal helpers for unified start flow ---
+	Object *config_manager = nullptr;
 	ComputerManager *internal_cm = nullptr;
 	Ref<MoonlightStreamConfigurationResource> pending_cfg;
 	Ref<MoonlightAdditionalStreamOptions> pending_add_opts;
@@ -427,9 +432,10 @@ private:
 
 } //namespace godot
 
-// Global singleton instance reference (defined in stream_core_main.cpp)
+// Active instances (defined in stream_core_main.cpp)
 namespace godot {
-extern MoonlightStreamCore *singleton_instance;
+extern Vector<MoonlightStreamCore *> active_instances;
+extern Mutex instances_mutex;
 }
 
 VARIANT_ENUM_CAST(godot::MoonlightStreamCore::VideoCodecConfig);

@@ -23,6 +23,10 @@ buses/default_bus_layout="uid://cqdumj6lpc86m"
 
 project/assembly_name="Moonlight-Godot"
 
+[editor]
+
+movie_writer/movie_file="D:/desktop/1.avi"
+
 [input]
 
 toggle_door={

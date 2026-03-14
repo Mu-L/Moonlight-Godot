@@ -468,12 +468,22 @@ void MoonlightStreamCore::_cleanup_ffmpeg_audio() {
 // 静态回调与绑定
 int MoonlightStreamCore::_ar_init(int cfg, const POPUS_MULTISTREAM_CONFIGURATION opus, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_ar_init(cfg, opus); }
 void MoonlightStreamCore::_ar_cleanup(void) {
-	if (singleton_instance)
-		singleton_instance->_cleanup_ffmpeg_audio();
+	instances_mutex.lock();
+	for (int i = 0; i < active_instances.size(); i++) {
+		if (active_instances[i]) {
+			active_instances[i]->_cleanup_ffmpeg_audio();
+		}
+	}
+	instances_mutex.unlock();
 }
 void MoonlightStreamCore::_ar_decode_and_play_sample(char *data, int len) {
-	if (singleton_instance)
-		singleton_instance->_handle_ar_decode_and_play_sample(data, len);
+	instances_mutex.lock();
+	for (int i = 0; i < active_instances.size(); i++) {
+		if (active_instances[i]) {
+			active_instances[i]->_handle_ar_decode_and_play_sample(data, len);
+		}
+	}
+	instances_mutex.unlock();
 }
 
 // ---------------------- miniaudio 原生旁路实现 ----------------------

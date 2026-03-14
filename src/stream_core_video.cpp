@@ -162,7 +162,7 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 		candidates.push_back(base_codec_name + "_mediacodec");
 
 		// Verbose: list discovered MediaCodec component names and generated candidates
-		if (singleton_instance && singleton_instance->verbose_decoders) {
+		if (this->verbose_decoders) {
 			UtilityFunctions::print(LOG_PREFIX "Android MediaCodec components discovered:");
 			for (int i = 0; i < codec_names.size(); i++)
 				UtilityFunctions::print("  - ", codec_names[i]);
@@ -185,9 +185,10 @@ Vector<String> MoonlightStreamCore::_get_candidate_decoders(int codec_family) {
 	return candidates;
 }
 AVPixelFormat MoonlightStreamCore::_get_hw_format_callback(AVCodecContext *ctx, const AVPixelFormat *pix_fmts) {
-	if (singleton_instance && singleton_instance->hw_pix_fmt != AV_PIX_FMT_NONE) {
+	MoonlightStreamCore *instance = (MoonlightStreamCore *)ctx->opaque;
+	if (instance && instance->hw_pix_fmt != AV_PIX_FMT_NONE) {
 		for (const AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
-			if (*p == singleton_instance->hw_pix_fmt)
+			if (*p == instance->hw_pix_fmt)
 				return *p;
 		}
 	}
@@ -208,7 +209,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		base_name = base_name.substr(0, base_name.length() - 7);
 	}
 
-	if (singleton_instance && singleton_instance->verbose_decoders) {
+	if (this->verbose_decoders) {
 		UtilityFunctions::print(LOG_PREFIX "_try_open_decoder base_name: ", base_name, " Original codec_name: ", codec_name);
 	}
 
@@ -225,6 +226,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	AVCodecContext *ctx = avcodec_alloc_context3(codec);
 	if (!ctx)
 		return -1;
+	ctx->opaque = this;
 	ctx->width = width;
 	ctx->height = height;
 	ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
@@ -318,7 +320,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		// We map to an AVDictionary option for mediacodec component selection. Key name may vary by FFmpeg build;
 		// common option used in builds exposing MediaCodec choice is "mediacodec_name".
 		av_dict_set(&opts, "mediacodec_name", special_component.utf8().get_data(), 0);
-		if (singleton_instance && singleton_instance->verbose_decoders) {
+		if (this->verbose_decoders) {
 			UtilityFunctions::print(LOG_PREFIX "Setting av_dict mediacodec_name=", special_component, " for decoder ", base_name);
 		}
 	}
@@ -1056,8 +1058,8 @@ end_of_thread:
 // 静态回调与绑定
 
 void MoonlightStreamCore::_cl_set_hdr_mode(bool enabled) {
-	if (singleton_instance) {
-		singleton_instance->_handle_set_hdr_mode(enabled);
+	for (MoonlightStreamCore *instance : active_instances) {
+		instance->_handle_set_hdr_mode(enabled);
 	}
 }
 
@@ -1091,18 +1093,24 @@ void MoonlightStreamCore::_handle_set_hdr_mode(bool enabled) {
 
 int MoonlightStreamCore::_dr_setup(int fmt, int w, int h, int rate, void *ctx, int flags) { return ((MoonlightStreamCore *)ctx)->_handle_dr_setup(fmt, w, h); }
 void MoonlightStreamCore::_dr_cleanup(void) {
-	if (singleton_instance) {
+	for (MoonlightStreamCore *instance : active_instances) {
 		// 修复：锁定互斥锁以防止与使用该上下文的解码线程发生竞争
-		if (singleton_instance->codec_mutex.is_valid()) {
-			singleton_instance->codec_mutex->lock();
-			singleton_instance->_cleanup_ffmpeg_video();
-			singleton_instance->codec_mutex->unlock();
+		if (instance->codec_mutex.is_valid()) {
+			instance->codec_mutex->lock();
+			instance->_cleanup_ffmpeg_video();
+			instance->codec_mutex->unlock();
 		}
 	}
 }
 int MoonlightStreamCore::_dr_submit_decode_unit(PDECODE_UNIT du) {
-	// 修复：为推送模型路由到实例处理程序
-	if (singleton_instance)
-		return singleton_instance->_handle_dr_submit_decode_unit(du);
+	// 修复：如果没有上下文指针，则遍历 active_instances
+	if (du) {
+		for (MoonlightStreamCore *instance : active_instances) {
+			int ret = instance->_handle_dr_submit_decode_unit(du);
+			if (ret != DR_OK)
+				return ret;
+		}
+	}
 	return DR_OK;
 }
+

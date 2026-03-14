@@ -8,18 +8,38 @@ using namespace godot;
 
 ConfigManager::ConfigManager() {
 	config.instantiate();
-	config_path = "user://addons/moonlight-godot/config.ini";
-	load_config();
+	initialize("");
+}
+
+ConfigManager::ConfigManager(String custom_config_path) {
+	config.instantiate();
+	initialize(custom_config_path);
 }
 
 ConfigManager::~ConfigManager() {
 }
 
+Ref<ConfigManager> ConfigManager::create_config(String custom_config_path) {
+	Ref<ConfigManager> cm;
+	cm.instantiate();
+	cm->initialize(custom_config_path);
+	return cm;
+}
+
+void ConfigManager::initialize(String custom_config_path) {
+	if (custom_config_path.is_empty()) {
+		config_path = "user://addons/moonlight-godot/config.ini";
+	} else {
+		config_path = custom_config_path;
+	}
+	load_config();
+}
+
 void ConfigManager::load_config() {
 	String dir = config_path.get_base_dir();
 	Ref<DirAccess> da = DirAccess::open("user://");
-	if (!da->dir_exists(dir)) {
-		da->make_dir_recursive(dir);
+	if (!DirAccess::dir_exists_absolute(dir)) {
+		DirAccess::make_dir_recursive_absolute(dir); // Will create using static method
 	}
 
 	if (config->load(config_path) != OK) {
@@ -364,6 +384,8 @@ Variant ConfigManager::get_custom_data(ConfigTarget target, int host_idx, int ap
 }
 
 void ConfigManager::_bind_methods() {
+	ClassDB::bind_static_method("ConfigManager", D_METHOD("create_config", "custom_config_path"), &ConfigManager::create_config, DEFVAL(""));
+	ClassDB::bind_method(D_METHOD("initialize", "custom_config_path"), &ConfigManager::initialize, DEFVAL(""));
 	ClassDB::bind_method(D_METHOD("load_config"), &ConfigManager::load_config);
 	ClassDB::bind_method(D_METHOD("save_config"), &ConfigManager::save_config);
 	ClassDB::bind_method(D_METHOD("get_client_keys"), &ConfigManager::get_client_keys);

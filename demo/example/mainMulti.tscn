@@ -1,0 +1,316 @@
+[gd_scene format=3 uid="uid://c6kfbnx8jsqjh"]
+
+[ext_resource type="Script" uid="uid://c0g08uguo8i7o" path="res://example/mainMulti.gd" id="1_iyjup"]
+
+[node name="MainMulti" type="Node" unique_id=858242487]
+script = ExtResource("1_iyjup")
+
+[node name="ScrollContainer" type="ScrollContainer" parent="." unique_id=423980097]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="GridContainer" type="HFlowContainer" parent="ScrollContainer" unique_id=1567672290]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="InstanceOption" type="OptionButton" parent="ScrollContainer/GridContainer" unique_id=1000000001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+
+[node name="AddInstanceBtn" type="Button" parent="ScrollContainer/GridContainer" unique_id=1000000002]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Add Instance"
+
+[node name="LineEdit" type="LineEdit" parent="ScrollContainer/GridContainer" unique_id=292676391]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "192.168.10.27"
+placeholder_text = "input host IP"
+context_menu_enabled = false
+emoji_menu_enabled = false
+clear_button_enabled = true
+
+[node name="LineEdit2" type="LineEdit" parent="ScrollContainer/GridContainer" unique_id=1349395978]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "20"
+placeholder_text = "Bitrate（Mbps）"
+context_menu_enabled = false
+emoji_menu_enabled = false
+clear_button_enabled = true
+
+[node name="CheckButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=940442173]
+layout_mode = 2
+button_pressed = true
+text = "Hardware 
+Decode"
+
+[node name="OptionButton" type="OptionButton" parent="ScrollContainer/GridContainer" unique_id=679843856]
+layout_mode = 2
+selected = 2
+item_count = 4
+popup/item_0/text = "AUTO"
+popup/item_0/id = 0
+popup/item_1/text = "H264"
+popup/item_1/id = 1
+popup/item_2/text = "H265"
+popup/item_2/id = 2
+popup/item_3/text = "AV1"
+popup/item_3/id = 3
+
+[node name="Button" type="Button" parent="ScrollContainer/GridContainer" unique_id=330310015]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+http request"
+
+[node name="Button2" type="Button" parent="ScrollContainer/GridContainer" unique_id=1873826582]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "!test 
+cert create"
+
+[node name="Button3" type="Button" parent="ScrollContainer/GridContainer" unique_id=523297050]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+get host info"
+
+[node name="Button4" type="Button" parent="ScrollContainer/GridContainer" unique_id=1676248367]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "!test remove 
+host info"
+
+[node name="Button5" type="Button" parent="ScrollContainer/GridContainer" unique_id=1251294166]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+start pair"
+
+[node name="Button10" type="Button" parent="ScrollContainer/GridContainer" unique_id=1545997416]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test connect 
+to server"
+
+[node name="Button7" type="Button" parent="ScrollContainer/GridContainer" unique_id=672315278]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+unpair"
+
+[node name="Button8" type="Button" parent="ScrollContainer/GridContainer" unique_id=2039621653]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test
+ get applist"
+
+[node name="Button9" type="Button" parent="ScrollContainer/GridContainer" unique_id=2137848920]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test
+ get app texture→"
+
+[node name="TextureRect" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=1765905250]
+custom_minimum_size = Vector2(60, 80)
+layout_mode = 2
+expand_mode = 1
+
+[node name="Button11" type="Button" parent="ScrollContainer/GridContainer" unique_id=1019568175]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+establish stream"
+
+[node name="Button12" type="Button" parent="ScrollContainer/GridContainer" unique_id=1751002351]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test
+pause stream"
+
+[node name="Button13" type="Button" parent="ScrollContainer/GridContainer" unique_id=1725083854]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "test 
+stop stream"
+
+[node name="Button14" type="Button" parent="ScrollContainer/GridContainer" unique_id=1266637515]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "view 
+appdata"
+
+[node name="AudioBypassButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=222222001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Audio Bypass: OFF"
+
+[node name="CheckButton2" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=550264462]
+layout_mode = 2
+button_pressed = true
+text = "GodotAudio"
+
+[node name="AudioPauseButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=222222002]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Audio Bypass Pause"
+
+[node name="KeyboardButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=333333001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Toggle Keyboard"
+
+[node name="ToggleVideoButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=555555001]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+button_pressed = true
+text = "Video"
+
+[node name="ToggleAudioButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=555555002]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+button_pressed = true
+text = "Audio"
+
+[node name="ToggleInputButton" type="CheckButton" parent="ScrollContainer/GridContainer" unique_id=555555003]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+button_pressed = true
+text = "Input"
+
+[node name="FullscreenButton" type="Button" parent="ScrollContainer/GridContainer" unique_id=555555004]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "Full Screen"
+
+[node name="ScreensGrid" type="GridContainer" parent="ScrollContainer/GridContainer" unique_id=428695045]
+layout_mode = 2
+columns = 2
+
+[node name="FileDialog" type="FileDialog" parent="ScrollContainer" unique_id=1291668764]
+oversampling_override = 1.0
+title = "Open a File or Directory"
+initial_position = 1
+size = Vector2i(640, 480)
+file_mode = 3
+access = 1
+
+[node name="FullscreenLayer" type="CanvasLayer" parent="." unique_id=666666001]
+visible = false
+
+[node name="ColorRect" type="ColorRect" parent="FullscreenLayer" unique_id=666666004]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+[node name="CenterContainer" type="CenterContainer" parent="FullscreenLayer" unique_id=666666005]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="FullscreenScreen" type="TextureRect" parent="FullscreenLayer/CenterContainer" unique_id=666666002]
+layout_mode = 2
+expand_mode = 1
+
+[node name="Border" type="ReferenceRect" parent="FullscreenLayer/CenterContainer/FullscreenScreen" unique_id=714149343]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+border_width = 2.0
+editor_only = false
+
+[node name="ExitFullscreenButton" type="Button" parent="FullscreenLayer" unique_id=666666003]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -60.0
+offset_bottom = 60.0
+grow_horizontal = 0
+theme_override_font_sizes/font_size = 30
+text = "X"
+
+[node name="KeyboardLayer" type="CanvasLayer" parent="." unique_id=444444001]
+visible = false
+
+[node name="KeyboardPanel" type="PanelContainer" parent="KeyboardLayer" unique_id=444444002]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -750.0
+offset_top = -350.0
+offset_right = 750.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="KeyboardLayer/KeyboardPanel" unique_id=444444003]
+layout_mode = 2
+
+[node name="Row0" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444008]
+layout_mode = 2
+alignment = 1
+
+[node name="Row1" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444004]
+layout_mode = 2
+alignment = 1
+
+[node name="Row2" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444005]
+layout_mode = 2
+alignment = 1
+
+[node name="Row3" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444006]
+layout_mode = 2
+alignment = 1
+
+[node name="Row4" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444007]
+layout_mode = 2
+alignment = 1
+
+[node name="Row5" type="HBoxContainer" parent="KeyboardLayer/KeyboardPanel/VBoxContainer" unique_id=444444009]
+layout_mode = 2
+alignment = 1
+
+[connection signal="item_selected" from="ScrollContainer/GridContainer/InstanceOption" to="." method="_on_instance_option_item_selected"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/AddInstanceBtn" to="." method="_on_add_instance_btn_pressed"]
+[connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit" to="." method="_on_line_edit_editing_toggled"]
+[connection signal="editing_toggled" from="ScrollContainer/GridContainer/LineEdit2" to="." method="_on_line_edit_editing_toggled"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button" to="." method="test_http_requeset"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button4" to="." method="test_remove_host_info"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button5" to="." method="test_start_pair"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button10" to="." method="test_connect_to_server"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button7" to="." method="test_cancel_pair"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button8" to="." method="test_get_applist"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button9" to="." method="test_get_app_texture"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button11" to="." method="test_establish_stream"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button12" to="." method="test_pause_streram"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button13" to="." method="test_stop_stream"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/Button14" to="." method="view_data"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/AudioBypassButton" to="." method="test_toggle_audio_bypass"]
+[connection signal="toggled" from="ScrollContainer/GridContainer/CheckButton2" to="." method="_on_check_button_2_toggled"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/AudioPauseButton" to="." method="test_toggle_audio_pause"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/KeyboardButton" to="." method="test_toggle_keyboard"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/ToggleVideoButton" to="." method="_on_toggle_video"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/ToggleAudioButton" to="." method="_on_toggle_audio"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/ToggleInputButton" to="." method="_on_toggle_input"]
+[connection signal="pressed" from="ScrollContainer/GridContainer/FullscreenButton" to="." method="_on_fullscreen_pressed"]
+[connection signal="gui_input" from="FullscreenLayer/CenterContainer/FullscreenScreen" to="." method="_on_screen_gui_input"]
+[connection signal="pressed" from="FullscreenLayer/ExitFullscreenButton" to="." method="_on_exit_fullscreen_pressed"]

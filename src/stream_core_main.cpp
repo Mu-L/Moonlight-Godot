@@ -7,7 +7,8 @@ using namespace godot;
 // Moonlight 流核心：对外接口与生命周期管理
 
 namespace godot {
-MoonlightStreamCore *singleton_instance = nullptr;
+Vector<MoonlightStreamCore *> active_instances;
+Mutex instances_mutex;
 }
 Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 
@@ -53,7 +54,9 @@ static bool _apply_remote_input_keys_from_response(const Dictionary &response, S
 
 MoonlightStreamCore::MoonlightStreamCore() {
 	// 默认参数设定
-	singleton_instance = this;
+	instances_mutex.lock();
+	active_instances.push_back(this);
+	instances_mutex.unlock();
 	is_streaming.store(false);
 	new_frame_available = false;
 	selected_codec_config = CODEC_H264;
@@ -119,11 +122,23 @@ MoonlightStreamCore::~MoonlightStreamCore() {
 		av_frame_free(&sw_frame);
 		sw_frame = nullptr;
 	}
-	if (singleton_instance == this)
-		singleton_instance = nullptr;
+	instances_mutex.lock();
+	active_instances.erase(this);
+	instances_mutex.unlock();
+	if (internal_cm) {
+		memdelete(internal_cm);
+		internal_cm = nullptr;
+	}
 }
 
-void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options) {
+void MoonlightStreamCore::set_config_manager(Object *cm) {
+	config_manager = cm;
+	if (internal_cm) {
+		internal_cm->set_config_manager(cm);
+	}
+}
+
+void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options, String custom_config_path) {
 	// 1.彻底清理上一次会话
 	if (is_streaming.load() || (connection_thread.is_valid() && connection_thread->is_started())) {
 		UtilityFunctions::print(LOG_PREFIX "Stream already running, stopping first...");
@@ -302,7 +317,10 @@ void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<Moonlig
 	if (!internal_cm) {
 		internal_cm = memnew(ComputerManager);
 	}
-	internal_cm->establish_stream(host_id, app_id, opts, callable_mp(this, &MoonlightStreamCore::_on_establish_stream_completed));
+	if (config_manager) {
+		internal_cm->set_config_manager(config_manager);
+	}
+	internal_cm->establish_stream(host_id, app_id, opts, callable_mp(this, &MoonlightStreamCore::_on_establish_stream_completed), custom_config_path);
 }
 
 void MoonlightStreamCore::_on_establish_stream_completed(Dictionary response) {
@@ -588,22 +606,26 @@ void MoonlightStreamCore::_thread_func_connection() {
 void MoonlightStreamCore::_cl_stage_starting(int stage) { UtilityFunctions::print(LOG_PREFIX "Stage Starting: ", LiGetStageName(stage)); }
 void MoonlightStreamCore::_cl_connection_started() {
 	UtilityFunctions::print(LOG_PREFIX "Connection Started");
-	if (singleton_instance) {
-		singleton_instance->call_deferred("emit_signal", "connection_started");
+	instances_mutex.lock();
+	for (MoonlightStreamCore *instance : active_instances) {
+		instance->call_deferred("emit_signal", "connection_started");
 	}
+	instances_mutex.unlock();
 }
 void MoonlightStreamCore::_cl_connection_terminated(int error_code) {
 	UtilityFunctions::print(LOG_PREFIX "Connection Terminated: ", error_code);
 	// 修复：在此处处理终止以确保解码器仅在连接真正断开时停止
-	if (singleton_instance) {
-		singleton_instance->is_streaming.store(false);
-		if (singleton_instance->decode_sem.is_valid()) {
-			singleton_instance->decode_sem->post();
+	instances_mutex.lock();
+	for (MoonlightStreamCore *instance : active_instances) {
+		instance->is_streaming.store(false);
+		if (instance->decode_sem.is_valid()) {
+			instance->decode_sem->post();
 		}
 		// 向调用者发送包含错误详细信息的信号
-		String msg = singleton_instance->_get_error_string(error_code);
-		singleton_instance->call_deferred("emit_signal", "connection_terminated", error_code, msg);
+		String msg = instance->_get_error_string(error_code);
+		instance->call_deferred("emit_signal", "connection_terminated", error_code, msg);
 	}
+	instances_mutex.unlock();
 }
 void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	va_list args;
@@ -612,14 +634,23 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
 	String msg = String(buffer);
-	if (!singleton_instance || singleton_instance->verbose_limelight) {
-		UtilityFunctions::print(LOG_PREFIX "Log from lib: ", msg);
+
+	instances_mutex.lock();
+	bool print_to_console = active_instances.is_empty();
+	for (MoonlightStreamCore *instance : active_instances) {
+		if (instance->verbose_limelight) {
+			print_to_console = true;
+		}
+		instance->call_deferred("emit_signal", "log_message", msg);
 	}
-	if (singleton_instance) {
-		singleton_instance->call_deferred("emit_signal", "log_message", msg);
+	instances_mutex.unlock();
+
+	if (print_to_console) {
+		UtilityFunctions::print(LOG_PREFIX "Log from lib: ", msg);
 	}
 }
 void MoonlightStreamCore::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_config_manager", "cm"), &MoonlightStreamCore::set_config_manager);
 	ClassDB::bind_method(D_METHOD("start_play_stream", "host_id", "app_id", "stream_config_res", "additional_options"), &MoonlightStreamCore::start_play_stream, DEFVAL(Ref<MoonlightAdditionalStreamOptions>()));
 	ClassDB::bind_method(D_METHOD("stop_play_stream"), &MoonlightStreamCore::stop_play_stream);
 	ClassDB::bind_method(D_METHOD("set_render_target", "texture_rect"), &MoonlightStreamCore::set_render_target);
