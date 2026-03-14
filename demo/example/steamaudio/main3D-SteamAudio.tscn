@@ -69,7 +69,7 @@ albedo_color = Color(0, 1, 1, 1)
 
 [node name="Main3D" type="Node3D" unique_id=1123588099 node_paths=PackedStringArray("audio_players")]
 script = ExtResource("1_fj51p")
-audio_players = [NodePath("TVModel/AudioFL"), NodePath("TVModel/AudioFR"), NodePath("TVModel/AudioC"), NodePath("TVModel/AudioLFE"), NodePath("TVModel/AudioRL"), NodePath("TVModel/AudioRR"), NodePath("TVModel/AudioSL"), NodePath("TVModel/AudioSR")]
+audio_players = [NodePath("TVModel/Audio/AudioFL"), NodePath("TVModel/Audio/AudioFR"), NodePath("TVModel/Audio/AudioC"), NodePath("TVModel/Audio/AudioLFE"), NodePath("TVModel/Audio/AudioRL"), NodePath("TVModel/Audio/AudioRR"), NodePath("TVModel/Audio/AudioSL"), NodePath("TVModel/Audio/AudioSR")]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1850260676]
 environment = SubResource("Environment_1")
@@ -78,11 +78,11 @@ environment = SubResource("Environment_1")
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
 
 [node name="SpotLight3D" type="SpotLight3D" parent="Root" unique_id=182597648]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 5.5075665, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 9.318561, 0)
 light_energy = 16.0
 shadow_enabled = true
-spot_range = 14.0
-spot_angle = 60.575832
+spot_range = 16.793774
+spot_angle = 64.056526
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=539713452]
 transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
@@ -98,167 +98,163 @@ mesh = SubResource("PlaneMesh_floor")
 shape = SubResource("ConcavePolygonShape3D_floor")
 
 [node name="TVModel" type="Node3D" parent="." unique_id=284758606]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -4)
+transform = Transform3D(2.8, 0, 0, 0, 2.8, 0, 0, 0, 2.8, 0, 4.34, -10.3)
 
 [node name="ScreenMesh" type="MeshInstance3D" parent="TVModel" unique_id=462702872]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.6500002, 1.0020001)
 material_override = SubResource("StandardMaterial3D_screen")
 mesh = SubResource("QuadMesh_screen")
-
-[node name="AudioFL" type="SteamAudioPlayer" parent="TVModel" unique_id=63120262]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 1.4)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_FL" type="CSGBox3D" parent="TVModel/AudioFL" unique_id=329451611]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_FL")
-
-[node name="Label_FL" type="Label3D" parent="TVModel/AudioFL" unique_id=1494021637]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "FL"
-
-[node name="AudioFR" type="SteamAudioPlayer" parent="TVModel" unique_id=1898452320]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0, 1.4000001)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_FR" type="CSGBox3D" parent="TVModel/AudioFR" unique_id=1326169986]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_FR")
-
-[node name="Label_FR" type="Label3D" parent="TVModel/AudioFR" unique_id=1875943063]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "FR"
-
-[node name="AudioC" type="SteamAudioPlayer" parent="TVModel" unique_id=665450747]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_C" type="CSGBox3D" parent="TVModel/AudioC" unique_id=106193412]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_C")
-
-[node name="Label_C" type="Label3D" parent="TVModel/AudioC" unique_id=7747047]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "C"
-
-[node name="AudioLFE" type="SteamAudioPlayer" parent="TVModel" unique_id=735925870]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, -1.5, 1)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_LFE" type="CSGBox3D" parent="TVModel/AudioLFE" unique_id=2000072436]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_LFE")
-
-[node name="Label_LFE" type="Label3D" parent="TVModel/AudioLFE" unique_id=1336608971]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "LFE"
-
-[node name="AudioRL" type="SteamAudioPlayer" parent="TVModel" unique_id=221400944]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.12, 0, 6.12)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_RL" type="CSGBox3D" parent="TVModel/AudioRL" unique_id=1425856637]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_RL")
-
-[node name="Label_RL" type="Label3D" parent="TVModel/AudioRL" unique_id=1440438561]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "RL"
-
-[node name="AudioRR" type="SteamAudioPlayer" parent="TVModel" unique_id=1949840779]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.12, 0, 6.12)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_RR" type="CSGBox3D" parent="TVModel/AudioRR" unique_id=355212193]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_RR")
-
-[node name="Label_RR" type="Label3D" parent="TVModel/AudioRR" unique_id=1595072740]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "RR"
-
-[node name="AudioSL" type="SteamAudioPlayer" parent="TVModel" unique_id=1398233825]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 4)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_SL" type="CSGBox3D" parent="TVModel/AudioSL" unique_id=1117129881]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_SL")
-
-[node name="Label_SL" type="Label3D" parent="TVModel/AudioSL" unique_id=378551705]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "SL"
-
-[node name="AudioSR" type="SteamAudioPlayer" parent="TVModel" unique_id=1529356136]
-distance_attenuation = true
-air_absorption = true
-reflection = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 4)
-attenuation_model = 3
-volume_db = -5.0
-autoplay = true
-panning_strength = 0.0
-
-[node name="Box_SR" type="CSGBox3D" parent="TVModel/AudioSR" unique_id=523786727]
-size = Vector3(0.2, 0.2, 0.2)
-material = SubResource("StandardMaterial3D_SR")
-
-[node name="Label_SR" type="Label3D" parent="TVModel/AudioSR" unique_id=413010528]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-text = "SR"
 
 [node name="Label3D" type="Label3D" parent="TVModel" unique_id=1435392099]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
 text = "Moonlight Stream"
+
+[node name="Audio" type="Node3D" parent="TVModel" unique_id=438509679]
+transform = Transform3D(1.01, 0, 0, 0, 1.01, 0, 0, 0, 1.01, 0, 0, 0)
+
+[node name="AudioFL" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=63120262]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 1.4000001)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_FL" type="CSGBox3D" parent="TVModel/Audio/AudioFL" unique_id=329451611]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_FL")
+
+[node name="Label_FL" type="Label3D" parent="TVModel/Audio/AudioFL" unique_id=1494021637]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "FL"
+
+[node name="AudioFR" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1898452320]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0, 1.4000001)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_FR" type="CSGBox3D" parent="TVModel/Audio/AudioFR" unique_id=1326169986]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_FR")
+
+[node name="Label_FR" type="Label3D" parent="TVModel/Audio/AudioFR" unique_id=1875943063]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "FR"
+
+[node name="AudioC" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=665450747]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_C" type="CSGBox3D" parent="TVModel/Audio/AudioC" unique_id=106193412]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_C")
+
+[node name="Label_C" type="Label3D" parent="TVModel/Audio/AudioC" unique_id=7747047]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "C"
+
+[node name="AudioLFE" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=735925870]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, -1.5, 1)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_LFE" type="CSGBox3D" parent="TVModel/Audio/AudioLFE" unique_id=2000072436]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_LFE")
+
+[node name="Label_LFE" type="Label3D" parent="TVModel/Audio/AudioLFE" unique_id=1336608971]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "LFE"
+
+[node name="AudioRL" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=221400944]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.12, 0, 6.12)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_RL" type="CSGBox3D" parent="TVModel/Audio/AudioRL" unique_id=1425856637]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_RL")
+
+[node name="Label_RL" type="Label3D" parent="TVModel/Audio/AudioRL" unique_id=1440438561]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "RL"
+
+[node name="AudioRR" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1949840779]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.12, 0, 6.12)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_RR" type="CSGBox3D" parent="TVModel/Audio/AudioRR" unique_id=355212193]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_RR")
+
+[node name="Label_RR" type="Label3D" parent="TVModel/Audio/AudioRR" unique_id=1595072740]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "RR"
+
+[node name="AudioSL" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1398233825]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 4)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_SL" type="CSGBox3D" parent="TVModel/Audio/AudioSL" unique_id=1117129881]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_SL")
+
+[node name="Label_SL" type="Label3D" parent="TVModel/Audio/AudioSL" unique_id=378551705]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "SL"
+
+[node name="AudioSR" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1529356136]
+reflection = true
+max_reflection_distance = 15000.0
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 4)
+volume_db = -2.0
+max_db = 0.0
+autoplay = true
+panning_strength = 0.0
+
+[node name="Box_SR" type="CSGBox3D" parent="TVModel/Audio/AudioSR" unique_id=523786727]
+size = Vector3(0.2, 0.2, 0.2)
+material = SubResource("StandardMaterial3D_SR")
+
+[node name="Label_SR" type="Label3D" parent="TVModel/Audio/AudioSR" unique_id=413010528]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+billboard = 1
+text = "SR"
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=2084065448]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://6sgtpvtg5aic"]
 
-[ext_resource type="SteamAudioMaterial" uid="uid://dbai50r63k346" path="res://addons/godot-steam-audio/materials/rock_material.tres" id="1_m7xfv"]
+[ext_resource type="SteamAudioMaterial" uid="uid://cqx8833t2v8mo" path="res://addons/godot-steam-audio/materials/metal_material.tres" id="1_m7xfv"]
 [ext_resource type="Script" uid="uid://c0t67wh0txs7g" path="res://example/steamaudio/src/door.gd" id="2_11rcm"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xa5je"]

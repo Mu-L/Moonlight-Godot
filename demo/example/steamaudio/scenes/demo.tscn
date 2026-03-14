@@ -31,6 +31,7 @@ shape = SubResource("ConcavePolygonShape3D_n75us")
 material = ExtResource("1_b0nem")
 
 [node name="Door House" parent="." unique_id=323379565 instance=ExtResource("3_tysju")]
+transform = Transform3D(5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0)
 
 [node name="UI" type="Control" parent="." unique_id=2063700323]
 layout_mode = 3
