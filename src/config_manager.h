@@ -34,12 +34,10 @@ public:
 	};
 
 	ConfigManager();
-	ConfigManager(String custom_config_path);
 	~ConfigManager();
 
-	static Ref<ConfigManager> create_config(String custom_config_path = "");
-
-	void initialize(String custom_config_path = "");
+	void set_config_path(const String &path);
+	String get_config_path() const;
 
 	void load_config();
 	void save_config();

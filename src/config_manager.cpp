@@ -8,31 +8,23 @@ using namespace godot;
 
 ConfigManager::ConfigManager() {
 	config.instantiate();
-	initialize("");
-}
-
-ConfigManager::ConfigManager(String custom_config_path) {
-	config.instantiate();
-	initialize(custom_config_path);
+	config_path = "user://addons/moonlight-godot/config.ini";
+	load_config();
 }
 
 ConfigManager::~ConfigManager() {
 }
 
-Ref<ConfigManager> ConfigManager::create_config(String custom_config_path) {
-	Ref<ConfigManager> cm;
-	cm.instantiate();
-	cm->initialize(custom_config_path);
-	return cm;
+void ConfigManager::set_config_path(const String &path) {
+	if (config_path != path) {
+		config_path = path.is_empty() ? "user://addons/moonlight-godot/config.ini" : path;
+		config->clear(); // Clear existing parsed data to prevent merging old config
+		load_config();
+	}
 }
 
-void ConfigManager::initialize(String custom_config_path) {
-	if (custom_config_path.is_empty()) {
-		config_path = "user://addons/moonlight-godot/config.ini";
-	} else {
-		config_path = custom_config_path;
-	}
-	load_config();
+String ConfigManager::get_config_path() const {
+	return config_path;
 }
 
 void ConfigManager::load_config() {
@@ -384,8 +376,10 @@ Variant ConfigManager::get_custom_data(ConfigTarget target, int host_idx, int ap
 }
 
 void ConfigManager::_bind_methods() {
-	ClassDB::bind_static_method("ConfigManager", D_METHOD("create_config", "custom_config_path"), &ConfigManager::create_config, DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("initialize", "custom_config_path"), &ConfigManager::initialize, DEFVAL(""));
+	ClassDB::bind_method(D_METHOD("set_config_path", "path"), &ConfigManager::set_config_path);
+	ClassDB::bind_method(D_METHOD("get_config_path"), &ConfigManager::get_config_path);
+	ClassDB::add_property("ConfigManager", PropertyInfo(Variant::STRING, "config_path"), "set_config_path", "get_config_path");
+
 	ClassDB::bind_method(D_METHOD("load_config"), &ConfigManager::load_config);
 	ClassDB::bind_method(D_METHOD("save_config"), &ConfigManager::save_config);
 	ClassDB::bind_method(D_METHOD("get_client_keys"), &ConfigManager::get_client_keys);

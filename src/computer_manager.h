@@ -99,20 +99,20 @@ public:
 	void set_config_manager(Object *cm);
 
 	// 1. Pairing
-	String start_pair(String ip, int port = 47989, String custom_config_path = "");
-	void cancel_pair(String custom_config_path = "");
-	void unpair(int host_id, String custom_config_path = "");
+	String start_pair(String ip, int port = 47989);
+	void cancel_pair();
+	void unpair(int host_id);
 
 	// 2. Connection
-	void connect_to_computer(String ip, int port = 47989, Callable callback = Callable(), String custom_config_path = "");
+	void connect_to_computer(String ip, int port = 47989, Callable callback = Callable());
 
 	// 3. Apps
-	void get_app_list(int host_id, Callable callback = Callable(), String custom_config_path = "");
-	void get_app_cover(int host_id, int app_id, Callable callback, String custom_config_path = "");
+	void get_app_list(int host_id, Callable callback = Callable());
+	void get_app_cover(int host_id, int app_id, Callable callback);
 
 	// 4. Stream
-	void establish_stream(int host_id, int app_id, Dictionary options, Callable callback, String custom_config_path = "");
-	void stop_stream(int host_id, Callable callback, String custom_config_path = "");
+	void establish_stream(int host_id, int app_id, Dictionary options, Callable callback);
+	void stop_stream(int host_id, Callable callback);
 };
 
 } //namespace godot

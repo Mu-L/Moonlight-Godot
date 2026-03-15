@@ -28,14 +28,11 @@ void ComputerManager::set_config_manager(Object *cm) {
 
 // 1. 配对逻辑
 
-String ComputerManager::start_pair(String ip, int port, String custom_config_path) {
+String ComputerManager::start_pair(String ip, int port) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 
 	_reset_pairing();
@@ -346,13 +343,10 @@ void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body,
 	}
 }
 
-void ComputerManager::cancel_pair(String custom_config_path) {
+void ComputerManager::cancel_pair() {
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 	if (pair_state != PAIR_IDLE && pair_state != PAIR_FINISHED && pair_state != PAIR_ERROR) {
 		// 参考 client.c: gs_unpair
@@ -364,13 +358,10 @@ void ComputerManager::cancel_pair(String custom_config_path) {
 	_reset_pairing();
 }
 
-void ComputerManager::unpair(int host_id, String custom_config_path) {
+void ComputerManager::unpair(int host_id) {
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 	if (config_manager) {
 		config_manager->remove_host(host_id);
@@ -390,14 +381,11 @@ void ComputerManager::_reset_pairing() {
 
 // 2. 测试连接
 
-void ComputerManager::connect_to_computer(String ip, int port, Callable callback, String custom_config_path) {
+void ComputerManager::connect_to_computer(String ip, int port, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 	String url = "http://" + ip + ":" + String::num_int64(port) + "/serverinfo?uniqueid=" + _get_unique_id() + "&uuid=" + _get_uuid();
 	requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(),
@@ -425,14 +413,11 @@ void ComputerManager::_on_server_info_completed(int code, PackedByteArray body, 
 
 // 3. 应用列表及 Cover
 
-void ComputerManager::get_app_list(int host_id, Callable callback, String custom_config_path) {
+void ComputerManager::get_app_list(int host_id, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 	Array hosts = config_manager->get_hosts();
 	String ip;
@@ -491,14 +476,11 @@ void ComputerManager::_on_app_list_completed(int code, PackedByteArray body, Dic
 		callback.call(code == 200);
 }
 
-void ComputerManager::get_app_cover(int host_id, int app_id, Callable callback, String custom_config_path) {
+void ComputerManager::get_app_cover(int host_id, int app_id, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 
 	Array hosts = config_manager->get_hosts();
@@ -535,14 +517,11 @@ void ComputerManager::_on_app_cover_completed(int code, PackedByteArray body, Di
 
 // 4. 流连接管理
 
-void ComputerManager::establish_stream(int host_id, int app_id, Dictionary options, Callable callback, String custom_config_path) {
+void ComputerManager::establish_stream(int host_id, int app_id, Dictionary options, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 	Array hosts = config_manager->get_hosts();
 	String ip;
@@ -790,14 +769,11 @@ void ComputerManager::_on_launch_request_completed(int code, PackedByteArray bod
 	cb.call(response);
 }
 
-void ComputerManager::stop_stream(int host_id, Callable callback, String custom_config_path) {
+void ComputerManager::stop_stream(int host_id, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
 		config_manager = memnew(ConfigManager);
-		config_manager->initialize(custom_config_path);
 		owns_config_manager = true;
-	} else if (!custom_config_path.is_empty()) {
-		config_manager->initialize(custom_config_path);
 	}
 	Array hosts = config_manager->get_hosts();
 	String ip;
@@ -1005,15 +981,15 @@ Dictionary ComputerManager::_get_ssl_options() {
 void ComputerManager::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_config_manager", "cm"), &ComputerManager::set_config_manager);
 
-	ClassDB::bind_method(D_METHOD("start_pair", "ip", "port", "custom_config_path"), &ComputerManager::start_pair, DEFVAL(47989), DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("cancel_pair", "custom_config_path"), &ComputerManager::cancel_pair, DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("unpair", "host_id", "custom_config_path"), &ComputerManager::unpair, DEFVAL(""));
+	ClassDB::bind_method(D_METHOD("start_pair", "ip", "port"), &ComputerManager::start_pair, DEFVAL(47989));
+	ClassDB::bind_method(D_METHOD("cancel_pair"), &ComputerManager::cancel_pair);
+	ClassDB::bind_method(D_METHOD("unpair", "host_id"), &ComputerManager::unpair);
 
-	ClassDB::bind_method(D_METHOD("connect_to_computer", "ip", "port", "callback", "custom_config_path"), &ComputerManager::connect_to_computer, DEFVAL(47989), DEFVAL(Callable()), DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("get_app_list", "host_id", "callback", "custom_config_path"), &ComputerManager::get_app_list, DEFVAL(Callable()), DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("get_app_cover", "host_id", "app_id", "callback", "custom_config_path"), &ComputerManager::get_app_cover, DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("establish_stream", "host_id", "app_id", "options", "callback", "custom_config_path"), &ComputerManager::establish_stream, DEFVAL(""));
-	ClassDB::bind_method(D_METHOD("stop_stream", "host_id", "callback", "custom_config_path"), &ComputerManager::stop_stream, DEFVAL(""));
+	ClassDB::bind_method(D_METHOD("connect_to_computer", "ip", "port", "callback"), &ComputerManager::connect_to_computer, DEFVAL(47989), DEFVAL(Callable()));
+	ClassDB::bind_method(D_METHOD("get_app_list", "host_id", "callback"), &ComputerManager::get_app_list, DEFVAL(Callable()));
+	ClassDB::bind_method(D_METHOD("get_app_cover", "host_id", "app_id", "callback"), &ComputerManager::get_app_cover);
+	ClassDB::bind_method(D_METHOD("establish_stream", "host_id", "app_id", "options", "callback"), &ComputerManager::establish_stream);
+	ClassDB::bind_method(D_METHOD("stop_stream", "host_id", "callback"), &ComputerManager::stop_stream);
 
 	ClassDB::bind_method(D_METHOD("_on_pair_request_completed"), &ComputerManager::_on_pair_request_completed);
 	ClassDB::bind_method(D_METHOD("_on_server_info_completed"), &ComputerManager::_on_server_info_completed);

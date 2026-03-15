@@ -29,6 +29,7 @@
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -90,8 +91,8 @@ typedef unsigned int ma_uint32;
 namespace godot {
 
 class MoonlightStreamCore;
-extern Vector<MoonlightStreamCore *> active_instances;
-extern Mutex instances_mutex;
+extern std::vector<MoonlightStreamCore *> active_instances;
+extern std::mutex instances_mutex;
 
 class MoonlightStreamConfigurationResource;
 class MoonlightAdditionalStreamOptions;
@@ -196,7 +197,7 @@ public:
 
 	void set_config_manager(Object *cm);
 
-	void start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>(), String custom_config_path = "");
+	void start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options = Ref<MoonlightAdditionalStreamOptions>());
 	void stop_play_stream();
 	void set_render_target(TextureRect *target);
 	void reset_render_target();
@@ -434,8 +435,8 @@ private:
 
 // Active instances (defined in stream_core_main.cpp)
 namespace godot {
-extern Vector<MoonlightStreamCore *> active_instances;
-extern Mutex instances_mutex;
+extern std::vector<MoonlightStreamCore *> active_instances;
+extern std::mutex instances_mutex;
 }
 
 VARIANT_ENUM_CAST(godot::MoonlightStreamCore::VideoCodecConfig);

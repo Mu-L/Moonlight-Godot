@@ -36,8 +36,10 @@ func _add_instance() -> void:
     inst.computermanager = ComputerManager.new()
     inst.moonlightstreamcore = MoonlightStreamCore.new()
     
-    inst.configmanager.set_custom_config_path(inst.custom_config_path)
-    inst.computermanager.set_custom_config_path(inst.custom_config_path)
+    if inst.custom_config_path != "":
+        inst.configmanager.config_path = inst.custom_config_path
+    inst.computermanager.set_config_manager(inst.configmanager)
+    inst.moonlightstreamcore.set_config_manager(inst.configmanager)
     
     inst.computermanager.pair_completed.connect(on_pair_complete)
     inst.moonlightstreamcore.connection_started.connect(func(): print("[Instance %s] Connect Successfully" % inst.index))
@@ -274,12 +276,40 @@ func _on_vk_key_event(keycode: int, pressed: bool) -> void:
 func _on_fullscreen_pressed() -> void:
     is_fullscreen = true
     $FullscreenLayer.visible = true
+    
+    var screen = $FullscreenLayer/CenterContainer/FullscreenScreen
+    
+    var stream_width = 1920.0
+    var stream_height = 1080.0
+    if current_stream_config != null:
+        stream_width = float(current_stream_config.get_width())
+        stream_height = float(current_stream_config.get_height())
+        
+    var stream_ratio = stream_width / stream_height
+    
+    var window_size = get_viewport().get_visible_rect().size
+    var window_ratio = window_size.x / window_size.y
+    
+    var target_size = Vector2()
+    if window_ratio > stream_ratio:
+        target_size.y = window_size.y
+        target_size.x = target_size.y * stream_ratio
+    else:
+        target_size.x = window_size.x
+        target_size.y = target_size.x / stream_ratio
+        
+    screen.custom_minimum_size = target_size
+
     if video_enabled and _moonlight():
-        _moonlight().set_render_target($FullscreenLayer/CenterContainer/FullscreenScreen)
+        _moonlight().set_render_target(screen)
 
 func _on_exit_fullscreen_pressed() -> void:
     is_fullscreen = false
     $FullscreenLayer.visible = false
+    
+    var screen = $FullscreenLayer/CenterContainer/FullscreenScreen
+    screen.custom_minimum_size = Vector2(0, 0)
+    
     if video_enabled and _moonlight() and current_instance:
         _moonlight().set_render_target(current_instance.texture_rect)
 

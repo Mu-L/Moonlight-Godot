@@ -11,6 +11,9 @@ var input_enabled: bool = true
 var is_fullscreen: bool = false
 
 func _ready() -> void:
+    computermamager.set_config_manager(configmanager)
+    moonlightstreamcore.set_config_manager(configmanager)
+    
     computermamager.pair_completed.connect(on_pair_complete)
     moonlightstreamcore.connection_started.connect(func():print("[Moonlight-Godot-MoonlightStreamCore]","Connect Successfully!"))
     moonlightstreamcore.connection_terminated.connect(func(_err,msg):push_error("[Moonlight-Godot-MoonlightStreamCore]",msg))

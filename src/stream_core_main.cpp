@@ -2,13 +2,14 @@
 #include "stream_core.h"
 #include "stream_core_struct.h"
 #include <Limelight.h>
+#include <algorithm>
 using namespace godot;
 
 // Moonlight 流核心：对外接口与生命周期管理
 
 namespace godot {
-Vector<MoonlightStreamCore *> active_instances;
-Mutex instances_mutex;
+std::vector<MoonlightStreamCore *> active_instances;
+std::mutex instances_mutex;
 }
 Mutex *MoonlightStreamCore::lib_global_mutex = nullptr;
 
@@ -123,7 +124,7 @@ MoonlightStreamCore::~MoonlightStreamCore() {
 		sw_frame = nullptr;
 	}
 	instances_mutex.lock();
-	active_instances.erase(this);
+	active_instances.erase(std::remove(active_instances.begin(), active_instances.end(), this), active_instances.end());
 	instances_mutex.unlock();
 	if (internal_cm) {
 		memdelete(internal_cm);
@@ -138,7 +139,7 @@ void MoonlightStreamCore::set_config_manager(Object *cm) {
 	}
 }
 
-void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options, String custom_config_path) {
+void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<MoonlightStreamConfigurationResource> stream_config_res, Ref<MoonlightAdditionalStreamOptions> additional_options) {
 	// 1.彻底清理上一次会话
 	if (is_streaming.load() || (connection_thread.is_valid() && connection_thread->is_started())) {
 		UtilityFunctions::print(LOG_PREFIX "Stream already running, stopping first...");
@@ -320,7 +321,7 @@ void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<Moonlig
 	if (config_manager) {
 		internal_cm->set_config_manager(config_manager);
 	}
-	internal_cm->establish_stream(host_id, app_id, opts, callable_mp(this, &MoonlightStreamCore::_on_establish_stream_completed), custom_config_path);
+	internal_cm->establish_stream(host_id, app_id, opts, callable_mp(this, &MoonlightStreamCore::_on_establish_stream_completed));
 }
 
 void MoonlightStreamCore::_on_establish_stream_completed(Dictionary response) {
@@ -636,7 +637,7 @@ void MoonlightStreamCore::_cl_log_message(const char *format, ...) {
 	String msg = String(buffer);
 
 	instances_mutex.lock();
-	bool print_to_console = active_instances.is_empty();
+	bool print_to_console = active_instances.empty();
 	for (MoonlightStreamCore *instance : active_instances) {
 		if (instance->verbose_limelight) {
 			print_to_console = true;
