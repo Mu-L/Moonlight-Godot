@@ -75,14 +75,14 @@ audio_players = [NodePath("TVModel/Audio/AudioFL"), NodePath("TVModel/Audio/Audi
 environment = SubResource("Environment_1")
 
 [node name="Root" parent="." unique_id=1696921572 instance=ExtResource("2_bs8di")]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
+transform = Transform3D(-8.742278e-08, 0, 2, 0, 2, 0, -2, 0, -8.742278e-08, 0, 0, 0)
 
 [node name="SpotLight3D" type="SpotLight3D" parent="Root" unique_id=182597648]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 9.318561, 0)
-light_energy = 16.0
+transform = Transform3D(0.5, 0, 0, 0, -2.1855694e-08, 0.5, 0, -0.5, -2.1855694e-08, 0, 12.614797, 0)
+light_energy = 80.0
 shadow_enabled = true
-spot_range = 16.793774
-spot_angle = 64.056526
+spot_range = 36.104824
+spot_angle = 68.814026
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=539713452]
 transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
@@ -98,7 +98,7 @@ mesh = SubResource("PlaneMesh_floor")
 shape = SubResource("ConcavePolygonShape3D_floor")
 
 [node name="TVModel" type="Node3D" parent="." unique_id=284758606]
-transform = Transform3D(2.8, 0, 0, 0, 2.8, 0, 0, 0, 2.8, 0, 4.34, -10.3)
+transform = Transform3D(5, 0, 0, 0, 5, 0, 0, 0, 5, 0, 8, -19.3)
 
 [node name="ScreenMesh" type="MeshInstance3D" parent="TVModel" unique_id=462702872]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.6500002, 1.0020001)
@@ -113,11 +113,11 @@ text = "Moonlight Stream"
 transform = Transform3D(1.01, 0, 0, 0, 1.01, 0, 0, 0, 1.01, 0, 0, 0)
 
 [node name="AudioFL" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=63120262]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0, 1.4000001)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 
@@ -131,11 +131,11 @@ billboard = 1
 text = "FL"
 
 [node name="AudioFR" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1898452320]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0, 1.4000001)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 
@@ -149,11 +149,11 @@ billboard = 1
 text = "FR"
 
 [node name="AudioC" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=665450747]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 
@@ -167,11 +167,11 @@ billboard = 1
 text = "C"
 
 [node name="AudioLFE" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=735925870]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, -1.5, 1)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 
@@ -185,11 +185,11 @@ billboard = 1
 text = "LFE"
 
 [node name="AudioRL" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=221400944]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.12, 0, 6.12)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 
@@ -203,11 +203,11 @@ billboard = 1
 text = "RL"
 
 [node name="AudioRR" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1949840779]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.12, 0, 6.12)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 
@@ -221,11 +221,11 @@ billboard = 1
 text = "RR"
 
 [node name="AudioSL" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1398233825]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 4)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 
@@ -239,11 +239,11 @@ billboard = 1
 text = "SL"
 
 [node name="AudioSR" type="SteamAudioPlayer" parent="TVModel/Audio" unique_id=1529356136]
+air_absorption = true
 reflection = true
 max_reflection_distance = 15000.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 4)
-volume_db = -2.0
-max_db = 0.0
+volume_db = 3.0
 autoplay = true
 panning_strength = 0.0
 

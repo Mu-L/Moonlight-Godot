@@ -954,6 +954,10 @@ AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) cons
 }
 // 线程逻辑
 void MoonlightStreamCore::_thread_func_video_decode() {
+	if (pending_add_opts.is_valid() && pending_add_opts->get_disable_video()) {
+		UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Stopping (Video disabled)");
+		goto end_of_thread;
+	}
 	UtilityFunctions::print(LOG_PREFIX "Video Decode Thread Started");
 	while (true) {
 		// 等待数据包
