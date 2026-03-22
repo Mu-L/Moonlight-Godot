@@ -339,6 +339,18 @@ int MoonlightInput::godot_to_virtual_key(int godot_key) {
 			return VK_OEM_PERIOD; // '.'
 		case 47:
 			return VK_OEM_2; // '/'
+		case 59:
+			return VK_OEM_1; // ';'
+		case 61:
+			return VK_OEM_PLUS; // '='
+		case 91:
+			return VK_OEM_4; // '['
+		case 92:
+			return VK_OEM_5; // '\'
+		case 93:
+			return VK_OEM_6; // ']'
+		case 96:
+			return VK_OEM_3; // '`' (backtick)
 
 		// Godot 的高位特殊键（多数从 4194304 起）
 		case 4194305:

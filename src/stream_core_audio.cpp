@@ -93,7 +93,7 @@ String AudioStreamMoonlight::_get_stream_name() const { return "Moonlight Audio"
 
 void AudioStreamMoonlight::push_audio(const float *samples, int count) {
 	// `count` is number of floats (interleaved samples)
-	buffer_mutex->lock();
+	std::lock_guard<godot::Mutex> lock(*(buffer_mutex.ptr()));
 	int free_space = rb_capacity - rb_used;
 	if (count > free_space) {
 		int overflow = count - free_space;
@@ -108,11 +108,10 @@ void AudioStreamMoonlight::push_audio(const float *samples, int count) {
 		memcpy(ptr, samples + first_chunk, second_chunk * sizeof(float));
 	rb_write_pos = (rb_write_pos + count) % rb_capacity;
 	rb_used += count;
-	buffer_mutex->unlock();
 }
 
 int AudioStreamMoonlight::read_samples(AudioFrame *dst_buffer, int frame_count) {
-	buffer_mutex->lock();
+	std::lock_guard<godot::Mutex> lock(*(buffer_mutex.ptr()));
 	int available_frames = 0;
 	if (channel_count > 0)
 		available_frames = rb_used / channel_count;
@@ -141,7 +140,7 @@ int AudioStreamMoonlight::read_samples(AudioFrame *dst_buffer, int frame_count) 
 	}
 	rb_read_pos = current_pos;
 	rb_used -= (frames_to_read * channel_count);
-	buffer_mutex->unlock();
+
 	if (frames_to_read < frame_count) {
 		for (int i = frames_to_read; i < frame_count; i++) {
 			dst_buffer[i].left = 0.0f;
@@ -152,11 +151,10 @@ int AudioStreamMoonlight::read_samples(AudioFrame *dst_buffer, int frame_count) 
 }
 
 void AudioStreamMoonlight::clear_buffer() {
-	buffer_mutex->lock();
+	std::lock_guard<godot::Mutex> lock(*(buffer_mutex.ptr()));
 	rb_write_pos = 0;
 	rb_read_pos = 0;
 	rb_used = 0;
-	buffer_mutex->unlock();
 }
 
 void AudioStreamMoonlight::_bind_methods() {}
@@ -357,7 +355,7 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 
 				// 如果启用了原生旁路音频，且原生通道数为2，则也写入 native 环形缓冲（立体声路径）
 				if (native_audio_bypass_enabled && native_audio_channel_count == 2) {
-					native_audio_mutex->lock();
+					std::lock_guard<godot::Mutex> lock(*(native_audio_mutex.ptr()));
 					int samples_to_write_st = out_samples * 2;
 					int free_space_st = native_rb_capacity - native_rb_used;
 					if (samples_to_write_st > free_space_st) {
@@ -373,7 +371,6 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 						memcpy(ringptr_st, out_buf + first_chunk_st, second_chunk_st * sizeof(float));
 					native_rb_write_pos = (native_rb_write_pos + samples_to_write_st) % native_rb_capacity;
 					native_rb_used += samples_to_write_st;
-					native_audio_mutex->unlock();
 				}
 			}
 			if (huge_frame)
@@ -416,7 +413,7 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 
 						// 如果启用了原生旁路音频且需要多声道，则将交错多声道样本写入 native 环形缓冲
 						if (native_audio_bypass_enabled && native_audio_channel_count > 2) {
-							native_audio_mutex->lock();
+							std::lock_guard<godot::Mutex> lock(*(native_audio_mutex.ptr()));
 							int samples_to_write = out_samples_multi * expected_ch;
 							int free_space = native_rb_capacity - native_rb_used;
 							if (samples_to_write > free_space) {
@@ -432,7 +429,6 @@ void MoonlightStreamCore::_handle_ar_decode_and_play_sample(char *data, int len)
 								memcpy(ringptr, multi_buf + first_chunk, second_chunk * sizeof(float));
 							native_rb_write_pos = (native_rb_write_pos + samples_to_write) % native_rb_capacity;
 							native_rb_used += samples_to_write;
-							native_audio_mutex->unlock();
 						}
 					}
 					av_free(multi_buf);
@@ -527,17 +523,19 @@ void MoonlightStreamCore::_mab_device_callback(ma_device *pDevice, void *pOutput
 		memset(out, 0, samples_needed * sizeof(float));
 		return;
 	}
-	core->native_audio_mutex->lock();
-	int available = core->native_rb_used;
-	int to_read = MIN(samples_needed, available);
-	int read_pos = core->native_rb_read_pos;
-	for (int i = 0; i < to_read; i++) {
-		out[i] = core->native_audio_ring[read_pos];
-		read_pos = (read_pos + 1) % core->native_rb_capacity;
+	int to_read = 0;
+	{
+		std::lock_guard<godot::Mutex> lock(*(core->native_audio_mutex.ptr()));
+		int available = core->native_rb_used;
+		to_read = MIN(samples_needed, available);
+		int read_pos = core->native_rb_read_pos;
+		for (int i = 0; i < to_read; i++) {
+			out[i] = core->native_audio_ring[read_pos];
+			read_pos = (read_pos + 1) % core->native_rb_capacity;
+		}
+		core->native_rb_read_pos = read_pos;
+		core->native_rb_used -= to_read;
 	}
-	core->native_rb_read_pos = read_pos;
-	core->native_rb_used -= to_read;
-	core->native_audio_mutex->unlock();
 	if (to_read < samples_needed) {
 		memset(out + to_read, 0, (samples_needed - to_read) * sizeof(float));
 	}
@@ -590,9 +588,8 @@ void MoonlightStreamCore::_native_audio_stop() {
 	}
 	// clear buffer
 	if (native_audio_mutex.is_valid()) {
-		native_audio_mutex->lock();
+		std::lock_guard<godot::Mutex> lock(*(native_audio_mutex.ptr()));
 		native_rb_write_pos = native_rb_read_pos = native_rb_used = 0;
-		native_audio_mutex->unlock();
 	}
 }
 

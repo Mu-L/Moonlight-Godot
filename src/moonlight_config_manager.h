@@ -8,8 +8,8 @@
 
 namespace godot {
 
-class ConfigManager : public MoonlightGodot {
-	GDCLASS(ConfigManager, MoonlightGodot)
+class MoonlightConfigManager : public MoonlightGodot {
+	GDCLASS(MoonlightConfigManager, MoonlightGodot)
 
 private:
 	Ref<ConfigFile> config;
@@ -33,8 +33,8 @@ public:
 		TARGET_APP
 	};
 
-	ConfigManager();
-	~ConfigManager();
+	MoonlightConfigManager();
+	~MoonlightConfigManager();
 
 	void set_config_path(const String &path);
 	String get_config_path() const;
@@ -64,4 +64,4 @@ public:
 
 } // namespace godot
 
-VARIANT_ENUM_CAST(ConfigManager::ConfigTarget);
+VARIANT_ENUM_CAST(MoonlightConfigManager::ConfigTarget);

@@ -1,4 +1,4 @@
-#include "requester.h"
+#include "moonlight_requester.h"
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -9,28 +9,28 @@ using namespace godot;
 
 static std::once_flag curl_init_flag;
 
-Requester::Requester() {
+MoonlightRequester::MoonlightRequester() {
 	// 确保 curl 全局初始化只执行一次，且线程安全
 	std::call_once(curl_init_flag, []() {
 		curl_global_init(CURL_GLOBAL_ALL);
 	});
 }
 
-Requester::~Requester() {
+MoonlightRequester::~MoonlightRequester() {
 }
 
-void Requester::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("request", "url", "method", "body", "headers", "ssl_options", "callback"), &Requester::request);
+void MoonlightRequester::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("request", "url", "method", "body", "headers", "ssl_options", "callback"), &MoonlightRequester::request);
 }
 
-size_t Requester::_write_cb(void *contents, size_t size, size_t nmemb, void *userp) {
+size_t MoonlightRequester::_write_cb(void *contents, size_t size, size_t nmemb, void *userp) {
 	size_t real_size = size * nmemb;
 	std::vector<uint8_t> *mem = (std::vector<uint8_t> *)userp;
 	mem->insert(mem->end(), (uint8_t *)contents, (uint8_t *)contents + real_size);
 	return real_size;
 }
 
-size_t Requester::_header_cb(char *buffer, size_t size, size_t nitems, void *userdata) {
+size_t MoonlightRequester::_header_cb(char *buffer, size_t size, size_t nitems, void *userdata) {
 	size_t real_size = size * nitems;
 	Dictionary *headers = (Dictionary *)userdata;
 	String header_line = String::utf8(buffer, real_size).strip_edges();
@@ -44,9 +44,9 @@ size_t Requester::_header_cb(char *buffer, size_t size, size_t nitems, void *use
 	return real_size;
 }
 
-void Requester::request(String p_url, String p_method, PackedByteArray p_body, Dictionary p_headers, Dictionary p_ssl_options, Callable p_callback) {
+void MoonlightRequester::request(String p_url, String p_method, PackedByteArray p_body, Dictionary p_headers, Dictionary p_ssl_options, Callable p_callback) {
 	if (OS::get_singleton()->is_debug_build()) {
-		UtilityFunctions::print("[Moonlight-Requester-Debug] ", p_method, " ", p_url);
+		UtilityFunctions::print("[Moonlight-MoonlightRequester-Debug] ", p_method, " ", p_url);
 	}
 
 	// 使用 std::thread 异步执行，detach 分离线程（简单起见，生产环境建议使用线程池）
@@ -55,7 +55,7 @@ void Requester::request(String p_url, String p_method, PackedByteArray p_body, D
 	}).detach();
 }
 
-void Requester::_perform_request_thread(String p_url, String p_method, PackedByteArray p_body, Dictionary p_headers, Dictionary p_ssl_options, Callable p_callback) {
+void MoonlightRequester::_perform_request_thread(String p_url, String p_method, PackedByteArray p_body, Dictionary p_headers, Dictionary p_ssl_options, Callable p_callback) {
 	CURL *curl = curl_easy_init();
 	ResponseData res_data;
 	std::vector<uint8_t> body_buffer;
@@ -171,9 +171,9 @@ void Requester::_perform_request_thread(String p_url, String p_method, PackedByt
 			}
 
 			if (OS::get_singleton()->is_debug_build()) {
-				UtilityFunctions::print("[Moonlight-Requester-Debug] Response Code: ", res_data.response_code);
+				UtilityFunctions::print("[Moonlight-MoonlightRequester-Debug] Response Code: ", res_data.response_code);
 				if (res_data.body.size() > 0) {
-					UtilityFunctions::print("[Moonlight-Requester-Debug] Response Body: ", res_data.body.get_string_from_utf8());
+					UtilityFunctions::print("[Moonlight-MoonlightRequester-Debug] Response Body: ", res_data.body.get_string_from_utf8());
 				}
 			}
 		}

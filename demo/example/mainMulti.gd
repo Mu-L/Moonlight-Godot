@@ -2,8 +2,8 @@ extends Node
 
 class MoonlightInstance:
     var index: int = 0
-    var configmanager: ConfigManager
-    var computermanager: ComputerManager
+    var moonlight_config_manager: MoonlightConfigManager
+    var moonlight_computer_manager: MoonlightComputerManager
     var moonlightstreamcore: MoonlightStreamCore
     var audio_player: AudioStreamPlayer
     var texture_rect: TextureRect
@@ -12,7 +12,7 @@ class MoonlightInstance:
 var instances: Array[MoonlightInstance] = []
 var current_instance: MoonlightInstance = null
 
-@onready var requester = Requester.new()
+@onready var moonlight_requester = MoonlightRequester.new()
 
 var video_enabled: bool = true
 var audio_enabled: bool = true
@@ -32,16 +32,16 @@ func _add_instance() -> void:
     else:
         inst.custom_config_path = "user://addons/moonlight-godot/multiconfig/config%s.ini" % inst.index
         
-    inst.configmanager = ConfigManager.new()
-    inst.computermanager = ComputerManager.new()
+    inst.moonlight_config_manager = MoonlightConfigManager.new()
+    inst.moonlight_computer_manager = MoonlightComputerManager.new()
     inst.moonlightstreamcore = MoonlightStreamCore.new()
     
     if inst.custom_config_path != "":
-        inst.configmanager.config_path = inst.custom_config_path
-    inst.computermanager.set_config_manager(inst.configmanager)
-    inst.moonlightstreamcore.set_config_manager(inst.configmanager)
+        inst.moonlight_config_manager.config_path = inst.custom_config_path
+    inst.moonlight_computer_manager.set_config_manager(inst.moonlight_config_manager)
+    inst.moonlightstreamcore.set_config_manager(inst.moonlight_config_manager)
     
-    inst.computermanager.pair_completed.connect(on_pair_complete)
+    inst.moonlight_computer_manager.pair_completed.connect(on_pair_complete)
     inst.moonlightstreamcore.connection_started.connect(func(): print("[Instance %s] Connect Successfully" % inst.index))
     inst.moonlightstreamcore.connection_terminated.connect(func(_err, msg): push_error("[Instance %s] " % inst.index, msg))
     
@@ -78,7 +78,7 @@ func _select_instance(index: int) -> void:
         var opt_btn = $ScrollContainer/GridContainer/InstanceOption
         opt_btn.selected = index
         # Update UI info based on current instance, setup ip if available
-        var hosts = current_instance.configmanager.get_hosts()
+        var hosts = current_instance.moonlight_config_manager.get_hosts()
         if hosts.size() > 0:
             $ScrollContainer/GridContainer/LineEdit.text = hosts[0].localaddress
 
@@ -91,19 +91,19 @@ func _moonlight() -> MoonlightStreamCore:
     if current_instance: return current_instance.moonlightstreamcore
     return null
 
-func _computer() -> ComputerManager:
-    if current_instance: return current_instance.computermanager
+func _computer() -> MoonlightComputerManager:
+    if current_instance: return current_instance.moonlight_computer_manager
     return null
 
-func _config() -> ConfigManager:
-    if current_instance: return current_instance.configmanager
+func _config() -> MoonlightConfigManager:
+    if current_instance: return current_instance.moonlight_config_manager
     return null
 
 # ... keeping existing UI tests functioning over current ...
 
 func test_http_requeset() -> void:
     var url = "http://httpbin.org/uuid"
-    requester.request(url, "GET", PackedByteArray(), {}, {}, Callable(self , "_on_baidu_request_completed"))
+    moonlight_requester.request(url, "GET", PackedByteArray(), {}, {}, Callable(self , "_on_baidu_request_completed"))
 
 func _on_baidu_request_completed(response_code: int, response_body: PackedByteArray, response_headers: Dictionary, error_text: String) -> void:
     if error_text.is_empty():
@@ -250,7 +250,11 @@ func _on_instance_screen_gui_input(event: InputEvent, inst: MoonlightInstance) -
         if event.ctrl_pressed: modifiers |= MoonlightInput.MODIFIER_CTRL_BIT
         if event.alt_pressed: modifiers |= MoonlightInput.MODIFIER_ALT_BIT
         if event.meta_pressed: modifiers |= MoonlightInput.MODIFIER_META_BIT
-        mc.send_keyboard_event(event.keycode, action, modifiers)
+        
+        # The backend now handles mapping Godot keycodes to standard HID keycodes.
+        # We can pass the Godot keycode directly without any manual conversion here.
+        var keycode = event.keycode
+        mc.send_keyboard_event(keycode, action, modifiers)
 
 func _on_check_button_2_toggled(toggled_on: bool) -> void:
     if current_instance and current_instance.audio_player:

@@ -20,6 +20,12 @@
 		<member name="video_codec" type="int" setter="set_video_codec" getter="get_video_codec">
 			指定希望使用的视频编解码器，使用与 [code]MoonlightStreamCore.VideoCodecConfig[/code] 对应的整数值（例如 1 = H.264）。
 		</member>
+		<member name="disable_video" type="bool" setter="set_disable_video" getter="get_disable_video">
+			禁用视频串流。如不需要获取画面，将其设为 true 能够降低串流带宽和系统负载以节省资源。
+		</member>
+		<member name="disable_audio" type="bool" setter="set_disable_audio" getter="get_disable_audio">
+			禁用音频串流。如不需要接收游戏主机端的音频，将其设为 true 能够降低串流带宽和系统负载以节省资源。
+		</member>
 	</members>
 	<methods>
 		<method name="set_disable_hw_acceleration">

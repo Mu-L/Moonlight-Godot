@@ -1,8 +1,8 @@
 #pragma once
 
-#include "config_manager.h"
+#include "moonlight_config_manager.h"
 #include "moonlight_godot.h"
-#include "requester.h"
+#include "moonlight_requester.h"
 #include <godot_cpp/classes/aes_context.hpp>
 #include <godot_cpp/classes/crypto.hpp>
 #include <godot_cpp/classes/crypto_key.hpp>
@@ -14,12 +14,12 @@
 
 namespace godot {
 
-class ComputerManager : public MoonlightGodot {
-	GDCLASS(ComputerManager, MoonlightGodot)
+class MoonlightComputerManager : public MoonlightGodot {
+	GDCLASS(MoonlightComputerManager, MoonlightGodot)
 
 private:
-	ConfigManager *config_manager = nullptr;
-	Requester *requester = nullptr;
+	MoonlightConfigManager *config_manager = nullptr;
+	MoonlightRequester *moonlight_requester = nullptr;
 
 	// Pairing state machine
 	enum PairState {
@@ -93,8 +93,8 @@ protected:
 	static void _bind_methods();
 
 public:
-	ComputerManager();
-	~ComputerManager();
+	MoonlightComputerManager();
+	~MoonlightComputerManager();
 
 	void set_config_manager(Object *cm);
 

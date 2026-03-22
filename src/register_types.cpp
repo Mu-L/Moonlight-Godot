@@ -6,10 +6,10 @@
 #include <godot_cpp/godot.hpp>
 
 // #include "moonlight_stream_core.h"
-#include "computer_manager.h"
-#include "config_manager.h" // Include header
+#include "moonlight_computer_manager.h"
+#include "moonlight_config_manager.h" // Include header
 #include "moonlight_godot.h"
-#include "requester.h"
+#include "moonlight_requester.h"
 #include "stream_core.h"
 #include "stream_core_input_enum.h"
 #include "stream_core_struct.h"
@@ -25,9 +25,9 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	// 必须先注册父类，再注册子类
 	GDREGISTER_CLASS(MoonlightGodot);
 	
-	GDREGISTER_CLASS(ConfigManager); // Register class
-	GDREGISTER_CLASS(Requester);
-	GDREGISTER_CLASS(ComputerManager);
+	GDREGISTER_CLASS(MoonlightConfigManager); // Register class
+	GDREGISTER_CLASS(MoonlightRequester);
+	GDREGISTER_CLASS(MoonlightComputerManager);
 	GDREGISTER_CLASS(MoonlightStreamCore);
 	GDREGISTER_CLASS(AudioStreamMoonlight);
 	GDREGISTER_CLASS(AudioStreamPlaybackMoonlight);

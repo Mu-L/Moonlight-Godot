@@ -344,7 +344,7 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 }
 
 int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) {
-	codec_mutex->lock(); // 锁定
+	std::lock_guard<godot::Mutex> lock(*(codec_mutex.ptr())); // RAII style lock
 	_cleanup_ffmpeg_video();
 	UtilityFunctions::print(LOG_PREFIX "Setup Video: Fmt=0x", String::num_int64(video_fmt, 16), " Size=", width, "x", height);
 	int family = -1;
@@ -355,7 +355,6 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	else if (video_fmt & VIDEO_FORMAT_MASK_AV1)
 		family = CODEC_FAMILY_AV1;
 	if (family == -1) {
-		codec_mutex->unlock();
 		return -1;
 	}
 	Vector<String> candidates = _get_candidate_decoders(family);
@@ -400,7 +399,6 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	if (!opened) {
 		UtilityFunctions::printerr(LOG_PREFIX "No usable decoder found!");
 		call_deferred("emit_signal", "warning_message", "INIT_ERROR", "Failed to initialize any decoder");
-		codec_mutex->unlock(); // 失败时解锁
 		return -1;
 	}
 
@@ -425,7 +423,6 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	video_width = width;
 	video_height = height;
 	// video_format = -1; // Removed legacy SWS format tracking
-	codec_mutex->unlock(); // 成功时解锁
 	return DR_OK;
 }
 
@@ -448,39 +445,37 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 		packet_ready = true;
 	}
 	if (packet_ready) {
-		queue_mutex->lock();
-		int qsize = packet_queue.size();
-		// 软解压力过大时清理队列并请求 IDR
-		if (!is_hw_decode_active && qsize > 128) {
-			while (packet_queue.size() > 0) {
-				AVPacket *old = packet_queue.front()->get();
-				packet_queue.pop_front();
-				av_packet_free(&old);
+		{
+			std::lock_guard<godot::Mutex> lock(*(queue_mutex.ptr()));
+			int qsize = packet_queue.size();
+			// 软解压力过大时清理队列并请求 IDR
+			if (!is_hw_decode_active && qsize > 128) {
+				while (packet_queue.size() > 0) {
+					AVPacket *old = packet_queue.front()->get();
+					packet_queue.pop_front();
+					av_packet_free(&old);
+				}
+				av_packet_free(&pkt);
+				_request_idr_frame("SW Queue Flush");
+				return DR_OK;
 			}
-			queue_mutex->unlock();
-			av_packet_free(&pkt);
-			_request_idr_frame("SW Queue Flush");
-			return DR_OK;
-		}
-		// 增大队列允许的最大长度至 512，防止在稍微的网络抖动或CPU瞬时高负载时立即硬件级丢包造成花屏
-		if (qsize < 512) {
-			packet_queue.push_back(pkt);
-			queue_mutex->unlock();
-			decode_sem->post();
-			return DR_OK;
-		} else {
-			queue_mutex->unlock();
-			// 限制因溢出导致的日志泛滥
-			static uint64_t last_log = 0;
-			uint64_t now = Time::get_singleton()->get_ticks_msec();
-			if (now - last_log > 1000) {
-				UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 512)");
-				last_log = now;
+			// 增大队列允许的最大长度至 512，防止在稍微的网络抖动或CPU瞬时高负载时立即硬件级丢包造成花屏
+			if (qsize < 512) {
+				packet_queue.push_back(pkt);
+				decode_sem->post();
+				return DR_OK;
 			}
-			av_packet_free(&pkt);
-			// 丢帧但不请求 IDR，避免循环请求
-			return DR_OK;
 		}
+		// 限制因溢出导致的日志泛滥
+		static uint64_t last_log = 0;
+		uint64_t now = Time::get_singleton()->get_ticks_msec();
+		if (now - last_log > 1000) {
+			UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 512)");
+			last_log = now;
+		}
+		av_packet_free(&pkt);
+		// 丢帧但不请求 IDR，避免循环请求
+		return DR_OK;
 	} else {
 		if (pkt)
 			av_packet_free(&pkt);
@@ -525,7 +520,7 @@ void MoonlightStreamCore::_setup_shader_integration(int width, int height, AVPix
 }
 
 void MoonlightStreamCore::_render_thread_setup_shader(int width, int height, int format, int colorspace, int color_range, int bit_depth) {
-	texture_mutex->lock();
+	std::lock_guard<godot::Mutex> lock(*(texture_mutex.ptr()));
 	AVPixelFormat av_format = (AVPixelFormat)format;
 	AVColorSpace av_colorspace = (AVColorSpace)colorspace;
 	AVColorRange av_color_range = (AVColorRange)color_range;
@@ -560,7 +555,6 @@ void MoonlightStreamCore::_render_thread_setup_shader(int width, int height, int
 			use_shader_conversion = false;
 			if (verbose_plugin)
 				UtilityFunctions::print(LOG_PREFIX "Format not supported by internal shader (", av_get_pix_fmt_name(av_format), "), shader path disabled.");
-			texture_mutex->unlock();
 			return;
 		}
 	}
@@ -733,12 +727,10 @@ void MoonlightStreamCore::_render_thread_setup_shader(int width, int height, int
 			display_rect->call_deferred("set_texture", plane_textures[0]);
 		}
 	}
-
-	texture_mutex->unlock();
 }
 
 void MoonlightStreamCore::_render_thread_cleanup_resources() {
-	texture_mutex->lock();
+	std::lock_guard<godot::Mutex> lock(*(texture_mutex.ptr()));
 	RenderingServer *rs = RenderingServer::get_singleton();
 	if (rd) {
 		for (int i = 0; i < 3; i++) {
@@ -754,7 +746,6 @@ void MoonlightStreamCore::_render_thread_cleanup_resources() {
 		}
 		rd = nullptr;
 	}
-	texture_mutex->unlock();
 }
 
 void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
@@ -766,69 +757,70 @@ void MoonlightStreamCore::_update_textures_with_frame(AVFrame *frame) {
 
 	if (rd) {
 		// RenderingDevice High Performance Path
-		texture_mutex->lock();
-		auto upload_rd = [&](int idx, int av_idx, int w, int h, int bpp) {
-			int src_stride = frame->linesize[av_idx];
-			int dst_stride = w * bpp;
-			int required_size = dst_stride * h;
+		{
+			std::lock_guard<godot::Mutex> lock(*(texture_mutex.ptr()));
+			auto upload_rd = [&](int idx, int av_idx, int w, int h, int bpp) {
+				int src_stride = frame->linesize[av_idx];
+				int dst_stride = w * bpp;
+				int required_size = dst_stride * h;
 
-			// Resize intermediate buffer (reuse vector)
-			if (rd_texture_buffers[idx].size() != required_size) {
-				rd_texture_buffers[idx].resize(required_size);
-			}
+				// Resize intermediate buffer (reuse vector)
+				if (rd_texture_buffers[idx].size() != required_size) {
+					rd_texture_buffers[idx].resize(required_size);
+				}
 
-			uint8_t *dst = rd_texture_buffers[idx].ptrw();
-			uint8_t *src = frame->data[av_idx];
+				uint8_t *dst = rd_texture_buffers[idx].ptrw();
+				uint8_t *src = frame->data[av_idx];
 
-			if (src_stride == dst_stride) {
-				memcpy(dst, src, required_size);
+				if (src_stride == dst_stride) {
+					memcpy(dst, src, required_size);
+				} else {
+					for (int i = 0; i < h; i++) {
+						memcpy(dst + i * dst_stride, src + i * src_stride, dst_stride);
+					}
+				}
+			};
+
+			bool is_nv12 = (frame->format == AV_PIX_FMT_NV12);
+
+			// Y Plane
+			upload_rd(0, 0, frame->width, frame->height, 1); // R8
+
+			if (is_nv12) {
+				// NV12: interleaved UV plane in frame->data[1]. Deinterleave into two R8 buffers (U and V)
+				int uv_w = frame->width / 2;
+				int uv_h = frame->height / 2;
+
+				int src_stride = frame->linesize[1];
+				int dst_stride = uv_w; // 1 byte per pixel per plane
+				int required_size = dst_stride * uv_h;
+
+				if (rd_texture_buffers[1].size() != required_size)
+					rd_texture_buffers[1].resize(required_size);
+				if (rd_texture_buffers[2].size() != required_size)
+					rd_texture_buffers[2].resize(required_size);
+
+				uint8_t *dst_u = rd_texture_buffers[1].ptrw();
+				uint8_t *dst_v = rd_texture_buffers[2].ptrw();
+				uint8_t *src = frame->data[1];
+
+				for (int row = 0; row < uv_h; row++) {
+					uint8_t *srow = src + row * src_stride;
+					uint8_t *drow_u = dst_u + row * dst_stride;
+					uint8_t *drow_v = dst_v + row * dst_stride;
+					for (int x = 0; x < uv_w; x++) {
+						drow_u[x] = srow[x * 2 + 0];
+						drow_v[x] = srow[x * 2 + 1];
+					}
+				}
 			} else {
-				for (int i = 0; i < h; i++) {
-					memcpy(dst + i * dst_stride, src + i * src_stride, dst_stride);
-				}
+				// U + V Planes (YUV420P -> R8 each)
+				upload_rd(1, 1, frame->width / 2, frame->height / 2, 1);
+				upload_rd(2, 2, frame->width / 2, frame->height / 2, 1);
 			}
-		};
 
-		bool is_nv12 = (frame->format == AV_PIX_FMT_NV12);
-
-		// Y Plane
-		upload_rd(0, 0, frame->width, frame->height, 1); // R8
-
-		if (is_nv12) {
-			// NV12: interleaved UV plane in frame->data[1]. Deinterleave into two R8 buffers (U and V)
-			int uv_w = frame->width / 2;
-			int uv_h = frame->height / 2;
-
-			int src_stride = frame->linesize[1];
-			int dst_stride = uv_w; // 1 byte per pixel per plane
-			int required_size = dst_stride * uv_h;
-
-			if (rd_texture_buffers[1].size() != required_size)
-				rd_texture_buffers[1].resize(required_size);
-			if (rd_texture_buffers[2].size() != required_size)
-				rd_texture_buffers[2].resize(required_size);
-
-			uint8_t *dst_u = rd_texture_buffers[1].ptrw();
-			uint8_t *dst_v = rd_texture_buffers[2].ptrw();
-			uint8_t *src = frame->data[1];
-
-			for (int row = 0; row < uv_h; row++) {
-				uint8_t *srow = src + row * src_stride;
-				uint8_t *drow_u = dst_u + row * dst_stride;
-				uint8_t *drow_v = dst_v + row * dst_stride;
-				for (int x = 0; x < uv_w; x++) {
-					drow_u[x] = srow[x * 2 + 0];
-					drow_v[x] = srow[x * 2 + 1];
-				}
-			}
-		} else {
-			// U + V Planes (YUV420P -> R8 each)
-			upload_rd(1, 1, frame->width / 2, frame->height / 2, 1);
-			upload_rd(2, 2, frame->width / 2, frame->height / 2, 1);
-		}
-
-		pending_gpu_update.store(true);
-		texture_mutex->unlock();
+			pending_gpu_update.store(true);
+		} // end lock_guard
 
 		// Request update on the render thread to avoid "only be called from render thread" error
 		rs->call_on_render_thread(callable_mp(this, &MoonlightStreamCore::_perform_gpu_update));
@@ -900,7 +892,7 @@ void MoonlightStreamCore::_perform_gpu_update() {
 	if (!rd)
 		return;
 
-	texture_mutex->lock();
+	std::lock_guard<godot::Mutex> lock(*(texture_mutex.ptr()));
 	if (pending_gpu_update.exchange(false)) {
 		// Update Y
 		if (rd_texture_rid[0].is_valid()) {
@@ -919,7 +911,6 @@ void MoonlightStreamCore::_perform_gpu_update() {
 			display_rect->call_deferred("queue_redraw");
 		}
 	}
-	texture_mutex->unlock();
 }
 
 AVColorSpace MoonlightStreamCore::_resolve_frame_colorspace(AVFrame *frame) const {
@@ -970,13 +961,14 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 		while (true) {
 			AVPacket *pkt = nullptr;
 			int queue_size = 0;
-			queue_mutex->lock();
-			queue_size = packet_queue.size();
-			if (queue_size > 0) {
-				pkt = packet_queue.front()->get();
-				packet_queue.pop_front();
+			{
+				std::lock_guard<godot::Mutex> lock(*(queue_mutex.ptr()));
+				queue_size = packet_queue.size();
+				if (queue_size > 0) {
+					pkt = packet_queue.front()->get();
+					packet_queue.pop_front();
+				}
 			}
-			queue_mutex->unlock();
 
 			// Exit condition
 			if (!is_streaming.load() && pkt == nullptr) {
@@ -988,70 +980,71 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 				break;
 			}
 
-			codec_mutex->lock();
-			if (v_codec_ctx) {
-				int ret = avcodec_send_packet(v_codec_ctx, pkt);
-				if (ret >= 0) {
-					while (true) {
-						ret = avcodec_receive_frame(v_codec_ctx, v_frame);
-						if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-							break;
-						if (ret < 0) {
-							// 严重解码错误，请求新的数据流 - Throttled
-							_request_idr_frame("Decode Error " + String::num_int64(ret));
-							break;
-						}
-						// 优化：帧丢弃逻辑。
-						bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
-						if (queue_size > 12 && !is_keyframe) {
-							av_frame_unref(v_frame);
-							continue;
-						}
-
-						AVFrame *display_frame = v_frame;
-
-						// 1. Hardware frame transfer to system memory
-						bool is_hw_frame = (v_frame->format == hw_pix_fmt && hw_device_ctx);
-						if (is_hw_frame) {
-							if (!sw_frame)
-								sw_frame = av_frame_alloc();
-							// Download frame from GPU/Device to CPU memory for upload to Godot
-							int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
-							if (err < 0) {
-								UtilityFunctions::printerr(LOG_PREFIX "Failed to transfer hardware frame: ", err);
+			{
+				std::lock_guard<godot::Mutex> lock(*(codec_mutex.ptr()));
+				if (v_codec_ctx) {
+					int ret = avcodec_send_packet(v_codec_ctx, pkt);
+					if (ret >= 0) {
+						while (true) {
+							ret = avcodec_receive_frame(v_codec_ctx, v_frame);
+							if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+								break;
+							if (ret < 0) {
+								// 严重解码错误，请求新的数据流 - Throttled
+								_request_idr_frame("Decode Error " + String::num_int64(ret));
+								break;
+							}
+							// 优化：帧丢弃逻辑。
+							bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
+							if (queue_size > 12 && !is_keyframe) {
+								av_frame_unref(v_frame);
 								continue;
 							}
-							av_frame_copy_props(sw_frame, v_frame);
-							display_frame = sw_frame;
-						}
 
-						// 2. Upload to Godot Texture via RenderingServer (Shader Path)
-						if (use_shader_conversion) {
-							_update_textures_with_frame(display_frame);
-						} else {
-							// Should rarely happen if setup logic is correct.
-							// Attempt to setup shader if we haven't yet (lazy init for SW fallback)
-							if (video_width > 0 && video_height > 0) {
-								call_deferred("_setup_shader_integration", video_width, video_height, (AVPixelFormat)display_frame->format,
-										_resolve_frame_colorspace(display_frame), (AVColorRange)display_frame->color_range, 8);
-								// We lose this frame, but next one will catch up
+							AVFrame *display_frame = v_frame;
+
+							// 1. Hardware frame transfer to system memory
+							bool is_hw_frame = (v_frame->format == hw_pix_fmt && hw_device_ctx);
+							if (is_hw_frame) {
+								if (!sw_frame)
+									sw_frame = av_frame_alloc();
+								// Download frame from GPU/Device to CPU memory for upload to Godot
+								int err = av_hwframe_transfer_data(sw_frame, v_frame, 0);
+								if (err < 0) {
+									UtilityFunctions::printerr(LOG_PREFIX "Failed to transfer hardware frame: ", err);
+									continue;
+								}
+								av_frame_copy_props(sw_frame, v_frame);
+								display_frame = sw_frame;
 							}
-						}
 
-						// Unref temp frame if used
-						if (is_hw_frame) {
-							av_frame_unref(sw_frame);
+							// 2. Upload to Godot Texture via RenderingServer (Shader Path)
+							if (use_shader_conversion) {
+								_update_textures_with_frame(display_frame);
+							} else {
+								// Should rarely happen if setup logic is correct.
+								// Attempt to setup shader if we haven't yet (lazy init for SW fallback)
+								if (video_width > 0 && video_height > 0) {
+									call_deferred("_setup_shader_integration", video_width, video_height, (AVPixelFormat)display_frame->format,
+											_resolve_frame_colorspace(display_frame), (AVColorRange)display_frame->color_range, 8);
+									// We lose this frame, but next one will catch up
+								}
+							}
+
+							// Unref temp frame if used
+							if (is_hw_frame) {
+								av_frame_unref(sw_frame);
+							}
+							av_frame_unref(v_frame);
 						}
-						av_frame_unref(v_frame);
+					} else {
+						// 发送数据包失败 - Throttled
+						if (ret != AVERROR(EAGAIN)) {
+							_request_idr_frame("Send Packet Failed " + String::num_int64(ret));
+						}
 					}
-				} else {
-					// 发送数据包失败 - Throttled
-					if (ret != AVERROR(EAGAIN)) {
-						_request_idr_frame("Send Packet Failed " + String::num_int64(ret));
-					}
-				}
-			}
-			codec_mutex->unlock(); // 解锁
+				} // end if (v_codec_ctx)
+			} // end lock_guard
 			av_packet_free(&pkt);
 		}
 	}
@@ -1100,9 +1093,8 @@ void MoonlightStreamCore::_dr_cleanup(void) {
 	for (MoonlightStreamCore *instance : active_instances) {
 		// 修复：锁定互斥锁以防止与使用该上下文的解码线程发生竞争
 		if (instance->codec_mutex.is_valid()) {
-			instance->codec_mutex->lock();
+			std::lock_guard<godot::Mutex> lock(*(instance->codec_mutex.ptr()));
 			instance->_cleanup_ffmpeg_video();
-			instance->codec_mutex->unlock();
 		}
 	}
 }

@@ -13,8 +13,8 @@
 
 namespace godot {
 
-class Requester : public MoonlightGodot {
-	GDCLASS(Requester, MoonlightGodot)
+class MoonlightRequester : public MoonlightGodot {
+	GDCLASS(MoonlightRequester, MoonlightGodot)
 
 private:
 	struct ResponseData {
@@ -32,8 +32,8 @@ protected:
 	static void _bind_methods();
 
 public:
-	Requester();
-	~Requester();
+	MoonlightRequester();
+	~MoonlightRequester();
 
 	// url: 请求地址
 	// method: 仅支持 "GET", "POST"

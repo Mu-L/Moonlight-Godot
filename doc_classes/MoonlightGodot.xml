@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <class name="MoonlightGodot" inherits="RefCounted" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/godotengine/godot/master/doc/class.xsd">
 	<brief_description>
-		A Godot extension to use moonlight in Godot.
+		基于 Moonlight 协议和 FFmpeg 的 Godot 流媒体插件基础类。
 	</brief_description>
 	<description>
-		A Godot extension to use moonlight in Godot.
+		[MoonlightGodot] 是该插件中所有非节点类的基础类。其子类如 [MoonlightRequester] 和 [MoonlightComputerManager] 封装了与 GameStream / Sunshine 主机通信的核心逻辑。底层依赖于 [code]moonlight-common-c[/code] 和 FFmpeg。
+		[b]Tips：[/b]你可以在编辑器的帮助文档中搜索[code]Moonlight[/code]来快速查找该插件提供的所有类参考文档。
 	</description>
 	<tutorials>
 		<link title="Moonlight-Godot Github Repository">https://github.com/html5syt/Moonlight-Godot</link>

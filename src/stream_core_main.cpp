@@ -1,4 +1,4 @@
-#include "computer_manager.h"
+#include "moonlight_computer_manager.h"
 #include "stream_core.h"
 #include "stream_core_struct.h"
 #include <Limelight.h>
@@ -287,11 +287,11 @@ void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<Moonlig
 		UtilityFunctions::print(LOG_PREFIX "Connection Request Info: ip=", ip_storage.c_str(), " session_url=", session_url_storage.c_str());
 	}
 
-	// 5. 获取 Limelight 附加查询参数并委托 ComputerManager 建立流
+	// 5. 获取 Limelight 附加查询参数并委托 MoonlightComputerManager 建立流
 	const char *extra_q = LiGetLaunchUrlQueryParameters();
 
 	Dictionary opts;
-	// 基本参数，供 ComputerManager 构建 /launch 或 /resume 请求
+	// 基本参数，供 MoonlightComputerManager 构建 /launch 或 /resume 请求
 	opts["width"] = stream_config.width;
 	opts["height"] = stream_config.height;
 	opts["fps"] = stream_config.fps;
@@ -316,7 +316,7 @@ void MoonlightStreamCore::start_play_stream(int host_id, int app_id, Ref<Moonlig
 	pending_add_opts = additional_options;
 
 	if (!internal_cm) {
-		internal_cm = memnew(ComputerManager);
+		internal_cm = memnew(MoonlightComputerManager);
 	}
 	if (config_manager) {
 		internal_cm->set_config_manager(config_manager);
@@ -343,7 +343,7 @@ void MoonlightStreamCore::_on_establish_stream_completed(Dictionary response) {
 	int server_codec_mode_support = (int)response.get("server_codec_mode_support", server_info.serverCodecModeSupport);
 	bool keys_applied = _apply_remote_input_keys_from_response(response, stream_config);
 	if (session_url.is_empty()) {
-		UtilityFunctions::print(LOG_PREFIX "No session_url returned by ComputerManager");
+		UtilityFunctions::print(LOG_PREFIX "No session_url returned by MoonlightComputerManager");
 		is_streaming.store(false);
 		return;
 	}
@@ -411,13 +411,12 @@ void MoonlightStreamCore::stop_play_stream() {
 
 	// 6. 清理FFmpeg和队列
 	if (queue_mutex.is_valid()) {
-		queue_mutex->lock();
+		std::lock_guard<godot::Mutex> lock(*(queue_mutex.ptr()));
 		while (packet_queue.size() > 0) {
 			AVPacket *pkt = packet_queue.front()->get();
 			packet_queue.pop_front();
 			av_packet_free(&pkt);
 		}
-		queue_mutex->unlock();
 	}
 	_cleanup_ffmpeg_video();
 	_cleanup_ffmpeg_audio();

@@ -96,7 +96,7 @@ extern std::mutex instances_mutex;
 
 class MoonlightStreamConfigurationResource;
 class MoonlightAdditionalStreamOptions;
-class ComputerManager;
+class MoonlightComputerManager;
 
 // 自定义音频播放
 class AudioStreamMoonlight;
@@ -226,8 +226,8 @@ public:
 			float contact_area_major, float contact_area_minor,
 			int rotation, int tilt);
 	int send_mouse_button_event(int action, int button);
-	int send_keyboard_event(short key_code, int key_action, int modifiers);
-	int send_keyboard_event2(short key_code, int key_action, int modifiers, int flags);
+	int send_keyboard_event(int godot_key, int key_action, int modifiers);
+	int send_keyboard_event2(int godot_key, int key_action, int modifiers, int flags);
 	int send_utf8_text_event(const String &text);
 	int send_controller_event(int button_flags, int left_trigger, int right_trigger,
 			short left_stick_x, short left_stick_y, short right_stick_x, short right_stick_y);
@@ -300,7 +300,7 @@ private:
 
 	// --- Internal helpers for unified start flow ---
 	Object *config_manager = nullptr;
-	ComputerManager *internal_cm = nullptr;
+	MoonlightComputerManager *internal_cm = nullptr;
 	Ref<MoonlightStreamConfigurationResource> pending_cfg;
 	Ref<MoonlightAdditionalStreamOptions> pending_add_opts;
 

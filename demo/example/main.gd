@@ -1,8 +1,8 @@
 extends Node
 
-@onready var requester = Requester.new()
-@onready var configmanager = ConfigManager.new()
-@onready var computermamager = ComputerManager.new()
+@onready var moonlight_requester = MoonlightRequester.new()
+@onready var moonlight_config_manager = MoonlightConfigManager.new()
+@onready var moonlight_computer_manager = MoonlightComputerManager.new()
 @onready var moonlightstreamcore = MoonlightStreamCore.new()
 
 var video_enabled: bool = true
@@ -11,15 +11,15 @@ var input_enabled: bool = true
 var is_fullscreen: bool = false
 
 func _ready() -> void:
-    computermamager.set_config_manager(configmanager)
-    moonlightstreamcore.set_config_manager(configmanager)
+    moonlight_computer_manager.set_config_manager(moonlight_config_manager)
+    moonlightstreamcore.set_config_manager(moonlight_config_manager)
     
-    computermamager.pair_completed.connect(on_pair_complete)
+    moonlight_computer_manager.pair_completed.connect(on_pair_complete)
     moonlightstreamcore.connection_started.connect(func():print("[Moonlight-Godot-MoonlightStreamCore]","Connect Successfully!"))
     moonlightstreamcore.connection_terminated.connect(func(_err,msg):push_error("[Moonlight-Godot-MoonlightStreamCore]",msg))
     @warning_ignore("standalone_ternary")
     moonlightstreamcore.hdr_mode_changed.connect(func(enable,data):print("[Moonlight-Godot-MoonlightStreamCore-HDR]",data) if enable else push_warning("[Moonlight-Godot-MoonlightStreamCore-HDR]",data))
-    $ScrollContainer/GridContainer/LineEdit.text = configmanager.get_hosts()[0].localaddress
+    $ScrollContainer/GridContainer/LineEdit.text = moonlight_config_manager.get_hosts()[0].localaddress
     # 初始化音频直通按钮文本
     if $ScrollContainer/GridContainer.has_node("AudioBypassButton"):
         $ScrollContainer/GridContainer/AudioBypassButton.text = "Audio Bypass: ON" if moonlightstreamcore.is_native_audio_bypass_running() else "Audio Bypass: OFF"
@@ -140,9 +140,9 @@ func test_toggle_keyboard() -> void:
 
 func on_pair_complete(success,message):
     if success:
-        print("[Moonlight-Godot-ComputerManager]",message)
+        print("[Moonlight-Godot-MoonlightComputerManager]",message)
     else:
-        push_error("[Moonlight-Godot-ComputerManager]",message)
+        push_error("[Moonlight-Godot-MoonlightComputerManager]",message)
 
 #func _process(delta):
     #var time = $ScrollContainer/GridContainer/AudioStreamPlayer.get_playback_position() + AudioServer.get_time_since_last_mix()
@@ -159,7 +159,7 @@ func test_http_requeset() -> void:
     var ssl_options = {} # 不附加证书
     var callback = Callable(self, "_on_baidu_request_completed")
     
-    requester.request(url, method, body, headers, ssl_options, callback)
+    moonlight_requester.request(url, method, body, headers, ssl_options, callback)
 
 @warning_ignore("unused_parameter")
 func _on_baidu_request_completed(response_code: int, response_body: PackedByteArray, response_headers: Dictionary, error_text: String) -> void:
@@ -171,7 +171,7 @@ func _on_baidu_request_completed(response_code: int, response_body: PackedByteAr
 
 
 func test_cert_create() -> void:
-    print(configmanager.get_client_keys())
+    print(moonlight_config_manager.get_client_keys())
 
 
 func test_add_host_info() -> void:
@@ -179,35 +179,35 @@ func test_add_host_info() -> void:
             #"hostname":"TEST",
             #"uuid":Time.get_datetime_string_from_system()
         #}
-    #print(configmanager.add_host(config))
+    #print(moonlight_config_manager.add_host(config))
     print("current hosts:\n")
-    print(configmanager.get_hosts(),"\n")
+    print(moonlight_config_manager.get_hosts(),"\n")
 
 
 func test_remove_host_info() -> void:
-    configmanager.remove_host(1)
+    moonlight_config_manager.remove_host(1)
 
 
 func test_start_pair() -> void:
-    var pin = computermamager.start_pair($ScrollContainer/GridContainer/LineEdit.text)
+    var pin = moonlight_computer_manager.start_pair($ScrollContainer/GridContainer/LineEdit.text)
     print("pin:",pin)
 
 func test_cancel_pair() -> void:
-    computermamager.unpair(1)
+    moonlight_computer_manager.unpair(1)
 
 
 func test_get_applist() -> void:
-    computermamager.get_app_list(1)
+    moonlight_computer_manager.get_app_list(1)
 
 
 func test_get_app_texture() -> void:
-    configmanager.load_config()
-    var applist = configmanager.get_apps(1)
-    computermamager.get_app_cover(1,applist[0]["id"],func(texture_return): $ScrollContainer/GridContainer/TextureRect.texture = texture_return)
+    moonlight_config_manager.load_config()
+    var applist = moonlight_config_manager.get_apps(1)
+    moonlight_computer_manager.get_app_cover(1,applist[0]["id"],func(texture_return): $ScrollContainer/GridContainer/TextureRect.texture = texture_return)
 
 
 func test_connect_to_server() -> void:
-    computermamager.connect_to_computer($ScrollContainer/GridContainer/LineEdit.text,47989,func(info): print(info))
+    moonlight_computer_manager.connect_to_computer($ScrollContainer/GridContainer/LineEdit.text,47989,func(info): print(info))
     
 
 
@@ -250,7 +250,7 @@ func test_establish_stream() -> void:
         $ScrollContainer/GridContainer/AudioStreamPlayer.play()
 
 func test_stop_stream() -> void:
-    computermamager.stop_stream(1,func(info): print(info);moonlightstreamcore.stop_play_stream();moonlightstreamcore.reset_audio_stream();moonlightstreamcore.reset_render_target())
+    moonlight_computer_manager.stop_stream(1,func(info): print(info);moonlightstreamcore.stop_play_stream();moonlightstreamcore.reset_audio_stream();moonlightstreamcore.reset_render_target())
 
 
 func test_pause_streram() -> void:
@@ -266,7 +266,7 @@ func view_data() -> void:
 func _on_line_edit_editing_toggled(toggled_on: bool) -> void:
     if toggled_on:
         return
-    configmanager.update_host(1,{"localaddress":$ScrollContainer/GridContainer/LineEdit.text})
+    moonlight_config_manager.update_host(1,{"localaddress":$ScrollContainer/GridContainer/LineEdit.text})
 
 
 func test_toggle_audio_bypass() -> void:
@@ -333,11 +333,9 @@ func _on_screen_gui_input(event: InputEvent) -> void:
         if event.meta_pressed:
             modifiers |= MoonlightInput.MODIFIER_META_BIT
         
-        # Godot keycode to Limelight keycode mapping
+        # The backend now handles mapping Godot keycodes to standard HID keycodes.
+        # We can pass the Godot keycode directly without any manual conversion here.
         var keycode = event.keycode
-        # Basic mapping for common keys, Limelight uses standard USB HID keycodes or similar
-        # For simplicity in this test, we pass the Godot keycode directly, 
-        # but in a real app, a full mapping table is needed.
         moonlightstreamcore.send_keyboard_event(keycode, action, modifiers)
     elif event is InputEventScreenTouch:
         var action = MoonlightInput.TOUCH_EVENT_DOWN if event.pressed else MoonlightInput.TOUCH_EVENT_UP

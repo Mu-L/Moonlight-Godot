@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<class name="ConfigManager" inherits="MoonlightGodot" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+<class name="MoonlightConfigManager" inherits="MoonlightGodot" version="4.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
 	<brief_description>
 		管理 Moonlight 客户端配置、证书及主机列表的类。
 	</brief_description>
 	<description>
-		[ConfigManager] 负责读写位于 [code]user://addons/moonlight-godot/config.ini[/code] 的配置文件。
-		
+		[MoonlightConfigManager] 负责读写位于 [code]user://addons/moonlight-godot/config.ini[/code] 的配置文件。
 		该类内部保持与 Moonlight-Qt 客户端配置文件样式的兼容性（使用 QSettings 风格的数组索引）。
 		它会在初始化时检查并自动生成用于 MTLS 认证的 RSA 客户端私钥和自签名证书。
 		提供了对串流主机列表（Hosts）和应用程序列表（Apps）的增删改查（CRUD）操作，并自动处理了底层的数组索引重排逻辑。
@@ -29,7 +28,6 @@
 			<return type="Dictionary" />
 			<description>
 				获取客户端用于 MTLS 的证书和私钥。
-				
 				[b]返回字典结构：[/b]
 				- [code]"certificate"[/code]: PEM 格式的证书字符串。
 				- [code]"key"[/code]: PEM 格式的私钥字符串。
@@ -39,10 +37,8 @@
 			<return type="Dictionary" />
 			<description>
 				获取客户端证书和私钥在磁盘上的绝对路径。
-				
 				此方法会检查配置目录下的 [code]clientcert.pem[/code] 和 [code]clientkey.pem[/code]。
 				如果文件不存在或内容与内存配置不一致，会自动将内存中的证书同步写入磁盘。
-				
 				[b]返回字典结构：[/b]
 				- [code]"client_cert"[/code]: 证书文件的绝对路径。
 				- [code]"client_key"[/code]: 私钥文件的绝对路径。
@@ -109,7 +105,7 @@
 		</method>
 		<method name="set_custom_data">
 			<return type="void" />
-			<argument index="0" name="target" type="int" enum="ConfigManager.ConfigTarget" />
+			<argument index="0" name="target" type="int" enum="MoonlightConfigManager.ConfigTarget" />
 			<argument index="1" name="host_idx" type="int" />
 			<argument index="2" name="app_idx" type="int" />
 			<argument index="3" name="key" type="String" />
@@ -127,7 +123,7 @@
 		</method>
 		<method name="get_custom_data">
 			<return type="Variant" />
-			<argument index="0" name="target" type="int" enum="ConfigManager.ConfigTarget" />
+			<argument index="0" name="target" type="int" enum="MoonlightConfigManager.ConfigTarget" />
 			<argument index="1" name="host_idx" type="int" />
 			<argument index="2" name="app_idx" type="int" />
 			<argument index="3" name="key" type="String" />

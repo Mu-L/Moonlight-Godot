@@ -1,5 +1,6 @@
 // 封装 Limelight 输入 API，供 Godot 调用
 #include "stream_core.h"
+#include "stream_core_input_enum.h"
 
 using namespace godot;
 
@@ -31,12 +32,18 @@ int MoonlightStreamCore::send_mouse_button_event(int action, int button) {
 	return LiSendMouseButtonEvent((char)action, button);
 }
 
-int MoonlightStreamCore::send_keyboard_event(short key_code, int key_action, int modifiers) {
-	return LiSendKeyboardEvent(key_code, (char)key_action, (char)modifiers);
+int MoonlightStreamCore::send_keyboard_event(int godot_key, int key_action, int modifiers) {
+	short vkey = (short)MoonlightInput::godot_to_virtual_key(godot_key);
+	if (vkey == 0)
+		return 0; // Ignore unmapped keys
+	return LiSendKeyboardEvent(vkey, (char)key_action, (char)modifiers);
 }
 
-int MoonlightStreamCore::send_keyboard_event2(short key_code, int key_action, int modifiers, int flags) {
-	return LiSendKeyboardEvent2(key_code, (char)key_action, (char)modifiers, (char)flags);
+int MoonlightStreamCore::send_keyboard_event2(int godot_key, int key_action, int modifiers, int flags) {
+	short vkey = (short)MoonlightInput::godot_to_virtual_key(godot_key);
+	if (vkey == 0)
+		return 0;
+	return LiSendKeyboardEvent2(vkey, (char)key_action, (char)modifiers, (char)flags);
 }
 
 int MoonlightStreamCore::send_utf8_text_event(const String &text) {

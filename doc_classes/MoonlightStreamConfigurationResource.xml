@@ -64,16 +64,92 @@
 		<constant name="FORMAT_H264" value="1" enum="VideoFormat">
 			H.264 High Profile 支持位。
 		</constant>
+		<constant name="FORMAT_H264_HIGH8_444" value="4" enum="VideoFormat">
+			H.264 High 4:4:4 8-bit Profile 支持位。
+		</constant>
 		<constant name="FORMAT_H265" value="256" enum="VideoFormat">
-			HEVC 主档 (H.265) 支持位。
+			HEVC Main Profile (H.265) 支持位。
+		</constant>
+		<constant name="FORMAT_H265_MAIN10" value="512" enum="VideoFormat">
+			HEVC Main10 Profile 支持位。
+		</constant>
+		<constant name="FORMAT_H265_REXT8_444" value="1024" enum="VideoFormat">
+			HEVC RExt 4:4:4 8-bit Profile 支持位。
+		</constant>
+		<constant name="FORMAT_H265_REXT10_444" value="2048" enum="VideoFormat">
+			HEVC RExt 4:4:4 10-bit Profile 支持位。
 		</constant>
 		<constant name="FORMAT_AV1_MAIN8" value="4096" enum="VideoFormat">
-			AV1 主档 8-bit 支持位（Sunshine 扩展）。
+			AV1 Main 8-bit profile 支持位。
 		</constant>
-		<constant name="MASK_H264" value="15" />
-		<constant name="MASK_H265" value="3840" />
-		<constant name="MASK_AV1" value="61440" />
-		<constant name="MASK_10BIT" value="43520" />
-		<constant name="MASK_YUV444" value="52228" />
+		<constant name="FORMAT_AV1_MAIN10" value="8192" enum="VideoFormat">
+			AV1 Main 10-bit profile 支持位。
+		</constant>
+		<constant name="FORMAT_AV1_HIGH8_444" value="16384" enum="VideoFormat">
+			AV1 High 4:4:4 8-bit profile 支持位。
+		</constant>
+		<constant name="FORMAT_AV1_HIGH10_444" value="32768" enum="VideoFormat">
+			AV1 High 4:4:4 10-bit profile 支持位。
+		</constant>
+		<constant name="MASK_H264" value="15" enum="VideoFormatMask">
+			用于匹配 H.264 格式的掩码，忽略配置文件细节。
+		</constant>
+		<constant name="MASK_H265" value="3840" enum="VideoFormatMask">
+			用于匹配 H.265 格式的掩码，忽略配置文件细节。
+		</constant>
+		<constant name="MASK_AV1" value="61440" enum="VideoFormatMask">
+			用于匹配 AV1 格式的掩码，忽略配置文件细节。
+		</constant>
+		<constant name="MASK_10BIT" value="43520" enum="VideoFormatMask">
+			用于匹配 10-bit 格式的掩码。
+		</constant>
+		<constant name="MASK_YUV444" value="52228" enum="VideoFormatMask">
+			用于匹配 YUV 4:4:4 格式的掩码。
+		</constant>
+		<constant name="STREAM_LOCAL" value="0" enum="StreamMode">
+			本地网络流串流模式。
+		</constant>
+		<constant name="STREAM_REMOTE" value="1" enum="StreamMode">
+			远程网络流串流模式。
+		</constant>
+		<constant name="STREAM_AUTO" value="2" enum="StreamMode">
+			自动串流模式。
+		</constant>
+		<constant name="CS_REC_601" value="0" enum="ColorSpace">
+			Rec. 601 色彩空间。
+		</constant>
+		<constant name="CS_REC_709" value="1" enum="ColorSpace">
+			Rec. 709 色彩空间。
+		</constant>
+		<constant name="CS_REC_2020" value="2" enum="ColorSpace">
+			Rec. 2020 色彩空间。请注意 GFE 主机不支持 H.264 视频流使用 Rec. 2020。
+		</constant>
+		<constant name="CR_LIMITED" value="0" enum="ColorRange">
+			有限 (Limited) 色域范围。
+		</constant>
+		<constant name="CR_FULL" value="1" enum="ColorRange">
+			完整 (Full) 色域范围。
+		</constant>
+		<constant name="ENC_NONE" value="0" enum="EncryptionFlag">
+			不启用加密。
+		</constant>
+		<constant name="ENC_AUDIO" value="1" enum="EncryptionFlag">
+			加密音频流。
+		</constant>
+		<constant name="ENC_VIDEO" value="2" enum="EncryptionFlag">
+			加密视频流。
+		</constant>
+		<constant name="ENC_ALL" value="-1" enum="EncryptionFlag">
+			加密所有流（0xFFFFFFFF）。
+		</constant>
+		<constant name="AUDIO_CFG_STEREO" value="197322" enum="AudioConfigurationPreset">
+			指定音频流应编码为立体声（默认）。频道数为 2，通道掩码为 0x3。
+		</constant>
+		<constant name="AUDIO_CFG_51_SURROUND" value="4130506" enum="AudioConfigurationPreset">
+			指定音频流应编码为 5.1 环绕声。如果主机能够处理的话。频道数为 6，通道掩码为 0x3F。
+		</constant>
+		<constant name="AUDIO_CFG_71_SURROUND" value="103196874" enum="AudioConfigurationPreset">
+			指定音频流应编码为 7.1 环绕声。如果主机能够处理的话。频道数为 8，通道掩码为 0x63F。
+		</constant>
 	</constants>
 </class>

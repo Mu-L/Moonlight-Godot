@@ -1,8 +1,8 @@
 extends Node3D
 
-@onready var requester = Requester.new()
-@onready var configmanager = ConfigManager.new()
-@onready var computermamager = ComputerManager.new()
+@onready var moonlight_requester = MoonlightRequester.new()
+@onready var moonlight_config_manager = MoonlightConfigManager.new()
+@onready var moonlight_computer_manager = MoonlightComputerManager.new()
 @onready var moonlightstreamcore = MoonlightStreamCore.new()
 
 # UI References
@@ -115,13 +115,13 @@ func _ready() -> void:
     Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
     
     # Connect Moonlight Signals
-    computermamager.pair_completed.connect(on_pair_complete)
+    moonlight_computer_manager.pair_completed.connect(on_pair_complete)
     moonlightstreamcore.connection_started.connect(func(): print("[Moonlight-Godot-MoonlightStreamCore]", "Connect Successfully!"))
     moonlightstreamcore.connection_terminated.connect(func(_err, msg): push_error("[Moonlight-Godot-MoonlightStreamCore]", msg))
     
     # Load Config
-    if configmanager.get_hosts().size() > 0:
-        line_edit_ip.text = configmanager.get_hosts()[0].localaddress
+    if moonlight_config_manager.get_hosts().size() > 0:
+        line_edit_ip.text = moonlight_config_manager.get_hosts()[0].localaddress
     else:
         line_edit_ip.text = "192.168.1.1"
 
@@ -368,7 +368,10 @@ func handle_stream_input(event: InputEvent):
         if event.alt_pressed: modifiers |= MoonlightInput.MODIFIER_ALT_BIT
         if event.meta_pressed: modifiers |= MoonlightInput.MODIFIER_META_BIT
         
-        moonlightstreamcore.send_keyboard_event(event.keycode, action, modifiers)
+        # The backend now handles mapping Godot keycodes to standard HID keycodes.
+        # We can pass the Godot keycode directly without any manual conversion here.
+        var keycode = event.keycode
+        moonlightstreamcore.send_keyboard_event(keycode, action, modifiers)
 
 func _physics_process(delta: float) -> void:
     # Stop player movement if panel is open or not in WALK mode
@@ -465,48 +468,48 @@ func set_godot_audio_enabled(enabled: bool) -> void:
 
 func on_pair_complete(success, message):
     if success:
-        print("[Moonlight-Godot-ComputerManager]", message)
+        print("[Moonlight-Godot-MoonlightComputerManager]", message)
     else:
-        push_error("[Moonlight-Godot-ComputerManager]", message)
+        push_error("[Moonlight-Godot-MoonlightComputerManager]", message)
 
 func _on_line_edit_editing_toggled(toggled_on: bool) -> void:
     if toggled_on: return
-    configmanager.update_host(1, {"localaddress": line_edit_ip.text})
+    moonlight_config_manager.update_host(1, {"localaddress": line_edit_ip.text})
 
 func test_http_requeset() -> void:
     var url = "http://httpbin.org/uuid"
-    requester.request(url, "GET", PackedByteArray(), {}, {}, Callable(self , "_on_request_completed"))
+    moonlight_requester.request(url, "GET", PackedByteArray(), {}, {}, Callable(self , "_on_request_completed"))
 
 func _on_request_completed(code, body, headers, err):
     print("Request result: ", code)
 
 func test_cert_create() -> void:
-    print(configmanager.get_client_keys())
+    print(moonlight_config_manager.get_client_keys())
 
 func test_add_host_info() -> void:
-    print("current hosts:\n", configmanager.get_hosts(), "\n")
+    print("current hosts:\n", moonlight_config_manager.get_hosts(), "\n")
 
 func test_remove_host_info() -> void:
-    configmanager.remove_host(1)
+    moonlight_config_manager.remove_host(1)
 
 func test_start_pair() -> void:
-    var pin = computermamager.start_pair(line_edit_ip.text)
+    var pin = moonlight_computer_manager.start_pair(line_edit_ip.text)
     print("pin:", pin)
 
 func test_cancel_pair() -> void:
-    computermamager.unpair(1)
+    moonlight_computer_manager.unpair(1)
 
 func test_get_applist() -> void:
-    computermamager.get_app_list(1)
+    moonlight_computer_manager.get_app_list(1)
 
 func test_get_app_texture() -> void:
-    configmanager.load_config()
-    var applist = configmanager.get_apps(1)
+    moonlight_config_manager.load_config()
+    var applist = moonlight_config_manager.get_apps(1)
     if applist.size() > 0:
-        computermamager.get_app_cover(1, applist[0]["id"], func(tex): texture_rect_app.texture = tex)
+        moonlight_computer_manager.get_app_cover(1, applist[0]["id"], func(tex): texture_rect_app.texture = tex)
 
 func test_connect_to_server() -> void:
-    computermamager.connect_to_computer(line_edit_ip.text, 47989, func(info): print(info))
+    moonlight_computer_manager.connect_to_computer(line_edit_ip.text, 47989, func(info): print(info))
 
 func test_establish_stream() -> void:
     # Update settings from UI one last time
@@ -582,7 +585,7 @@ func test_establish_stream() -> void:
         if mat: mat.albedo_texture = stream_viewport.get_texture()
 
 func test_stop_stream() -> void:
-    computermamager.stop_stream(1, func(info):
+    moonlight_computer_manager.stop_stream(1, func(info):
         print(info)
         moonlightstreamcore.stop_play_stream()
         moonlightstreamcore.reset_audio_stream()

@@ -1,4 +1,4 @@
-#include "config_manager.h"
+#include "moonlight_config_manager.h"
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
@@ -6,16 +6,16 @@
 
 using namespace godot;
 
-ConfigManager::ConfigManager() {
+MoonlightConfigManager::MoonlightConfigManager() {
 	config.instantiate();
 	config_path = "user://addons/moonlight-godot/config.ini";
 	load_config();
 }
 
-ConfigManager::~ConfigManager() {
+MoonlightConfigManager::~MoonlightConfigManager() {
 }
 
-void ConfigManager::set_config_path(const String &path) {
+void MoonlightConfigManager::set_config_path(const String &path) {
 	if (config_path != path) {
 		config_path = path.is_empty() ? "user://addons/moonlight-godot/config.ini" : path;
 		config->clear(); // Clear existing parsed data to prevent merging old config
@@ -23,11 +23,11 @@ void ConfigManager::set_config_path(const String &path) {
 	}
 }
 
-String ConfigManager::get_config_path() const {
+String MoonlightConfigManager::get_config_path() const {
 	return config_path;
 }
 
-void ConfigManager::load_config() {
+void MoonlightConfigManager::load_config() {
 	String dir = config_path.get_base_dir();
 	Ref<DirAccess> da = DirAccess::open("user://");
 	if (!DirAccess::dir_exists_absolute(dir)) {
@@ -43,24 +43,24 @@ void ConfigManager::load_config() {
 	// get_client_cert_paths();
 }
 
-void ConfigManager::save_config() {
+void MoonlightConfigManager::save_config() {
 	config->save(config_path);
 }
 
-String ConfigManager::_format_pem_for_qt(String pem) {
+String MoonlightConfigManager::_format_pem_for_qt(String pem) {
 	// Qt ini 格式示例中使用了 @ByteArray 和显式 \n
 	String out = pem.replace("\n", "\\n");
 	return "@ByteArray(" + out + ")";
 }
 
-String ConfigManager::_parse_pem_from_qt(String qt_pem) {
+String MoonlightConfigManager::_parse_pem_from_qt(String qt_pem) {
 	if (qt_pem.begins_with("@ByteArray(") && qt_pem.ends_with(")")) {
 		return qt_pem.substr(11, qt_pem.length() - 12).replace("\\n", "\n");
 	}
 	return qt_pem;
 }
 
-void ConfigManager::_check_and_create_certs() {
+void MoonlightConfigManager::_check_and_create_certs() {
 	if (!config->has_section_key("General", "certificate") || !config->has_section_key("General", "key")) {
 		// 修复：Crypto 需要实例化，而非作为单例获取
 		Ref<Crypto> crypto;
@@ -80,7 +80,7 @@ void ConfigManager::_check_and_create_certs() {
 	}
 }
 
-Dictionary ConfigManager::get_client_keys() {
+Dictionary MoonlightConfigManager::get_client_keys() {
 	Dictionary d;
 	String cert = config->get_value("General", "certificate");
 	String key = config->get_value("General", "key");
@@ -90,7 +90,7 @@ Dictionary ConfigManager::get_client_keys() {
 	return d;
 }
 
-Dictionary ConfigManager::get_client_cert_paths() {
+Dictionary MoonlightConfigManager::get_client_cert_paths() {
 	Dictionary d;
 	Dictionary keys = get_client_keys();
 
@@ -126,15 +126,15 @@ Dictionary ConfigManager::get_client_cert_paths() {
 	return d;
 }
 
-String ConfigManager::_get_host_prefix(int index) {
+String MoonlightConfigManager::_get_host_prefix(int index) {
 	return String::num_int64(index) + "\\";
 }
 
-String ConfigManager::_get_app_prefix(int host_index, int app_index) {
+String MoonlightConfigManager::_get_app_prefix(int host_index, int app_index) {
 	return _get_host_prefix(host_index) + "apps\\" + String::num_int64(app_index) + "\\";
 }
 
-Array ConfigManager::get_hosts() {
+Array MoonlightConfigManager::get_hosts() {
 	Array hosts;
 	int size = config->get_value("hosts", "size", 0);
 	for (int i = 1; i <= size; i++) {
@@ -159,7 +159,7 @@ Array ConfigManager::get_hosts() {
 	return hosts;
 }
 
-int ConfigManager::add_host(const Dictionary &data) {
+int MoonlightConfigManager::add_host(const Dictionary &data) {
 	int size = config->get_value("hosts", "size", 0);
 	int new_idx = size + 1;
 	config->set_value("hosts", "size", new_idx);
@@ -168,7 +168,7 @@ int ConfigManager::add_host(const Dictionary &data) {
 	return new_idx;
 }
 
-void ConfigManager::update_host(int index, const Dictionary &data) {
+void MoonlightConfigManager::update_host(int index, const Dictionary &data) {
 	String prefix = _get_host_prefix(index);
 	Array keys = data.keys();
 	for (int i = 0; i < keys.size(); i++) {
@@ -184,7 +184,7 @@ void ConfigManager::update_host(int index, const Dictionary &data) {
 	save_config();
 }
 
-void ConfigManager::remove_host(int index) {
+void MoonlightConfigManager::remove_host(int index) {
 	if (!config->has_section("hosts"))
 		return;
 
@@ -243,7 +243,7 @@ void ConfigManager::remove_host(int index) {
 	save_config();
 }
 
-Array ConfigManager::get_apps(int host_index) {
+Array MoonlightConfigManager::get_apps(int host_index) {
 	Array apps;
 	String base_prefix = _get_host_prefix(host_index);
 	int size = config->get_value("hosts", base_prefix + "apps\\size", 0);
@@ -262,7 +262,7 @@ Array ConfigManager::get_apps(int host_index) {
 	return apps;
 }
 
-void ConfigManager::add_app(int host_index, const Dictionary &data) {
+void MoonlightConfigManager::add_app(int host_index, const Dictionary &data) {
 	String base_prefix = _get_host_prefix(host_index);
 	int size = config->get_value("hosts", base_prefix + "apps\\size", 0);
 	int new_idx = size + 1;
@@ -277,7 +277,7 @@ void ConfigManager::add_app(int host_index, const Dictionary &data) {
 	save_config();
 }
 
-void ConfigManager::remove_app(int host_index, int app_index) {
+void MoonlightConfigManager::remove_app(int host_index, int app_index) {
 	String apps_prefix = _get_host_prefix(host_index) + "apps\\";
 	int size = config->get_value("hosts", apps_prefix + "size", 0);
 
@@ -330,7 +330,7 @@ void ConfigManager::remove_app(int host_index, int app_index) {
 	save_config();
 }
 
-void ConfigManager::set_custom_data(ConfigTarget target, int host_idx, int app_idx, String key, Variant value) {
+void MoonlightConfigManager::set_custom_data(ConfigTarget target, int host_idx, int app_idx, String key, Variant value) {
 	String section;
 	String final_key;
 
@@ -353,7 +353,7 @@ void ConfigManager::set_custom_data(ConfigTarget target, int host_idx, int app_i
 	save_config();
 }
 
-Variant ConfigManager::get_custom_data(ConfigTarget target, int host_idx, int app_idx, String key, Variant default_value) {
+Variant MoonlightConfigManager::get_custom_data(ConfigTarget target, int host_idx, int app_idx, String key, Variant default_value) {
 	String section;
 	String final_key;
 
@@ -375,27 +375,27 @@ Variant ConfigManager::get_custom_data(ConfigTarget target, int host_idx, int ap
 	return config->get_value(section, final_key, default_value);
 }
 
-void ConfigManager::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("set_config_path", "path"), &ConfigManager::set_config_path);
-	ClassDB::bind_method(D_METHOD("get_config_path"), &ConfigManager::get_config_path);
-	ClassDB::add_property("ConfigManager", PropertyInfo(Variant::STRING, "config_path"), "set_config_path", "get_config_path");
+void MoonlightConfigManager::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_config_path", "path"), &MoonlightConfigManager::set_config_path);
+	ClassDB::bind_method(D_METHOD("get_config_path"), &MoonlightConfigManager::get_config_path);
+	ClassDB::add_property("MoonlightConfigManager", PropertyInfo(Variant::STRING, "config_path"), "set_config_path", "get_config_path");
 
-	ClassDB::bind_method(D_METHOD("load_config"), &ConfigManager::load_config);
-	ClassDB::bind_method(D_METHOD("save_config"), &ConfigManager::save_config);
-	ClassDB::bind_method(D_METHOD("get_client_keys"), &ConfigManager::get_client_keys);
-	ClassDB::bind_method(D_METHOD("get_client_cert_paths"), &ConfigManager::get_client_cert_paths);
+	ClassDB::bind_method(D_METHOD("load_config"), &MoonlightConfigManager::load_config);
+	ClassDB::bind_method(D_METHOD("save_config"), &MoonlightConfigManager::save_config);
+	ClassDB::bind_method(D_METHOD("get_client_keys"), &MoonlightConfigManager::get_client_keys);
+	ClassDB::bind_method(D_METHOD("get_client_cert_paths"), &MoonlightConfigManager::get_client_cert_paths);
 
-	ClassDB::bind_method(D_METHOD("get_hosts"), &ConfigManager::get_hosts);
-	ClassDB::bind_method(D_METHOD("add_host", "data"), &ConfigManager::add_host);
-	ClassDB::bind_method(D_METHOD("update_host", "index", "data"), &ConfigManager::update_host);
-	ClassDB::bind_method(D_METHOD("remove_host", "index"), &ConfigManager::remove_host);
+	ClassDB::bind_method(D_METHOD("get_hosts"), &MoonlightConfigManager::get_hosts);
+	ClassDB::bind_method(D_METHOD("add_host", "data"), &MoonlightConfigManager::add_host);
+	ClassDB::bind_method(D_METHOD("update_host", "index", "data"), &MoonlightConfigManager::update_host);
+	ClassDB::bind_method(D_METHOD("remove_host", "index"), &MoonlightConfigManager::remove_host);
 
-	ClassDB::bind_method(D_METHOD("get_apps", "host_index"), &ConfigManager::get_apps);
-	ClassDB::bind_method(D_METHOD("add_app", "host_index", "data"), &ConfigManager::add_app);
-	ClassDB::bind_method(D_METHOD("remove_app", "host_index", "app_index"), &ConfigManager::remove_app);
+	ClassDB::bind_method(D_METHOD("get_apps", "host_index"), &MoonlightConfigManager::get_apps);
+	ClassDB::bind_method(D_METHOD("add_app", "host_index", "data"), &MoonlightConfigManager::add_app);
+	ClassDB::bind_method(D_METHOD("remove_app", "host_index", "app_index"), &MoonlightConfigManager::remove_app);
 
-	ClassDB::bind_method(D_METHOD("set_custom_data", "target", "host_idx", "app_idx", "key", "value"), &ConfigManager::set_custom_data);
-	ClassDB::bind_method(D_METHOD("get_custom_data", "target", "host_idx", "app_idx", "key", "default_value"), &ConfigManager::get_custom_data, DEFVAL(Variant()));
+	ClassDB::bind_method(D_METHOD("set_custom_data", "target", "host_idx", "app_idx", "key", "value"), &MoonlightConfigManager::set_custom_data);
+	ClassDB::bind_method(D_METHOD("get_custom_data", "target", "host_idx", "app_idx", "key", "default_value"), &MoonlightConfigManager::get_custom_data, DEFVAL(Variant()));
 
 	BIND_ENUM_CONSTANT(TARGET_GLOBAL);
 	BIND_ENUM_CONSTANT(TARGET_HOST);

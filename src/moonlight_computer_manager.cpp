@@ -1,4 +1,4 @@
-#include "computer_manager.h"
+#include "moonlight_computer_manager.h"
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/marshalls.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
@@ -7,31 +7,31 @@
 
 using namespace godot;
 
-ComputerManager::ComputerManager() {
-	requester = memnew(Requester);
+MoonlightComputerManager::MoonlightComputerManager() {
+	moonlight_requester = memnew(MoonlightRequester);
 	owns_config_manager = false;
 }
 
-ComputerManager::~ComputerManager() {
-	if (requester) {
-		memdelete(requester);
+MoonlightComputerManager::~MoonlightComputerManager() {
+	if (moonlight_requester) {
+		memdelete(moonlight_requester);
 	}
 	if (owns_config_manager && config_manager) {
 		memdelete(config_manager);
 	}
 }
 
-void ComputerManager::set_config_manager(Object *cm) {
-	config_manager = Object::cast_to<ConfigManager>(cm);
+void MoonlightComputerManager::set_config_manager(Object *cm) {
+	config_manager = Object::cast_to<MoonlightConfigManager>(cm);
 	owns_config_manager = false; // 外部所有权
 }
 
 // 1. 配对逻辑
 
-String ComputerManager::start_pair(String ip, int port) {
+String MoonlightComputerManager::start_pair(String ip, int port) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 
@@ -58,7 +58,7 @@ String ComputerManager::start_pair(String ip, int port) {
 	return pair_pin;
 }
 
-void ComputerManager::_step_pair() {
+void MoonlightComputerManager::_step_pair() {
 	if (pair_state == PAIR_IDLE || pair_state == PAIR_FINISHED || pair_state == PAIR_ERROR)
 		return;
 
@@ -72,7 +72,7 @@ void ComputerManager::_step_pair() {
 		case PAIR_STAGE_0_PREFLIGHT: {
 			// Stage 0: Check server info to see if we are already paired and get server unique ID
 			String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/serverinfo?uniqueid=" + unique_id + "&uuid=" + current_uuid;
-			requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(0));
+			moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), callable_mp(this, &MoonlightComputerManager::_on_pair_request_completed).bind(0));
 			break;
 		}
 		case PAIR_STAGE_1_GET_CERT: {
@@ -85,7 +85,7 @@ void ComputerManager::_step_pair() {
 			PackedByteArray cert_bytes = client_cert_pem.to_utf8_buffer();
 
 			String url = base_url + "?" + common_params + "&phrase=getservercert&salt=" + _bytes_to_hex(pair_salt) + "&clientcert=" + _bytes_to_hex(cert_bytes);
-			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(1));
+			moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &MoonlightComputerManager::_on_pair_request_completed).bind(1));
 			break;
 		}
 		case PAIR_STAGE_2_CLIENT_CHALLENGE: {
@@ -96,7 +96,7 @@ void ComputerManager::_step_pair() {
 			PackedByteArray challenge_enc = _encrypt_aes_ecb(client_secret_random, pair_aes_key);
 
 			String url = base_url + "?" + common_params + "&clientchallenge=" + _bytes_to_hex(challenge_enc);
-			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(2));
+			moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &MoonlightComputerManager::_on_pair_request_completed).bind(2));
 			break;
 		}
 		case PAIR_STAGE_3_SERVER_RESPONSE: {
@@ -126,7 +126,7 @@ void ComputerManager::_step_pair() {
 			PackedByteArray hash_enc = _encrypt_aes_ecb(hash, pair_aes_key);
 
 			String url = base_url + "?" + common_params + "&serverchallengeresp=" + _bytes_to_hex(hash_enc);
-			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(3));
+			moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &MoonlightComputerManager::_on_pair_request_completed).bind(3));
 			break;
 		}
 		case PAIR_STAGE_4_CLIENT_SECRET: {
@@ -143,7 +143,7 @@ void ComputerManager::_step_pair() {
 
 			// 3. 以 HEX（纯文本）发送
 			String url = base_url + "?" + common_params + "&clientpairingsecret=" + _bytes_to_hex(payload);
-			requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(4));
+			moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), ssl_opts, callable_mp(this, &MoonlightComputerManager::_on_pair_request_completed).bind(4));
 			break;
 		}
 		case PAIR_STAGE_5_HTTPS_CHALLENGE: {
@@ -157,13 +157,13 @@ void ComputerManager::_step_pair() {
 			// 移除：不再需要写入临时文件或根据IP区分验证策略，统一由 _get_ssl_options 处理
 			// 证书固定已被全局禁用。
 
-			requester->request(url, "GET", PackedByteArray(), Dictionary(), stage5_ssl_opts, callable_mp(this, &ComputerManager::_on_pair_request_completed).bind(5));
+			moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), stage5_ssl_opts, callable_mp(this, &MoonlightComputerManager::_on_pair_request_completed).bind(5));
 			break;
 		}
 	}
 }
 
-void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body, Dictionary headers, String error, int step) {
+void MoonlightComputerManager::_on_pair_request_completed(int code, PackedByteArray body, Dictionary headers, String error, int step) {
 	is_requesting = false;
 	bool failed = false;
 	String fail_msg;
@@ -201,7 +201,7 @@ void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body,
 		// 发送 unpair 请求通知服务端清除状态 (Fire and forget)
 		String uuid = _get_uuid();
 		String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/unpair?uniqueid=" + unique_id + "&uuid=" + uuid;
-		requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), Callable());
+		moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), Callable());
 
 		pair_state = PAIR_ERROR;
 		emit_signal("pair_completed", false, fail_msg);
@@ -343,9 +343,9 @@ void ComputerManager::_on_pair_request_completed(int code, PackedByteArray body,
 	}
 }
 
-void ComputerManager::cancel_pair() {
+void MoonlightComputerManager::cancel_pair() {
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 	if (pair_state != PAIR_IDLE && pair_state != PAIR_FINISHED && pair_state != PAIR_ERROR) {
@@ -353,14 +353,14 @@ void ComputerManager::cancel_pair() {
 		// 主动取消时发送 unpair 请求。注意：这里应生成一个新的随机 UUID，而不是使用当前的 current_uuid。
 		String uuid = _get_uuid();
 		String url = "http://" + pair_ip + ":" + String::num_int64(pair_port) + "/unpair?uniqueid=" + unique_id + "&uuid=" + uuid;
-		requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), Callable());
+		moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(), Callable());
 	}
 	_reset_pairing();
 }
 
-void ComputerManager::unpair(int host_id) {
+void MoonlightComputerManager::unpair(int host_id) {
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 	if (config_manager) {
@@ -368,7 +368,7 @@ void ComputerManager::unpair(int host_id) {
 	}
 }
 
-void ComputerManager::_reset_pairing() {
+void MoonlightComputerManager::_reset_pairing() {
 	pair_state = PAIR_IDLE;
 	is_requesting = false;
 	server_unique_id = "";
@@ -381,18 +381,18 @@ void ComputerManager::_reset_pairing() {
 
 // 2. 测试连接
 
-void ComputerManager::connect_to_computer(String ip, int port, Callable callback) {
+void MoonlightComputerManager::connect_to_computer(String ip, int port, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 	String url = "http://" + ip + ":" + String::num_int64(port) + "/serverinfo?uniqueid=" + _get_unique_id() + "&uuid=" + _get_uuid();
-	requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(),
-			callable_mp(this, &ComputerManager::_on_server_info_completed).bind(Variant(callback), Variant(ip)));
+	moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), Dictionary(),
+			callable_mp(this, &MoonlightComputerManager::_on_server_info_completed).bind(Variant(callback), Variant(ip)));
 }
 
-void ComputerManager::_on_server_info_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback, String ip) {
+void MoonlightComputerManager::_on_server_info_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback, String ip) {
 	Dictionary result;
 	result["status"] = (code == 200) ? "online" : "offline";
 	if (code == 200) {
@@ -413,10 +413,10 @@ void ComputerManager::_on_server_info_completed(int code, PackedByteArray body, 
 
 // 3. 应用列表及 Cover
 
-void ComputerManager::get_app_list(int host_id, Callable callback) {
+void MoonlightComputerManager::get_app_list(int host_id, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 	Array hosts = config_manager->get_hosts();
@@ -433,11 +433,11 @@ void ComputerManager::get_app_list(int host_id, Callable callback) {
 		return;
 
 	String url = "https://" + ip + ":" + String::num_int64(port) + "/applist?uniqueid=" + unique_id + "&uuid=" + _get_uuid();
-	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
-			callable_mp(this, &ComputerManager::_on_app_list_completed).bind(Variant(host_id), Variant(callback)));
+	moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
+			callable_mp(this, &MoonlightComputerManager::_on_app_list_completed).bind(Variant(host_id), Variant(callback)));
 }
 
-void ComputerManager::_on_app_list_completed(int code, PackedByteArray body, Dictionary headers, String error, int host_id, Callable callback) {
+void MoonlightComputerManager::_on_app_list_completed(int code, PackedByteArray body, Dictionary headers, String error, int host_id, Callable callback) {
 	if (code == 200) {
 		// 获取现有应用列表以进行去重
 		Array existing_apps = config_manager->get_apps(host_id);
@@ -476,10 +476,10 @@ void ComputerManager::_on_app_list_completed(int code, PackedByteArray body, Dic
 		callback.call(code == 200);
 }
 
-void ComputerManager::get_app_cover(int host_id, int app_id, Callable callback) {
+void MoonlightComputerManager::get_app_cover(int host_id, int app_id, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 
@@ -497,11 +497,11 @@ void ComputerManager::get_app_cover(int host_id, int app_id, Callable callback) 
 		return;
 
 	String url = "https://" + ip + ":" + String::num_int64(port) + "/appasset?uniqueid=" + unique_id + "&uuid=" + _get_uuid() + "&appid=" + String::num_int64(app_id);
-	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
-			callable_mp(this, &ComputerManager::_on_app_cover_completed).bind(Variant(callback)));
+	moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
+			callable_mp(this, &MoonlightComputerManager::_on_app_cover_completed).bind(Variant(callback)));
 }
 
-void ComputerManager::_on_app_cover_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback) {
+void MoonlightComputerManager::_on_app_cover_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback) {
 	if (code == 200 && callback.is_valid()) {
 		Ref<Image> img;
 		img.instantiate();
@@ -517,10 +517,10 @@ void ComputerManager::_on_app_cover_completed(int code, PackedByteArray body, Di
 
 // 4. 流连接管理
 
-void ComputerManager::establish_stream(int host_id, int app_id, Dictionary options, Callable callback) {
+void MoonlightComputerManager::establish_stream(int host_id, int app_id, Dictionary options, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 	Array hosts = config_manager->get_hosts();
@@ -564,11 +564,11 @@ void ComputerManager::establish_stream(int host_id, int app_id, Dictionary optio
 
 	// 2. 首先检查服务器状态 (/serverinfo) 以决定策略
 	String url = "https://" + ip + ":" + String::num_int64(port) + "/serverinfo?uniqueid=" + unique_id + "&uuid=" + _get_uuid();
-	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
-			callable_mp(this, &ComputerManager::_on_launch_serverinfo_completed).bind(ctx));
+	moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
+			callable_mp(this, &MoonlightComputerManager::_on_launch_serverinfo_completed).bind(ctx));
 }
 
-void ComputerManager::_on_launch_serverinfo_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx) {
+void MoonlightComputerManager::_on_launch_serverinfo_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx) {
 	if (code != 200) {
 		Callable cb = ctx["callback"];
 		if (cb.is_valid()) {
@@ -621,7 +621,7 @@ void ComputerManager::_on_launch_serverinfo_completed(int code, PackedByteArray 
 	_perform_launch_request(ctx, command);
 }
 
-void ComputerManager::_perform_launch_request(Dictionary ctx, String command) {
+void MoonlightComputerManager::_perform_launch_request(Dictionary ctx, String command) {
 	String ip = ctx["ip"];
 	int port = ctx["port"];
 	int app_id = ctx["app_id"];
@@ -727,11 +727,11 @@ void ComputerManager::_perform_launch_request(Dictionary ctx, String command) {
 	}
 
 	// 发送请求
-	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
-			callable_mp(this, &ComputerManager::_on_launch_request_completed).bind(ctx));
+	moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
+			callable_mp(this, &MoonlightComputerManager::_on_launch_request_completed).bind(ctx));
 }
 
-void ComputerManager::_on_launch_request_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx) {
+void MoonlightComputerManager::_on_launch_request_completed(int code, PackedByteArray body, Dictionary headers, String error, Dictionary ctx) {
 	Callable cb = ctx["callback"];
 	if (!cb.is_valid())
 		return;
@@ -769,10 +769,10 @@ void ComputerManager::_on_launch_request_completed(int code, PackedByteArray bod
 	cb.call(response);
 }
 
-void ComputerManager::stop_stream(int host_id, Callable callback) {
+void MoonlightComputerManager::stop_stream(int host_id, Callable callback) {
 	// 如果缺少 config_manager，则在内部初始化一个默认的
 	if (config_manager == nullptr) {
-		config_manager = memnew(ConfigManager);
+		config_manager = memnew(MoonlightConfigManager);
 		owns_config_manager = true;
 	}
 	Array hosts = config_manager->get_hosts();
@@ -787,24 +787,24 @@ void ComputerManager::stop_stream(int host_id, Callable callback) {
 	}
 
 	String url = "https://" + ip + ":" + String::num_int64(port) + "/cancel?uniqueid=" + unique_id + "&uuid=" + _get_uuid();
-	requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
-			callable_mp(this, &ComputerManager::_on_simple_request_completed).bind(Variant(callback)));
+	moonlight_requester->request(url, "GET", PackedByteArray(), Dictionary(), _get_ssl_options(),
+			callable_mp(this, &MoonlightComputerManager::_on_simple_request_completed).bind(Variant(callback)));
 }
 
-void ComputerManager::_on_simple_request_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback) {
+void MoonlightComputerManager::_on_simple_request_completed(int code, PackedByteArray body, Dictionary headers, String error, Callable callback) {
 	if (callback.is_valid())
 		callback.call(code == 200 ? body.get_string_from_utf8() : "");
 }
 
 // 工具函数
 
-PackedByteArray ComputerManager::_generate_random_bytes(int size) {
+PackedByteArray MoonlightComputerManager::_generate_random_bytes(int size) {
 	Ref<Crypto> c;
 	c.instantiate();
 	return c->generate_random_bytes(size);
 }
 
-PackedByteArray ComputerManager::_calculate_aes_key(const PackedByteArray &salt, const String &pin) {
+PackedByteArray MoonlightComputerManager::_calculate_aes_key(const PackedByteArray &salt, const String &pin) {
 	PackedByteArray combined = salt;
 	// 将 PIN 转换为 ASCII 字节（例如 "1234" -> 0x31 0x32 0x33 0x34）
 	combined.append_array(pin.to_ascii_buffer());
@@ -812,7 +812,7 @@ PackedByteArray ComputerManager::_calculate_aes_key(const PackedByteArray &salt,
 	return _sha256(combined).slice(0, 16);
 }
 
-PackedByteArray ComputerManager::_encrypt_aes_ecb(const PackedByteArray &data, const PackedByteArray &key) {
+PackedByteArray MoonlightComputerManager::_encrypt_aes_ecb(const PackedByteArray &data, const PackedByteArray &key) {
 	Ref<AESContext> ctx;
 	ctx.instantiate();
 	ctx->start(AESContext::MODE_ECB_ENCRYPT, key);
@@ -821,7 +821,7 @@ PackedByteArray ComputerManager::_encrypt_aes_ecb(const PackedByteArray &data, c
 	return out;
 }
 
-PackedByteArray ComputerManager::_decrypt_aes_ecb(const PackedByteArray &data, const PackedByteArray &key) {
+PackedByteArray MoonlightComputerManager::_decrypt_aes_ecb(const PackedByteArray &data, const PackedByteArray &key) {
 	Ref<AESContext> ctx;
 	ctx.instantiate();
 	ctx->start(AESContext::MODE_ECB_DECRYPT, key);
@@ -830,7 +830,7 @@ PackedByteArray ComputerManager::_decrypt_aes_ecb(const PackedByteArray &data, c
 	return out;
 }
 
-PackedByteArray ComputerManager::_sha256(const PackedByteArray &data) {
+PackedByteArray MoonlightComputerManager::_sha256(const PackedByteArray &data) {
 	Ref<HashingContext> ctx;
 	ctx.instantiate();
 	ctx->start(HashingContext::HASH_SHA256);
@@ -838,7 +838,7 @@ PackedByteArray ComputerManager::_sha256(const PackedByteArray &data) {
 	return ctx->finish();
 }
 
-PackedByteArray ComputerManager::_sign_data(const PackedByteArray &data) {
+PackedByteArray MoonlightComputerManager::_sign_data(const PackedByteArray &data) {
 	Dictionary keys = config_manager->get_client_keys();
 	Ref<Crypto> c;
 	c.instantiate();
@@ -852,7 +852,7 @@ PackedByteArray ComputerManager::_sign_data(const PackedByteArray &data) {
 	return c->sign(HashingContext::HASH_SHA256, hash, key);
 }
 
-PackedByteArray ComputerManager::_extract_signature_from_der(const PackedByteArray &der) {
+PackedByteArray MoonlightComputerManager::_extract_signature_from_der(const PackedByteArray &der) {
 	// A minimal ASN.1 parser used to find the last BIT STRING in a sequence
 	// X.509 structure: SEQUENCE { ... }
 	// Inside: TBSCertificate, AlgorithmIdentifier, BIT STRING (signature)
@@ -930,15 +930,15 @@ PackedByteArray ComputerManager::_extract_signature_from_der(const PackedByteArr
 	return PackedByteArray();
 }
 
-String ComputerManager::_bytes_to_hex(const PackedByteArray &bytes) {
+String MoonlightComputerManager::_bytes_to_hex(const PackedByteArray &bytes) {
 	return bytes.hex_encode().to_lower();
 }
 
-PackedByteArray ComputerManager::_hex_to_bytes(const String &hex) {
+PackedByteArray MoonlightComputerManager::_hex_to_bytes(const String &hex) {
 	return hex.hex_decode();
 }
 
-String ComputerManager::_extract_xml_value(const String &xml, const String &tag) {
+String MoonlightComputerManager::_extract_xml_value(const String &xml, const String &tag) {
 	String start_tag = "<" + tag + ">";
 	String end_tag = "</" + tag + ">";
 	int start = xml.find(start_tag);
@@ -951,24 +951,24 @@ String ComputerManager::_extract_xml_value(const String &xml, const String &tag)
 	return xml.substr(start, end - start);
 }
 
-String ComputerManager::_get_unique_id() {
-	if (config_manager->get_custom_data(ConfigManager::TARGET_GLOBAL, 0, 0, "uniqueid", "").stringify().is_empty()) {
+String MoonlightComputerManager::_get_unique_id() {
+	if (config_manager->get_custom_data(MoonlightConfigManager::TARGET_GLOBAL, 0, 0, "uniqueid", "").stringify().is_empty()) {
 		String uid = _bytes_to_hex(_generate_random_bytes(8)).to_upper();
-		config_manager->set_custom_data(ConfigManager::TARGET_GLOBAL, 0, 0, "uniqueid", uid);
+		config_manager->set_custom_data(MoonlightConfigManager::TARGET_GLOBAL, 0, 0, "uniqueid", uid);
 	}
-	return config_manager->get_custom_data(ConfigManager::TARGET_GLOBAL, 0, 0, "uniqueid", "").stringify();
+	return config_manager->get_custom_data(MoonlightConfigManager::TARGET_GLOBAL, 0, 0, "uniqueid", "").stringify();
 }
 
-String ComputerManager::_get_uuid() {
+String MoonlightComputerManager::_get_uuid() {
 	return _bytes_to_hex(_generate_random_bytes(16)); // A standard UUID is 16 bytes
 }
 
-Dictionary ComputerManager::_get_ssl_options() {
+Dictionary MoonlightComputerManager::_get_ssl_options() {
 	// 获取证书内容字符串 (非路径)
 	Dictionary keys = config_manager->get_client_keys();
 	Dictionary opts;
 
-	// 映射到 Requester 期望的键名
+	// 映射到 MoonlightRequester 期望的键名
 	opts["client_cert"] = keys["certificate"];
 	opts["client_key"] = keys["key"];
 
@@ -978,27 +978,27 @@ Dictionary ComputerManager::_get_ssl_options() {
 	return opts;
 }
 
-void ComputerManager::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("set_config_manager", "cm"), &ComputerManager::set_config_manager);
+void MoonlightComputerManager::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_config_manager", "cm"), &MoonlightComputerManager::set_config_manager);
 
-	ClassDB::bind_method(D_METHOD("start_pair", "ip", "port"), &ComputerManager::start_pair, DEFVAL(47989));
-	ClassDB::bind_method(D_METHOD("cancel_pair"), &ComputerManager::cancel_pair);
-	ClassDB::bind_method(D_METHOD("unpair", "host_id"), &ComputerManager::unpair);
+	ClassDB::bind_method(D_METHOD("start_pair", "ip", "port"), &MoonlightComputerManager::start_pair, DEFVAL(47989));
+	ClassDB::bind_method(D_METHOD("cancel_pair"), &MoonlightComputerManager::cancel_pair);
+	ClassDB::bind_method(D_METHOD("unpair", "host_id"), &MoonlightComputerManager::unpair);
 
-	ClassDB::bind_method(D_METHOD("connect_to_computer", "ip", "port", "callback"), &ComputerManager::connect_to_computer, DEFVAL(47989), DEFVAL(Callable()));
-	ClassDB::bind_method(D_METHOD("get_app_list", "host_id", "callback"), &ComputerManager::get_app_list, DEFVAL(Callable()));
-	ClassDB::bind_method(D_METHOD("get_app_cover", "host_id", "app_id", "callback"), &ComputerManager::get_app_cover);
-	ClassDB::bind_method(D_METHOD("establish_stream", "host_id", "app_id", "options", "callback"), &ComputerManager::establish_stream);
-	ClassDB::bind_method(D_METHOD("stop_stream", "host_id", "callback"), &ComputerManager::stop_stream);
+	ClassDB::bind_method(D_METHOD("connect_to_computer", "ip", "port", "callback"), &MoonlightComputerManager::connect_to_computer, DEFVAL(47989), DEFVAL(Callable()));
+	ClassDB::bind_method(D_METHOD("get_app_list", "host_id", "callback"), &MoonlightComputerManager::get_app_list, DEFVAL(Callable()));
+	ClassDB::bind_method(D_METHOD("get_app_cover", "host_id", "app_id", "callback"), &MoonlightComputerManager::get_app_cover);
+	ClassDB::bind_method(D_METHOD("establish_stream", "host_id", "app_id", "options", "callback"), &MoonlightComputerManager::establish_stream);
+	ClassDB::bind_method(D_METHOD("stop_stream", "host_id", "callback"), &MoonlightComputerManager::stop_stream);
 
-	ClassDB::bind_method(D_METHOD("_on_pair_request_completed"), &ComputerManager::_on_pair_request_completed);
-	ClassDB::bind_method(D_METHOD("_on_server_info_completed"), &ComputerManager::_on_server_info_completed);
-	ClassDB::bind_method(D_METHOD("_on_app_list_completed"), &ComputerManager::_on_app_list_completed);
-	ClassDB::bind_method(D_METHOD("_on_app_cover_completed"), &ComputerManager::_on_app_cover_completed);
-	ClassDB::bind_method(D_METHOD("_on_simple_request_completed"), &ComputerManager::_on_simple_request_completed);
+	ClassDB::bind_method(D_METHOD("_on_pair_request_completed"), &MoonlightComputerManager::_on_pair_request_completed);
+	ClassDB::bind_method(D_METHOD("_on_server_info_completed"), &MoonlightComputerManager::_on_server_info_completed);
+	ClassDB::bind_method(D_METHOD("_on_app_list_completed"), &MoonlightComputerManager::_on_app_list_completed);
+	ClassDB::bind_method(D_METHOD("_on_app_cover_completed"), &MoonlightComputerManager::_on_app_cover_completed);
+	ClassDB::bind_method(D_METHOD("_on_simple_request_completed"), &MoonlightComputerManager::_on_simple_request_completed);
 
-	ClassDB::bind_method(D_METHOD("_on_launch_serverinfo_completed"), &ComputerManager::_on_launch_serverinfo_completed);
-	ClassDB::bind_method(D_METHOD("_on_launch_request_completed"), &ComputerManager::_on_launch_request_completed);
+	ClassDB::bind_method(D_METHOD("_on_launch_serverinfo_completed"), &MoonlightComputerManager::_on_launch_serverinfo_completed);
+	ClassDB::bind_method(D_METHOD("_on_launch_request_completed"), &MoonlightComputerManager::_on_launch_request_completed);
 
 	ADD_SIGNAL(MethodInfo("pair_completed", PropertyInfo(Variant::BOOL, "success"), PropertyInfo(Variant::STRING, "message")));
 }
