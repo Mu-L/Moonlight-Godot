@@ -7,7 +7,7 @@ endif()
 
 # Android NDK bionic 缺乏 pthread_cancel，如果被部分 Unix 代码宏命中会导致编译失败，强行填补或忽略
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR ANDROID)
-    add_compile_definitions(pthread_cancel(x)=0)
+    add_compile_definitions("pthread_cancel(x)=0")
     # 强制防除 Windows 相关泄漏
     remove_definitions(-D_WIN32)
 endif()
