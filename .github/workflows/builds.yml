@@ -107,7 +107,8 @@ jobs:
             sudo apt-get update && sudo apt-get install -y \
               nasm ninja-build build-essential \
               gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-              libatomic1-arm64-cross libdrm-dev
+              libatomic1-arm64-cross libdrm-dev \
+              pkg-config libx11-dev libxext-dev libxfixes-dev libxcb1-dev libgl1-mesa-dev libva-dev libvdpau-dev libvulkan-dev
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             brew install nasm ninja
           fi
@@ -222,6 +223,31 @@ jobs:
           # build 阶段不应携带 -D 参数
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
+      - name: On Failure Bust Cache
+        if: failure()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Build failed! Bumping cacheVer to bypass problematic cache next time..."
+          dateStr=$(date +%s)
+          if [ -f .github/cacheVer.txt ]; then
+            firstLine=$(sed -n '1p' .github/cacheVer.txt || true)
+          else
+            firstLine=""
+            mkdir -p .github
+          fi
+          printf "%s\n%s\n" "$firstLine" "$dateStr" > .github/cacheVer.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/cacheVer.txt
+          if git commit -m "ci: bump cacheVer due to build failure" .github/cacheVer.txt; then
+            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD
+            echo "Updated cacheVer on failure and pushed."
+          else
+            echo "No changes to commit."
+          fi
+
       - name: Possibly update cacheVer and push
         shell: bash
         env:
@@ -241,7 +267,7 @@ jobs:
             echo "No update needed"
             exit 0
           fi
-          dateStr=$(date +%Y%m%d)
+          dateStr=$(date +%s)
           if [ -f .github/cacheVer.txt ]; then
             firstLine=$(sed -n '1p' .github/cacheVer.txt || true)
           else
@@ -253,7 +279,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/cacheVer.txt
           if git commit -m "ci: bump cacheVer (auto)" .github/cacheVer.txt; then
-            git push origin HEAD
+            # Fix windows runner token issue by explicitly using token in url
+            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD
             echo "Updated cacheVer to $dateStr and pushed."
           else
             echo "No changes to commit."
@@ -261,7 +288,7 @@ jobs:
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
-        if: always() && matrix.target-type== 'template_debug'
+        if: success() && matrix.target-type == 'template_debug'
         with:
           path: ${{ github.workspace }}/vcpkg_cache
           key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/cacheVer.txt') }}

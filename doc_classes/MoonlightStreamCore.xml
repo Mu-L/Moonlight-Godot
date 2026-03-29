@@ -23,6 +23,7 @@
 			<argument index="3" name="additional_options" type="Resource" />
 			<description>
 				此函数开始流式传输。
+				host_id 和 app_id 分别标识要连接的主机在配置文件中的序号([b]从 1 开始[/b])和应用程序ID (示例：host_id=1, app_id=1191261554)。
 				回调都是可选的。传递 NULL 给每个结构中的单个回调，或为整个结构传递 NULL 以对所有回调使用默认值。
 				此函数不是线程安全的。
 				对应 Limelight API: [code]LiStartConnection(PSERVER_INFORMATION serverInfo, PSTREAM_CONFIGURATION streamConfig, PCONNECTION_LISTENER_CALLBACKS clCallbacks, PDECODER_RENDERER_CALLBACKS drCallbacks, PAUDIO_RENDERER_CALLBACKS arCallbacks, void* renderContext, int drFlags, void* audioContext, int arFlags)[/code]
