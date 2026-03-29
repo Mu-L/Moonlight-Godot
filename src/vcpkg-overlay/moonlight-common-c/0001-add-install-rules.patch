@@ -11,6 +11,7 @@ index 603e9dd..5ac4d2d 100644
 +# 1. 强制重设 moonlight-common-c 的接口路径，清除源码目录的绝对路径
 +set_target_properties(moonlight-common-c PROPERTIES 
 +    INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>;$<INSTALL_INTERFACE:include>"
++    INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ""
 +)
 +
 +# 2. 同时安装并导出这两个目标
@@ -48,5 +49,6 @@ index da4624d..69c3041 100644
 +# 5. 强制重设 enet 的接口路径，解决 enet/CMakeLists.txt 中的报错
 +set_target_properties(enet PROPERTIES 
 +    INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>;$<INSTALL_INTERFACE:include/enet>"
++    INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ""
 +)
 \ No newline at end of file

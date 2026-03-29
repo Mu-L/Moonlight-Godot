@@ -187,7 +187,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/cacheVer.txt') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', format('.github/cacheVer-{0}.txt', matrix.target.platform)) }}
 
       - name: Compute restored cache size
         shell: bash
@@ -223,63 +223,50 @@ jobs:
           # build 阶段不应携带 -D 参数
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
-      - name: On Failure Bust Cache
-        if: failure()
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Build failed! Bumping cacheVer to bypass problematic cache next time..."
-          dateStr=$(date +%s)
-          if [ -f .github/cacheVer.txt ]; then
-            firstLine=$(sed -n '1p' .github/cacheVer.txt || true)
-          else
-            firstLine=""
-            mkdir -p .github
-          fi
-          printf "%s\n%s\n" "$firstLine" "$dateStr" > .github/cacheVer.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/cacheVer.txt
-          if git commit -m "ci: bump cacheVer due to build failure" .github/cacheVer.txt; then
-            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD
-            echo "Updated cacheVer on failure and pushed."
-          else
-            echo "No changes to commit."
-          fi
-
-      - name: Possibly update cacheVer and push
+      - name: Update cacheVer and push
+        if: always() && matrix.target-type == 'template_release'
         shell: bash
         env:
           CACHE_HIT: ${{ steps.build-cache-restore.outputs.cache-hit }}
           RESTORED_BYTES: ${{ env.RESTORED_CACHE_SIZE_BYTES }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           set -e
-          if [ "${CACHE_HIT}" != "true" ]; then
-            echo "Cache not hit; skipping cacheVer update"
-            exit 0
+          CACHE_VER_FILE=".github/cacheVer-${{ matrix.target.platform }}.txt"
+
+          if [ "$JOB_STATUS" != "success" ]; then
+            echo "Build failed! Bumping $CACHE_VER_FILE to bypass problematic cache next time..."
+          else
+            if [ "${CACHE_HIT}" != "true" ]; then
+              echo "Cache not hit; skipping cacheVer update"
+              exit 0
+            fi
+            start=${BUILD_START_TIME:-0}
+            elapsed=$(( $(date +%s) - start ))
+            echo "Elapsed: $elapsed seconds, Restored bytes: ${RESTORED_BYTES}"
+            if [ "$elapsed" -le 600 ] && [ -n "${RESTORED_BYTES}" ] && [ "${RESTORED_BYTES}" -ge 104857600 ]; then
+              echo "No update needed"
+              exit 0
+            fi
           fi
-          start=${BUILD_START_TIME:-0}
-          elapsed=$(( $(date +%s) - start ))
-          echo "Elapsed: $elapsed seconds, Restored bytes: ${RESTORED_BYTES}"
-          if [ "$elapsed" -le 600 ] && [ -n "${RESTORED_BYTES}" ] && [ "${RESTORED_BYTES}" -ge 104857600 ]; then
-            echo "No update needed"
-            exit 0
-          fi
+
           dateStr=$(date +%s)
-          if [ -f .github/cacheVer.txt ]; then
-            firstLine=$(sed -n '1p' .github/cacheVer.txt || true)
+          if [ -f "$CACHE_VER_FILE" ]; then
+            firstLine=$(sed -n '1p' "$CACHE_VER_FILE" || true)
           else
             firstLine=""
             mkdir -p .github
           fi
-          printf "%s\n%s\n" "$firstLine" "$dateStr" > .github/cacheVer.txt
+          printf "%s\n%s\n" "$firstLine" "$dateStr" > "$CACHE_VER_FILE"
+          
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/cacheVer.txt
-          if git commit -m "ci: bump cacheVer (auto)" .github/cacheVer.txt; then
+          git add "$CACHE_VER_FILE"
+          
+          if git commit -m "ci: bump cacheVer for ${{ matrix.target.platform }} (auto)" "$CACHE_VER_FILE"; then
             # Fix windows runner token issue by explicitly using token in url
+            git pull --rebase https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD || true
             git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD
             echo "Updated cacheVer to $dateStr and pushed."
           else
@@ -291,7 +278,7 @@ jobs:
         if: success() && matrix.target-type == 'template_debug'
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/cacheVer.txt') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', format('.github/cacheVer-{0}.txt', matrix.target.platform)) }}
 
       # ——产物处理——
       - name: Windows - Cleanup
