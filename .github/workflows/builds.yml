@@ -4,6 +4,12 @@ on:
   push:
     branches: ["vcpkg"]
   workflow_dispatch:
+    inputs:
+      force_refresh_cache:
+        description: 'Force Refresh Cache'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}
@@ -183,34 +189,12 @@ jobs:
 
       - name: Restore vcpkg Cache
         id: build-cache-restore
+        # Skip restore if force_refresh_cache is true
+        if: ${{ !inputs.force_refresh_cache }}
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/cacheVer.txt') }}
-
-      - name: Compute restored cache size
-        shell: bash
-        env:
-          CACHE_HIT: ${{ steps.build-cache-restore.outputs.cache-hit }}
-        run: |
-          if [ "${CACHE_HIT}" != "true" ]; then
-            echo "RESTORED_CACHE_SIZE_BYTES=0" >> $GITHUB_ENV
-            echo "No cache restored"
-            exit 0
-          fi
-          if [ -d "$GITHUB_WORKSPACE/vcpkg_cache" ]; then
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-              # macOS du doesn't support -b
-              bytes=$(du -sk "$GITHUB_WORKSPACE/vcpkg_cache" | cut -f1)
-              bytes=$((bytes * 1024))
-            else
-              bytes=$(du -sb "$GITHUB_WORKSPACE/vcpkg_cache" | cut -f1)
-            fi
-          else
-            bytes=0
-          fi
-          echo "RESTORED_CACHE_SIZE_BYTES=$bytes" >> $GITHUB_ENV
-          echo "Restored cache size: $bytes bytes"
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       - name: Run CMake
         uses: lukka/run-cmake@v10
@@ -222,49 +206,25 @@ jobs:
           # build 阶段不应携带 -D 参数
           buildPresetAdditionalArgs: "['--config ${{ matrix.target-type == 'template_release' && 'Release' || 'Debug' }}']"
 
-      - name: Possibly update cacheVer and push
+      - name: Delete existing Cache if needed
+        if: always() && matrix.target-type == 'template_debug'
         shell: bash
         env:
-          CACHE_HIT: ${{ steps.build-cache-restore.outputs.cache-hit }}
-          RESTORED_BYTES: ${{ env.RESTORED_CACHE_SIZE_BYTES }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -e
-          if [ "${CACHE_HIT}" != "true" ]; then
-            echo "Cache not hit; skipping cacheVer update"
-            exit 0
-          fi
-          start=${BUILD_START_TIME:-0}
-          elapsed=$(( $(date +%s) - start ))
-          echo "Elapsed: $elapsed seconds, Restored bytes: ${RESTORED_BYTES}"
-          if [ "$elapsed" -le 600 ] && [ -n "${RESTORED_BYTES}" ] && [ "${RESTORED_BYTES}" -ge 104857600 ]; then
-            echo "No update needed"
-            exit 0
-          fi
-          dateStr=$(date +%Y%m%d)
-          if [ -f .github/cacheVer.txt ]; then
-            firstLine=$(sed -n '1p' .github/cacheVer.txt || true)
-          else
-            firstLine=""
-            mkdir -p .github
-          fi
-          printf "%s\n%s\n" "$firstLine" "$dateStr" > .github/cacheVer.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/cacheVer.txt
-          if git commit -m "ci: bump cacheVer (auto)" .github/cacheVer.txt; then
-            git push origin HEAD
-            echo "Updated cacheVer to $dateStr and pushed."
-          else
-            echo "No changes to commit."
+          CACHE_KEY="${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}"
+          if [ "${{ inputs.force_refresh_cache || 'false' }}" == "true" ] || [ "${{ steps.build-cache-restore.outputs.cache-hit }}" == "true" ]; then
+            echo "Deleting existing cache to allow update..."
+            gh extension install actions/gh-actions-cache || true
+            gh actions-cache delete "$CACHE_KEY" -R $GITHUB_REPOSITORY --confirm || echo "Cache deletion did not succeed or cache did not exist"
           fi
 
       - name: Save vcpkg cache
         uses: actions/cache/save@v4
-        if: always() && matrix.target-type== 'template_debug'
+        if: always() && matrix.target-type == 'template_debug'
         with:
           path: ${{ github.workspace }}/vcpkg_cache
-          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json','.github/cacheVer.txt') }}
+          key: ${{ runner.os }}-build-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
       # ——产物处理——
       - name: Windows - Cleanup

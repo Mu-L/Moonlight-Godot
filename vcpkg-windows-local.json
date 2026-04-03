@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "dependencies": [
+    {
+      "name": "curl",
+      "features": [
+        "brotli",
+        "http2",
+        "openssl"
+      ]
+    },
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": [
+        "aom",
+        "avcodec",
+        "avfilter",
+        "avformat",
+        "dav1d",
+        "gpl",
+        "nvcodec",
+        "opus",
+        "qsv",
+        "swresample",
+        "swscale",
+        "vulkan",
+        "x264",
+        "x265"
+      ]
+    },
+    "godot-cpp",
+    "moonlight-common-c"
+  ]
+}
