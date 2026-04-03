@@ -31,9 +31,10 @@
       "name": "android",
       "inherits": "base",
       "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "Android",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
         "ANDROID_ABI": "$env{ANDROID_ABI}",
-        "ANDROID_PLATFORM": "android-21"
+        "ANDROID_PLATFORM": "android-28"
       }
     },
     {

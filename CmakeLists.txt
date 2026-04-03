@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.21)
 
 # win平台默认使用静态链接库
-if(WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT DEFINED VCPKG_TARGET_TRIPLET)
     set(VCPKG_TARGET_TRIPLET "x64-windows-static-md" CACHE STRING "Target triplet")
+endif()
+
+# Android NDK bionic 缺乏 pthread_cancel，如果被部分 Unix 代码宏命中会导致编译失败，强行填补或忽略
+if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR ANDROID)
+    add_compile_definitions("pthread_cancel(x)=0")
+    # 强制防除 Windows 相关泄漏
+    remove_definitions(-D_WIN32)
 endif()
 
 # 项目设置

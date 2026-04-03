@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       force_refresh_cache:
-        description: 'Force Refresh Cache'
+        description: "Force Refresh Cache"
         required: false
         type: boolean
         default: false
@@ -113,7 +113,8 @@ jobs:
             sudo apt-get update && sudo apt-get install -y \
               nasm ninja-build build-essential \
               gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-              libatomic1-arm64-cross libdrm-dev
+              libatomic1-arm64-cross libdrm-dev \
+              pkg-config libx11-dev libxext-dev libxfixes-dev libxcb1-dev libgl1-mesa-dev libva-dev libvdpau-dev libvulkan-dev
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             brew install nasm ninja
           fi
