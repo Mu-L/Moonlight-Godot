@@ -1,16 +1,16 @@
 --- a/src/rswrapper.c
 +++ b/src/rswrapper.c
-@@ -2,6 +2,12 @@
-  * @file src/rswrapper.c
+@@ -3,6 +3,12 @@
   * @brief Wrappers for nanors vectorization with different ISA options
   */
-+
+ 
 +#include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
 +#include <stdbool.h>
 +#include <assert.h>
- 
++
  // _FORTIY_SOURCE can cause some versions of GCC to try to inline
  // memset() with incompatible target options when compiling rs.c
+ #ifdef _FORTIFY_SOURCE
 \ No newline at end of file
