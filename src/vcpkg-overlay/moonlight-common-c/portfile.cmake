@@ -22,6 +22,7 @@ vcpkg_apply_patches(
     SOURCE_PATH ${SOURCE_PATH}
     PATCHES
         0001-add-install-rules.patch
+        0002-fix-clang-multiversioning-headers.patch
 )
 
 set(BUILD_SHARED_LIBS OFF)  # 强制构建静态库
