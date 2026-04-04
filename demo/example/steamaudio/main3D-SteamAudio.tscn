@@ -386,6 +386,7 @@ text = "test
 http request"
 
 [node name="Button2" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1873826582]
+visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "!test 
@@ -398,6 +399,7 @@ text = "test
 get host info"
 
 [node name="Button4" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1676248367]
+visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "!test remove 

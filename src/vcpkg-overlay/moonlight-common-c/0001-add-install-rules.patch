@@ -1,12 +1,20 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 603e9dd..5ac4d2d 100644
+index 31d666b..cda3db4 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -111,3 +111,32 @@ target_include_directories(moonlight-common-c PRIVATE
- )
+@@ -105,7 +105,7 @@ endif()
+ 
+ target_include_directories(moonlight-common-c SYSTEM PUBLIC src)
+ 
+-target_include_directories(moonlight-common-c SYSTEM PRIVATE
++target_include_directories(moonlight-common-c PRIVATE
+   ${CMAKE_CURRENT_SOURCE_DIR}/nanors
+   ${CMAKE_CURRENT_SOURCE_DIR}/nanors/deps
+   ${CMAKE_CURRENT_SOURCE_DIR}/nanors/deps/obl
+@@ -113,6 +113,36 @@ target_include_directories(moonlight-common-c SYSTEM PRIVATE
  
  target_compile_definitions(moonlight-common-c PRIVATE HAS_SOCKLEN_T)
-+
+ 
 +
 +# 1. 强制重设 moonlight-common-c 的接口路径，清除源码目录的绝对路径
 +set_target_properties(moonlight-common-c PROPERTIES 
@@ -36,12 +44,15 @@ index 603e9dd..5ac4d2d 100644
 +install(DIRECTORY enet/include/ DESTINATION include/enet
 +    FILES_MATCHING PATTERN "*.h"
 +)
-\ No newline at end of file
++
+ # nanors
+ if (MSVC)
+     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/rswrapper.c"
 diff --git a/enet/CMakeLists.txt b/enet/CMakeLists.txt
-index da4624d..69c3041 100644
+index da4624d..35b459b 100644
 --- a/enet/CMakeLists.txt
 +++ b/enet/CMakeLists.txt
-@@ -119,3 +119,8 @@ if(NOT ENET_NO_INSTALL)
+@@ -119,3 +119,9 @@ if(NOT ENET_NO_INSTALL)
      install(DIRECTORY include/
              DESTINATION include)
  endif()

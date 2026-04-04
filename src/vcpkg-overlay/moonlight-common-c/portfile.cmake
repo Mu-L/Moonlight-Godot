@@ -3,8 +3,8 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO moonlight-stream/moonlight-common-c
-    REF 3a377e7d7be7776d68a57828ae22283144285f90
-    SHA512 37a23c85647cf5c48ef128275ba7ead0f0d1ce1def5fcb2886b21b5b66c3e7d89555f5f94250d63ea6871c6df21913f6050c63aa10fc30fb12bbc2285decfd59
+    REF 7b026e77be62175104640e7e722b758df6d3d0d7
+    SHA512 116340530ed2f431af345bad93f4be0168a04f1846ed5e17d352a46121be6bcc2c8e24d19e74eb40aa3bf5066e694ea6a28f4d63adfa5e74104c25bd2297d4d5
     HEAD_REF master
     )
     
