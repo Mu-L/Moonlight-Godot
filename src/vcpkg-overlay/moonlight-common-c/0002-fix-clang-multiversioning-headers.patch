@@ -1,18 +1,15 @@
-diff --git a/src/rswrapper.c b/src/rswrapper.c
-index 620f0e0..343ee85 100644
---- a/src/rswrapper.c
-+++ b/src/rswrapper.c
-@@ -3,6 +3,12 @@
-  * @brief Wrappers for nanors vectorization with different ISA options
-  */
-
-+#include <stdint.h>
+diff --git a/src/rswrapper.h b/src/rswrapper.h
+index 6a3e387..dbc0400 100644
+--- a/src/rswrapper.h
++++ b/src/rswrapper.h
+@@ -7,6 +7,10 @@
+ 
+ // standard includes
+ #include <stdint.h>
 +#include <stdlib.h>
 +#include <string.h>
 +#include <stdbool.h>
 +#include <assert.h>
-+
- // _FORTIY_SOURCE can cause some versions of GCC to try to inline
- // memset() with incompatible target options when compiling rs.c
- #ifdef _FORTIFY_SOURCE
+ 
+ typedef struct _reed_solomon reed_solomon;
 \ No newline at end of file
