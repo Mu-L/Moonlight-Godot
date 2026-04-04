@@ -57,8 +57,8 @@ popup/item_3/id = 3
 [node name="Button" type="Button" parent="ScrollContainer/GridContainer" unique_id=330310015]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-http request"
+text = "http 
+request"
 
 [node name="Button2" type="Button" parent="ScrollContainer/GridContainer" unique_id=1873826582]
 visible = false
@@ -70,8 +70,8 @@ cert create"
 [node name="Button3" type="Button" parent="ScrollContainer/GridContainer" unique_id=523297050]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-get host info"
+text = "get 
+host info"
 
 [node name="Button4" type="Button" parent="ScrollContainer/GridContainer" unique_id=1676248367]
 visible = false
@@ -83,14 +83,14 @@ host info"
 [node name="Button10" type="Button" parent="ScrollContainer/GridContainer" unique_id=1545997416]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test connect 
+text = "connect 
 to server"
 
 [node name="Button5" type="Button" parent="ScrollContainer/GridContainer" unique_id=1251294166]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-start pair"
+text = "start 
+pair"
 
 [node name="Button7" type="Button" parent="ScrollContainer/GridContainer" unique_id=672315278]
 layout_mode = 2
