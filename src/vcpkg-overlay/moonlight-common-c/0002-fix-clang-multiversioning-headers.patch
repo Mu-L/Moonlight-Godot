@@ -13,3 +13,4 @@
  
  // _FORTIY_SOURCE can cause some versions of GCC to try to inline
  // memset() with incompatible target options when compiling rs.c
+\ No newline at end of file
