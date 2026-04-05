@@ -290,9 +290,9 @@ jobs:
         id: parse_meta
         run: |
           COMMIT_MSG=$(git log -1 --format=%B)
-          python3 << 'EOF' "$COMMIT_MSG"
+          cat << 'EOF' > parse_release.py
           import re, os, sys
-          msg = sys.argv[1].strip()
+          msg = os.environ.get('COMMIT_MSG', '').strip()
           pattern = r'\[release ver=([^,\]]+)(?:,pre=(true|false))?(?:,draft=(true|false))?\]'
           match = re.search(pattern, msg)
           env_file = os.environ['GITHUB_ENV']
@@ -316,6 +316,8 @@ jobs:
               with open(env_file, 'a') as f:
                   f.write("SHOULD_RELEASE=false\n")
           EOF
+          COMMIT_MSG="$COMMIT_MSG" python3 parse_release.py
+
 
       - name: Create GitHub Release
         if: env.SHOULD_RELEASE == 'true'
