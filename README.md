@@ -1,3 +1,4 @@
+<img align="right" width="120" height="120" src="demo/icon.svg" />
 <h1 align="center">Moonlight Godot</h1>
 
 <h2 align="center">A Godot extension to use moonlight in Godot.</h2>
