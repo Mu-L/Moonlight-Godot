@@ -241,17 +241,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p package/addons/moonlight-godot/bin
-          # Use find to copy without case sensitivity issues if needed, or check path carefully
           cp -r bin/* package/addons/moonlight-godot/bin/
-          
-          # Fix: find the gdextension file case-insensitively just in case
-          GDEXT_PATH=$(find demo/addons/moonlight-godot/bin -maxdepth 1 -iname "moonlight-godot.gdextension" | head -n 1)
-          if [ -z "$GDEXT_PATH" ]; then
-            echo "Error: .gdextension file not found in demo/addons/moonlight-godot/bin"
-            ls -R demo/addons/moonlight-godot/bin
-            exit 1
-          fi
-          cp "$GDEXT_PATH" package/addons/moonlight-godot/bin/moonlight-godot.gdextension
+          # 使用 find 处理可能存在的大小写敏感问题（Git index 与本地文件系统大小写不一致）
+          find demo/addons -maxdepth 3 -iname "moonlight*.gdextension" -exec cp {} package/addons/moonlight-godot/bin/ \;
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
