@@ -2,30 +2,28 @@
 *.gen.*
 .godot/
 
-# Ignore library files but not the gdextension file
-demo/bin/*
-!demo/bin/android
-demo/bin/android/*
-!demo/bin/android/.gitkeep
+# Build Artifacts (Libraries and Binaries)
+bin/**/*.dll
+bin/**/*.so
+bin/**/*.dylib
+bin/**/*.a
+bin/**/*.lib
+bin/**/*.exp
+bin/**/*.pdb
 
-!demo/bin/linux
-demo/bin/linux/*
-!demo/bin/linux/.gitkeep
+demo/addons/moonlight-godot/bin/**/*.dll
+demo/addons/moonlight-godot/bin/**/*.so
+demo/addons/moonlight-godot/bin/**/*.dylib
+demo/addons/moonlight-godot/bin/**/*.a
+demo/addons/moonlight-godot/bin/**/*.lib
+demo/addons/moonlight-godot/bin/**/*.exp
+demo/addons/moonlight-godot/bin/**/*.pdb
 
-!demo/bin/macos
-demo/bin/macos/*
-!demo/bin/macos/.gitkeep
-
-!demo/bin/windows
-demo/bin/windows/*
-!demo/bin/windows/.gitkeep
-
-!demo/bin/ios
-demo/bin/ios/*
-!demo/bin/ios/.gitkeep
-
-.sconsign*.dblite
-!demo/bin/*.gdextension
+# Allow metadata and config files in these directories
+!bin/**/.gitkeep
+!demo/addons/moonlight-godot/bin/*.gdextension
+!demo/addons/moonlight-godot/bin/*.uid
+!demo/addons/moonlight-godot/bin/**/.gitkeep
 
 # Ignore custom.py
 custom.py
@@ -73,8 +71,6 @@ out/*
 
 src/lib/ffmpeg/*
 
-bin/*
-demo/addons/moonlight-godot/bin/*
 vcpkg_installed/*
 src/doc_classes.cpp
 demo/addons/godot-steam-audio/*

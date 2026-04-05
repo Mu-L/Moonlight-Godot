@@ -243,7 +243,6 @@ jobs:
           mkdir -p package/addons/moonlight-godot/bin
           cp -r bin/* package/addons/moonlight-godot/bin/
           cp demo/addons/moonlight-godot/bin/moonlight-godot.gdextension package/addons/moonlight-godot/bin/
-          cp demo/addons/moonlight-godot/icon.svg package/addons/moonlight-godot/icon.svg 2>/dev/null || true
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
