@@ -309,7 +309,7 @@ jobs:
               if os.path.exists(godot_file):
                   with open(godot_file, "r", encoding="utf-8") as f:
                       content = f.read()
-                  new_content = re.sub(r'(config/version\s*=\s*")[^"]+(")', rf'\1{ver}\2', content)
+                  new_content = re.sub(r'(config/version\s*=\s*")[^"]+(")', rf'\g<1>{ver}\g<2>', content)
                   with open(godot_file, "w", encoding="utf-8") as f:
                       f.write(new_content)
           else:
