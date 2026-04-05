@@ -1,11 +1,16 @@
 extends Node3D
 
+# -----------------
+# Moonlight 核心组件
+# -----------------
 @onready var moonlight_requester = MoonlightRequester.new()
 @onready var moonlight_config_manager = MoonlightConfigManager.new()
 @onready var moonlight_computer_manager = MoonlightComputerManager.new()
 @onready var moonlightstreamcore = MoonlightStreamCore.new()
 
-# UI References
+# -----------------
+# UI 相关的节点引用
+# -----------------
 @onready var ui_layer = $UILayer
 @onready var settings_panel = $UILayer/SettingsPanel
 @onready var settings_btn = $UILayer/SettingsButton
@@ -16,7 +21,9 @@ extends Node3D
 @onready var line_edit_bitrate = grid_container.get_node("LineEdit2")
 @onready var texture_rect_app = grid_container.get_node("TextureRect")
 
-# 3D References
+# -----------------
+# 3D 环境与物理节点引用
+# -----------------
 @onready var player = $Player
 @onready var head = $Player/Head
 @onready var screen_mesh = $TVModel/ScreenMesh
@@ -26,30 +33,33 @@ extends Node3D
 @onready var audio_right = $TVModel/AudioRight
 @onready var camera = $Player/Head/Camera3D
 
-# Exported list of AudioStreamPlayer3D nodes (editable in Inspector)
-# Use string node paths so the editor won't attempt to construct NodePath/Node objects at parse time
-# @export var audio_player_paths: Array = ["TVModel/AudioLeft", "TVModel/AudioRight"]
+# 要输出空间音频的 AudioStreamPlayer3D 组件列表
 @export var audio_players: Array[AudioStreamPlayer3D]
-# Settings
+
+# -----------------
+# 串流与功能状态
+# -----------------
 var video_enabled: bool = true
 var audio_enabled: bool = true
 var input_enabled: bool = true
-var godot_audio_enabled: bool = true # Controls if we play audio through Godot nodes
+var godot_audio_enabled: bool = true # 控制是否通过 Godot 节点播放回声 (空间音频需要此项设定为 true)
 
-# Movement Settings
+# -----------------
+# 第三人称漫游运动参数
+# -----------------
 const SPEED = 5.0
 const JUMP_VELOCITY = 4.5
 const MOUSE_SENSITIVITY = 0.003
 const JOYSTICK_LOOK_SPEED = 2.6
 
-# State
+# 交互模式枚举：步行模式（漫游）或串流控制模式（焦点被捕获并传输给云端主机）
 enum PlayMode {
     WALK,
     STREAM_CONTROL
 }
 var current_mode = PlayMode.WALK
 
-# Mobile virtual joystick state
+# 移动端虚拟摇杆控件声明
 var is_mobile_platform: bool = false
 var mobile_controls: Control
 var joystick_base: ColorRect
@@ -66,41 +76,28 @@ var jump_btn: Button
 var mobile_jump_requested: bool = false
 
 func _ready() -> void:
-    # --- ROBUST TEXTURE ASSIGNMENT ---
-    # 1. Ensure the mesh has a unique material override
+    # --- 材质应用配置(重点) ---
+    # 1. 确保目标显示器的网格使用了唯一材质
     var mat = screen_mesh.get_active_material(0)
     if not mat or not (mat is StandardMaterial3D):
         mat = StandardMaterial3D.new()
         screen_mesh.material_override = mat
 
-    # 2. Configure material for screen display (Unshaded = self-illuminated)
+    # 2. 将此材质变更为无光照模式(Unshaded，用于自发光模拟屏幕)，并配置双面剔除机制
     mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
     mat.albedo_color = Color.WHITE
-    mat.cull_mode = BaseMaterial3D.CULL_DISABLED # Ensure double-sided rendering
+    mat.cull_mode = BaseMaterial3D.CULL_DISABLED 
     
-    # 3. Assign the Viewport Texture to the Material
+    # 3. 将用于接收视频管线数据的 Viewport 贴图直接指定到模型表面材质中
     mat.albedo_texture = stream_viewport.get_texture()
     print("Assigned Viewport Texture to Screen Material: ", mat.albedo_texture)
 
-    # 4. Ensure TextureRect inside Viewport is set up correctly
+    # 4. Viewport 中内置拉伸模式初始化
     stream_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     stream_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    # --------------------------------
 
-    # --- AUDIO SETUP (Godot Audio) ---
-    # Build audio_players from exported paths so user can customize nodes in inspector
-    # audio_players.clear()
-    # for p in audio_player_paths:
-    #     if p == null:
-    #         continue
-    #     var np = NodePath(str(p))
-    #     if has_node(np):
-    #         var ap = get_node(np)
-    #         audio_players.append(ap)
-    #     else:
-    #         print("Audio player path not found:", np)
-
-    # Configure each audio player for audible spatial playback
+    # --- Godot 内置空间音频配置 ---
+    # 对每一个挂载注册的三维音频源（通常布置于电视两端）进行距离衰减设置
     for ap in audio_players:
         if ap and ap is AudioStreamPlayer3D:
             ap.unit_size = 20.0
@@ -108,43 +105,43 @@ func _ready() -> void:
             ap.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
         else:
             print("Warning: audio_players contains non-AudioStreamPlayer3D or null:", ap)
-    # -------------------
     
-    # Initial UI State
+    # --------------------------------
+    # 初始化 UI 界面及鼠标捕获
     settings_panel.visible = false
     Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
     
-    # Connect Moonlight Signals
+    # 连接 Moonlight 各生命周期回调和串流日志捕获信号
     moonlight_computer_manager.pair_completed.connect(on_pair_complete)
     moonlightstreamcore.connection_started.connect(func(): print("[Moonlight-Godot-MoonlightStreamCore]", "Connect Successfully!"))
     moonlightstreamcore.connection_terminated.connect(func(_err, msg): push_error("[Moonlight-Godot-MoonlightStreamCore]", msg))
     
-    # Load Config
+    # 从配置文件载入历史保存的主机
     if moonlight_config_manager.get_hosts().size() > 0:
         line_edit_ip.text = moonlight_config_manager.get_hosts()[0].localaddress
     else:
         line_edit_ip.text = "192.168.1.1"
 
-    # Connect UI Panel Buttons
+    # UI 回调挂载
     settings_btn.pressed.connect(toggle_settings)
     close_btn.pressed.connect(toggle_settings)
     
-    # Connect Stream Toggle Buttons (Manual Connection)
+    # UI 开关（手动连接状态切换）
     connect_button_signal("ToggleVideoButton", "toggled", func(t): video_enabled = t)
     connect_button_signal("ToggleAudioButton", "toggled", func(t): audio_enabled = t)
     connect_button_signal("ToggleInputButton", "toggled", func(t): input_enabled = t)
     
-    # Connect Other Buttons
+    # 连接杂项控制及旁路音频功能开关
     connect_button_signal("FullscreenButton", "pressed", toggle_fullscreen)
-    connect_button_signal("CheckButton2", "toggled", Callable(self, "set_godot_audio_enabled")) # Godot Audio Switch
+    connect_button_signal("CheckButton2", "toggled", Callable(self, "set_godot_audio_enabled")) 
     connect_button_signal("AudioBypassButton", "pressed", toggle_audio_bypass)
     connect_button_signal("AudioPauseButton", "pressed", toggle_pause_audio_bypass)
     connect_button_signal("KeyboardButton", "pressed", toggle_virtual_keyboard)
 
-    # Sync Godot audio enabled state to ensure players are stopped/started accordingly
+    # 初始刷新Godot空间音频状态
     set_godot_audio_enabled(godot_audio_enabled)
 
-    # Mobile controls
+    # 移动平台摇杆模拟按键初始化
     is_mobile_platform = OS.has_feature("mobile")
     if is_mobile_platform:
         setup_mobile_controls()
@@ -430,31 +427,33 @@ func toggle_fullscreen():
         DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 func toggle_audio_bypass():
+    # 切换音频旁路系统运行状态：如果运行在系统后端，能直接提升实时性并脱离 Godot 播放器依赖
     if moonlightstreamcore.is_native_audio_bypass_running():
         moonlightstreamcore.stop_native_audio_bypass()
-        print("Native Audio Bypass Stopped")
+        print("原生音频旁路已停止")
         $UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/AudioBypassButton.text = "Audio Bypass: OFF"
     else:
         if moonlightstreamcore.start_native_audio_bypass():
-            print("Native Audio Bypass Started")
+            print("原生音频旁路成功启动")
             $UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/AudioBypassButton.text = "Audio Bypass: ON"
         else:
-            print("Failed to start Native Audio Bypass")
+            print("原生音频旁路启动失败")
 
 func toggle_pause_audio_bypass():
+    # 暂停或恢复后端直接播放音频功能
     if moonlightstreamcore.is_native_audio_bypass_paused():
         moonlightstreamcore.resume_native_audio_bypass()
-        print("Native Audio Bypass Resumed")
+        print("原生音频旁路恢复播放")
     else:
         moonlightstreamcore.pause_native_audio_bypass()
-        print("Native Audio Bypass Paused")
+        print("原生音频旁路已暂停播放")
 
 func toggle_virtual_keyboard():
     print("Toggle Keyboard (Not Implemented)")
 
 func set_godot_audio_enabled(enabled: bool) -> void:
+    # 同步控制内置3D环绕系统的开关
     godot_audio_enabled = enabled
-    # When toggling, stop or resume playback on all assigned audio players
     for ap in audio_players:
         if not ap or not (ap is AudioStreamPlayer3D):
             continue
@@ -511,8 +510,12 @@ func test_get_app_texture() -> void:
 func test_connect_to_server() -> void:
     moonlight_computer_manager.connect_to_computer(line_edit_ip.text, 47989, func(info): print(info))
 
+# -----------------
+# 串流生命周期及音频挂载核心 (重点参考)
+# -----------------
+
 func test_establish_stream() -> void:
-    # Update settings from UI one last time
+    # 从 UI 界面更新所有参数标记
     if grid_container.has_node("ToggleVideoButton"):
         video_enabled = grid_container.get_node("ToggleVideoButton").button_pressed
     if grid_container.has_node("ToggleAudioButton"):
@@ -522,6 +525,7 @@ func test_establish_stream() -> void:
     if grid_container.has_node("CheckButton2"):
         godot_audio_enabled = grid_container.get_node("CheckButton2").button_pressed
 
+    # 1. 使用 Resource API 构建串流的核心描述（比特率、帧率、视口比例大小）
     var cfg = MoonlightStreamConfigurationResource.new()
     cfg.set_width(1920)
     cfg.set_height(1080)
@@ -530,32 +534,36 @@ func test_establish_stream() -> void:
         cfg.set_bitrate(int(float(line_edit_bitrate.text) * 1000))
     else:
         cfg.set_bitrate(20000)
+    
+    # 启用七声道环绕立体声（与 3D 渲染适配最佳）
     cfg.set_audio_configuration(MoonlightStreamConfigurationResource.AUDIO_CFG_71_SURROUND)
 
+    # 2. 从界面下拉框选配硬件加速和视频协议
     var add_opts = MoonlightAdditionalStreamOptions.new()
     if grid_container.has_node("OptionButton"):
         add_opts.set_video_codec(grid_container.get_node("OptionButton").get_selected_id())
     if grid_container.has_node("CheckButton"):
         add_opts.set_disable_hw_acceleration(not grid_container.get_node("CheckButton").button_pressed)
     
-    # Important: These options control what Limelight/Moonlight SDK does internally.
-    # If disable_audio is TRUE, we won't get audio packets.
+    # 选项同步：如果 disable_audio 为 true，底层将告知主机端不传输任何音频流
     add_opts.set_disable_video(not video_enabled)
     add_opts.set_disable_audio(not audio_enabled)
 
+    # 3. 将模型中介用于接收输出的视口中含的 TextureRect 配置给内核
     if video_enabled:
         moonlightstreamcore.set_render_target(stream_texture)
     
-    # Start stream
+    # 4. 指定 ID 对应的电脑和对应的 App 发送启动请求
     moonlightstreamcore.start_play_stream(1, 1191261554, cfg, add_opts)
     
-    # --- AUDIO Handling ---
+    # 5. 音频初始化（必须延迟以确保连接完成通道协商）
     if audio_enabled:
-        # Wait a bit for stream to initialize
         await get_tree().create_timer(1.0).timeout
-
+        
+        # 对于 7.1 环境或者立体声等，后端会自动拆拆分轨道并返回多流列表
         var streams = moonlightstreamcore.get_audio_streams()
-        # Assign streams to exported audio players in order
+        
+        # 遍历场景中所安插的声音发射节点给其分别绑定对应返回的声轨 AudioStream 对象
         for i in range(audio_players.size()):
             var ap = audio_players[i]
             if not ap or not (ap is AudioStreamPlayer3D):
@@ -568,29 +576,34 @@ func test_establish_stream() -> void:
                     ap.stop()
                 print("Assigned audio stream to player:", ap.name)
             else:
-                # No stream available for this player
+                # 若无法映射足够声道则清理
                 ap.stream = null
                 ap.stop()
         if streams.size() == 0:
             print("No audio streams received from moonlightstreamcore")
     else:
-        # If audio disabled, ensure all players are stopped
+        # 如果未勾选音频，静默化所有相关播放装置
         for ap in audio_players:
             if ap and (ap is AudioStreamPlayer3D):
                 ap.stop()
 
-    # Force update Viewport texture just in case
+    # 安全锁：确保在最后依然对网格映射视口的绘制执行强验证
     if video_enabled:
         var mat = screen_mesh.material_override
         if mat: mat.albedo_texture = stream_viewport.get_texture()
 
 func test_stop_stream() -> void:
     moonlight_computer_manager.stop_stream(1, func(info):
-        print(info)
+        print("[Moonlight-Godot] Stop Stream: ", info)
+        
+        # 在退出时必须进行状态释放处理以避免悬挂野指针抛出异常和崩溃
         moonlightstreamcore.stop_play_stream()
         moonlightstreamcore.reset_audio_stream()
+        
+        # 即时暂停旁路声音（如果还在执行的话）
         if moonlightstreamcore.is_native_audio_bypass_running():
             moonlightstreamcore.stop_native_audio_bypass()
+            
         moonlightstreamcore.reset_render_target()
         for ap in audio_players:
             if ap and (ap is AudioStreamPlayer3D):

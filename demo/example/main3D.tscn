@@ -341,8 +341,8 @@ popup/item_3/id = 3
 [node name="Button" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=330310015]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-http request"
+text = "http
+request"
 
 [node name="Button2" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1873826582]
 visible = false
@@ -354,8 +354,8 @@ cert create"
 [node name="Button3" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=523297050]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-get host info"
+text = "get
+host info"
 
 [node name="Button4" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1676248367]
 visible = false
@@ -364,35 +364,32 @@ theme_override_font_sizes/font_size = 21
 text = "!test remove 
 host info"
 
-[node name="Button5" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1251294166]
-layout_mode = 2
-theme_override_font_sizes/font_size = 21
-text = "test 
-start pair"
-
 [node name="Button10" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1545997416]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test connect 
+text = "connect 
 to server"
+
+[node name="Button5" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1251294166]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "start pair"
 
 [node name="Button7" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=672315278]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-unpair"
+text = "unpair"
 
 [node name="Button8" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=2039621653]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test
- get applist"
+text = "get applist"
 
 [node name="Button9" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=2137848920]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test
- get app texture→"
+text = "get 
+app texture→"
 
 [node name="TextureRect" type="TextureRect" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1765905250]
 custom_minimum_size = Vector2(60, 80)
@@ -402,20 +399,17 @@ expand_mode = 1
 [node name="Button11" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1019568175]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-establish stream"
+text = "establish stream"
 
 [node name="Button12" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1751002351]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test
-pause stream"
+text = "pause stream"
 
 [node name="Button13" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1725083854]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-stop stream"
+text = "stop stream"
 
 [node name="Button14" type="Button" parent="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer" unique_id=1266637515]
 layout_mode = 2
@@ -475,8 +469,8 @@ access = 1
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button2" to="." method="test_cert_create"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button3" to="." method="test_add_host_info"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button4" to="." method="test_remove_host_info"]
-[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button5" to="." method="test_start_pair"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button10" to="." method="test_connect_to_server"]
+[connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button5" to="." method="test_start_pair"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button7" to="." method="test_cancel_pair"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button8" to="." method="test_get_applist"]
 [connection signal="pressed" from="UILayer/SettingsPanel/VBoxContainer/ScrollContainer/GridContainer/Button9" to="." method="test_get_app_texture"]

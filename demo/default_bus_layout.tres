@@ -1,9 +1,0 @@
-[gd_resource type="AudioBusLayout" format=3 uid="uid://cqdumj6lpc86m"]
-
-[sub_resource type="AudioEffectHighPassFilter" id="AudioEffectHighPassFilter_j3pel"]
-resource_name = "HighPassFilter"
-cutoff_hz = 5734.0
-
-[resource]
-bus/0/effect/0/effect = SubResource("AudioEffectHighPassFilter_j3pel")
-bus/0/effect/0/enabled = false

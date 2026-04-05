@@ -89,26 +89,24 @@ to server"
 [node name="Button5" type="Button" parent="ScrollContainer/GridContainer" unique_id=1251294166]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "start 
-pair"
+text = "start pair"
 
 [node name="Button7" type="Button" parent="ScrollContainer/GridContainer" unique_id=672315278]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-unpair"
+text = "unpair"
 
 [node name="Button8" type="Button" parent="ScrollContainer/GridContainer" unique_id=2039621653]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test
- get applist"
+text = "get 
+applist"
 
 [node name="Button9" type="Button" parent="ScrollContainer/GridContainer" unique_id=2137848920]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test
- get app texture→"
+text = "get 
+app texture→"
 
 [node name="TextureRect" type="TextureRect" parent="ScrollContainer/GridContainer" unique_id=1765905250]
 custom_minimum_size = Vector2(60, 80)
@@ -118,20 +116,17 @@ expand_mode = 1
 [node name="Button11" type="Button" parent="ScrollContainer/GridContainer" unique_id=1019568175]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-establish stream"
+text = "establish stream"
 
 [node name="Button12" type="Button" parent="ScrollContainer/GridContainer" unique_id=1751002351]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test
-pause stream"
+text = "pause stream"
 
 [node name="Button13" type="Button" parent="ScrollContainer/GridContainer" unique_id=1725083854]
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
-text = "test 
-stop stream"
+text = "stop stream"
 
 [node name="Button14" type="Button" parent="ScrollContainer/GridContainer" unique_id=1266637515]
 layout_mode = 2
