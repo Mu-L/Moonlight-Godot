@@ -20,6 +20,7 @@ Moonlight Godot 的底层基于 Moonlight 的协议实现，利用了 FFmpeg、c
 # 使用方法
 
 > 建议同时参考插件提供的内置类参考文档及demo！
+> demo中`main.tscn`为基础的2D串流示例，`main3D.tscn`为3D场景中视频纹理的示例，`mainMulti.tscn`为多实例串流示例。`main3D-SteamAudio.tscn`为集成了SteamAudio插件的3D场景示例。SteamAudio插件可前往[这里](https://github.com/stechyo/godot-steam-audio)获取,demo中默认不包含该插件。
 
 ## 1. 安装插件
 

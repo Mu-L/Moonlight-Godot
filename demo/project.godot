@@ -11,7 +11,8 @@ config_version=5
 [application]
 
 config/name="Moonlight-Godot"
-run/main_scene="uid://cnywqq1etchyp"
+config/version="0.1.0"
+run/main_scene="uid://dc1tsui4v3770"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
 

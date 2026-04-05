@@ -7,17 +7,25 @@ demo/bin/*
 !demo/bin/android
 demo/bin/android/*
 !demo/bin/android/.gitkeep
+
 !demo/bin/linux
 demo/bin/linux/*
 !demo/bin/linux/.gitkeep
+
 !demo/bin/macos
 demo/bin/macos/*
 !demo/bin/macos/.gitkeep
+
 !demo/bin/windows
 demo/bin/windows/*
 !demo/bin/windows/.gitkeep
-!demo/bin/*.gdextension
+
+!demo/bin/ios
+demo/bin/ios/*
+!demo/bin/ios/.gitkeep
+
 .sconsign*.dblite
+!demo/bin/*.gdextension
 
 # Ignore custom.py
 custom.py

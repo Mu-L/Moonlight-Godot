@@ -237,16 +237,29 @@ jobs:
             Get-ChildItem bin/* -Include *.exp,*.lib,*.pdb -Recurse | Remove-Item -Force 
           }
 
+      - name: Prepare Output Directory
+        shell: bash
+        run: |
+          mkdir -p package/addons/moonlight-godot/bin
+          cp -r bin/* package/addons/moonlight-godot/bin/
+          cp demo/addons/moonlight-godot/bin/moonlight-godot.gdextension package/addons/moonlight-godot/bin/
+          cp demo/addons/moonlight-godot/icon.svg package/addons/moonlight-godot/icon.svg 2>/dev/null || true
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: moonlight-gdext-${{ matrix.target.platform }}-${{ matrix.target.arch }}-${{ matrix.target-type }}
-          path: bin/
+          path: package/
 
   merge:
     runs-on: ubuntu-22.04
     needs: build
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -257,5 +270,115 @@ jobs:
       - name: Upload Final Merged Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: moonlight-gdextension-all
+          name: moonlight-godot-plugin
           path: downloaded-artifacts/
+
+      - name: Prepare Demo Artifact
+        shell: bash
+        run: |
+          # The downloaded artifacts represent the additions to demo/
+          # Copy everything from downloaded-artifacts (addons/... etc) into demo/
+          cp -r downloaded-artifacts/* demo/
+
+      - name: Upload Final Merged Artifact - Demo Version
+        uses: actions/upload-artifact@v4
+        with:
+          name: moonlight-godot-demo
+          path: demo/
+
+      - name: Parse Release Metadata
+        id: parse_meta
+        run: |
+          COMMIT_MSG=$(git log -1 --format=%B)
+          python3 << 'EOF' "$COMMIT_MSG"
+          import re, os, sys
+          msg = sys.argv[1].strip()
+          pattern = r'\[release ver=([^,\]]+)(?:,pre=(true|false))?(?:,draft=(true|false))?\]'
+          match = re.search(pattern, msg)
+          env_file = os.environ['GITHUB_ENV']
+          if match:
+              ver, pre, draft = match.group(1), match.group(2) or "false", match.group(3) or "false"
+              clean_msg = msg.replace(match.group(0), "").strip()
+              with open(env_file, 'a') as f:
+                  f.write(f"SHOULD_RELEASE=true\nREL_VERSION={ver}\nREL_PRE={pre}\nREL_DRAFT={draft}\n")
+              with open('RELEASE_BODY.md', 'w') as f:
+                  f.write(f"{clean_msg}\n\n**Commit:** https://github.com/{os.environ['GITHUB_REPOSITORY']}/commit/{os.environ['GITHUB_SHA']}\n")
+              
+              # Update project.godot version
+              godot_file = "demo/project.godot"
+              if os.path.exists(godot_file):
+                  with open(godot_file, "r", encoding="utf-8") as f:
+                      content = f.read()
+                  new_content = re.sub(r'(config/version\s*=\s*")[^"]+(")', rf'\1{ver}\2', content)
+                  with open(godot_file, "w", encoding="utf-8") as f:
+                      f.write(new_content)
+          else:
+              with open(env_file, 'a') as f:
+                  f.write("SHOULD_RELEASE=false\n")
+          EOF
+
+      - name: Create GitHub Release
+        if: env.SHOULD_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Packaging release ZIPs..."
+          # Pack main plugin and demo
+          zip -qr moonlight-godot-plugin.zip downloaded-artifacts/*
+          zip -qr moonlight-godot-demo.zip demo/*
+          
+          # Pack per-platform-arch artifacts
+          # The downloaded-artifacts/addons/moonlight-godot/bin/<platform>/ contains the libraries
+          # We need to extract the platform and arch from the filenames to create clear zip names
+          mkdir -p platform-zips
+          
+          # Use python to group files by platform/arch more intelligently
+          python3 << 'EOF'
+          import os, zipfile, re
+          
+          base_dir = "downloaded-artifacts/addons/moonlight-godot/bin"
+          output_dir = "platform-zips"
+          gdext_file = os.path.join(base_dir, "moonlight-godot.gdextension")
+          
+          # Patterns to find platform/arch in filenames (e.g. .windows.template_release.x86_64)
+          # Format: .<platform>.<type>.<arch>
+          pattern = re.compile(r'\.([a-z]+)\.(?:template_release|template_debug)\.([a-z0-9_]+)')
+          
+          groups = {} # key: (platform, arch), value: list of file paths
+          
+          for root, dirs, files in os.walk(base_dir):
+              for f in files:
+                  if f.endswith('.gdextension') or f.endswith('.uid'): continue
+                  match = pattern.search(f)
+                  if match:
+                      platform, arch = match.groups()
+                      key = (platform, arch)
+                      if key not in groups: groups[key] = []
+                      groups[key].append(os.path.join(root, f))
+          
+          for (platform, arch), file_paths in groups.items():
+              zip_name = f"moonlight-godot-{platform}-{arch}.zip"
+              zip_path = os.path.join(output_dir, zip_name)
+              print(f"Creating {zip_name}...")
+              with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+                  # Add the binaries maintaining their relative structure from addons/
+                  for fp in file_paths:
+                      arcname = os.path.relpath(fp, "downloaded-artifacts")
+                      z.write(fp, arcname)
+                  # Add the gdextension file
+                  z.write(gdext_file, "addons/moonlight-godot/bin/moonlight-godot.gdextension")
+          EOF
+          
+          echo "Creating release v${{ env.REL_VERSION }}..."
+          ARGS=()
+          if [ "${{ env.REL_PRE }}" = "true" ]; then ARGS+=("--prerelease"); fi
+          if [ "${{ env.REL_DRAFT }}" = "true" ]; then ARGS+=("--draft"); fi
+          
+          gh release create "v${{ env.REL_VERSION }}" \
+            --title "Release V${{ env.REL_VERSION }}" \
+            --notes-file RELEASE_BODY.md \
+            "${ARGS[@]}" \
+            moonlight-godot-plugin.zip \
+            moonlight-godot-demo.zip \
+            platform-zips/*.zip
+
