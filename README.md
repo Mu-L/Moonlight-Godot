@@ -14,16 +14,24 @@ Moonlight Godot 的底层基于 Moonlight 的协议实现，利用了 FFmpeg、c
 ![架构图](Notes/Moonlight-Godot.svg)
 
 ## 核心模块说明：
-- **MoonlightConfigManager**: 负责本地序列化存储，保存局域网内已发现的主机配置及已建立的双向 TLS 配稳证书。
+- **MoonlightConfigManager**: 负责本地序列化存储，保存局域网内已发现的主机配置及已建立的 MTLS 证书。
 - **MoonlightComputerManager**: 负责与远程 PC 进行通讯。使用该模块用于对 PC (Sunshine / Nvidia GFE) 发起握手、状态查询、以及复杂的验证挑战配对流程 (`start_pair()`)。
 - **MoonlightStreamCore**: 串流生命周期管理。在连接后与主机进行直接 RTSP 推拉流，将底层的视频解码数据推给 Godot 显示，音频转发至 `AudioStream` 或 `miniaudio`，并将本地键鼠/手柄输入反向传达到主机。
 
 # 使用方法
 
 > 建议同时参考插件提供的内置类参考文档及demo！
+> 
 > demo中`main.tscn`为基础的2D串流示例，`main3D.tscn`为3D场景中视频纹理的示例，`mainMulti.tscn`为多实例串流示例。`main3D-SteamAudio.tscn`为集成了SteamAudio插件的3D场景示例。SteamAudio插件可前往[这里](https://github.com/stechyo/godot-steam-audio)获取,demo中默认不包含该插件。
 
 ## 1. 安装插件
+
+### 从 Godot AssetLib 安装（推荐）
+
+1. 在 Godot 编辑器中打开 AssetLib（资产库）。
+2. 搜索 "Moonlight Godot" 插件。
+3. 点击安装并按照提示完成安装。
+4. 安装完成后，重载项目，插件应立即可用。
 
 ### 从 Release 页面下载（推荐）
 
@@ -171,6 +179,51 @@ func _input(event: InputEvent) -> void:
 Moonlight Godot 深度优化了解耦逻辑，你可以轻而易举地在一套程序内通过开辟多个 `MoonlightStreamCore` 实例并将其配置重定向至不同的 `config_path` (`user://cfg1.ini`, `user://cfg2.ini`)，以实现**多实例（单程序多客户端）串流**。详尽写法可参考内置演示 `mainMulti.gd`。
 
 **注意** ：由于moonlight-common-c协议库的限制，多实例串流不能并发进行，单个程序内同时只能有**一路活动的连接**。
+
+# 配置文件
+
+Moonlight Godot 使用 INI 格式、Qt风格的配置文件来存储主机信息、配对密钥和应用列表等数据。默认配置文件路径为 `user://moonlight_config.ini`，你也可以通过 `set_config_path(path)` 方法指定自定义路径。
+
+示例：
+
+```ini
+[General]
+
+certificate="@ByteArray(<你的公钥>)"
+key="@ByteArray(<你的私钥>)"
+uniqueid="D407745D8E7BD2ED"
+
+[hosts]
+
+size=1
+1\hostname="127.0.0.1"
+1\localaddress="127.0.0.1"
+1\uuid="faac23c8cbc688982407572a560943aa"
+1\srvcert="@ByteArray(<你的服务端证书>)"
+1\https_port=47984
+1\server_unique_id="F98186B1-DE02-2328-279E-0A461FBCEC47"
+1\apps\size=3
+1\apps\1\name="桌面"
+1\apps\1\id=1191261554
+1\apps\2\name="Milthm"
+1\apps\2\id=705288528
+1\apps\3\name="Rizline"
+1\apps\3\id=1145141919
+
+```
+
+其中 `[General]` 部分存储了全局的配对证书和密钥信息，而 `[hosts]` 部分则以主机 ID 为索引，存储了每个主机的 IP 地址、名称、设备 ID、服务端证书以及该主机上可串流的应用列表等信息。
+
+在代码中，你可以通过 `MoonlightConfigManager` 提供的接口来访问和修改这些配置数据，例如：
+    
+```gdscript
+# 获取主机列表
+var hosts = moonlight_config_manager.get_hosts()
+# 获取特定主机的应用列表
+var apps = moonlight_config_manager.get_apps(host_id)
+```
+
+主机列表的每一项包含主机的 IP 地址、名称、设备 ID 和配对密钥等信息。应用列表则包含每个可串流应用的 ID、名称和其他元数据。其索引顺序与串流核心接口中**使用的 host_id 保持一致**，确保你在调用串流接口时能够正确地引用到对应的主机和应用。
 
 # 声明与许可
 **本插件以 "AS IS" (按原样) 方式提供，不提供任何明示或暗示的保证。** 
