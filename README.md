@@ -18,6 +18,9 @@ Moonlight Godot 的底层基于 Moonlight 的协议实现，利用了 FFmpeg、c
 - **MoonlightComputerManager**: 负责与远程 PC 进行通讯。使用该模块用于对 PC (Sunshine / Nvidia GFE) 发起握手、状态查询、以及复杂的验证挑战配对流程 (`start_pair()`)。
 - **MoonlightStreamCore**: 串流生命周期管理。在连接后与主机进行直接 RTSP 推拉流，将底层的视频解码数据推给 Godot 显示，音频转发至 `AudioStream` 或 `miniaudio`，并将本地键鼠/手柄输入反向传达到主机。
 
+# Deepwiki
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/html5syt/Moonlight-Godot/)
+
 # 使用方法
 
 > 建议同时参考插件提供的内置类参考文档及demo！
