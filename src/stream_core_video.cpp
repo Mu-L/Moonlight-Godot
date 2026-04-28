@@ -1,4 +1,13 @@
 #include "stream_core.h"
+extern "C" {
+#include <libavcodec/jni.h>
+JNIEnv *ff_jni_get_env(void *log_ctx);
+}
+#ifdef ANDROID_ENABLED
+#include <android/log.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaFormat.h>
+#endif
 using namespace godot;
 
 // Moonlight 流核心：视频处理
@@ -229,22 +238,18 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	ctx->opaque = this;
 	ctx->width = width;
 	ctx->height = height;
-	ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
+	ctx->coded_width = width;
+	ctx->coded_height = height;
+	bool is_mediacodec = codec_name.find("_mediacodec") != -1;
 
-	// 极致低延迟选项：设置内部 delay 为 0，防止帧缓存
-	ctx->delay = 0;
-
-	// 对UDP流至关重要。
-	// 注意：Android MediaCodec (Buffer Mode) 往往不支持 OUTPUT_CORRUPT 标志，会导致 avcodec_open2 失败 (Error -22 / EINVAL)
-	// 或者导致解码器处于错误状态。我们在 Android 上禁用它。
-	if (codec_name.find("_mediacodec") == -1) {
+	if (!is_mediacodec) {
+		ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
+		ctx->delay = 0;
 		ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
+		ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
+		ctx->flags2 |= AV_CODEC_FLAG2_FAST;
+		ctx->err_recognition = AV_EF_EXPLODE;
 	}
-
-	ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
-	ctx->flags2 |= AV_CODEC_FLAG2_FAST; // 允许非规范兼容的加速
-	// 报告解码错误以便我们请求关键帧
-	ctx->err_recognition = AV_EF_EXPLODE;
 
 	// 修复：移除强制 NV12 的逻辑。让 FFmpeg 自动协商 MediaCodec 的最佳输出格式。
 	// 强制格式可能导致 H.264 解码器初始化失败或输出绿屏（因为实际输出并非 NV12）。
@@ -310,6 +315,9 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 	}
 
 	AVDictionary *opts = nullptr;
+	if (is_mediacodec) {
+		av_dict_set(&opts, "ndk_codec", "1", 0);
+	}
 	// If codec_name encodes a specific mediacodec component (format: name_lowlat:ComponentName), pass it to FFmpeg
 	String special_component;
 	// reuse earlier `sep` and `base_name` variables to avoid redeclaration
@@ -325,7 +333,30 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 		}
 	}
 
-	if (avcodec_open2(ctx, codec, &opts) < 0) {
+	int ret = avcodec_open2(ctx, codec, &opts);
+	{
+		void *check_vm_ptr = av_jni_get_java_vm(nullptr);
+		char vm_buf[32];
+		snprintf(vm_buf, sizeof(vm_buf), "%p", check_vm_ptr);
+		if (is_mediacodec) {
+#ifdef ANDROID_ENABLED
+			void *app_ctx = av_jni_get_android_app_ctx();
+			char ctx_buf[32];
+			snprintf(ctx_buf, sizeof(ctx_buf), "%p", app_ctx);
+
+			JNIEnv *test_env = ff_jni_get_env(nullptr);
+			char env_buf[32];
+			snprintf(env_buf, sizeof(env_buf), "%p", test_env);
+
+			__android_log_print(ANDROID_LOG_ERROR, "MoonlightMC",
+				"MEDIACODEC ff_jni_get_env=%s avcodec_open2 => %d w=%d h=%d",
+				env_buf, ret, ctx->width, ctx->height);
+#else
+			UtilityFunctions::print(LOG_PREFIX "MEDIACODEC avcodec_open2 => ", ret, " jvm=", vm_buf);
+#endif
+		}
+	}
+	if (ret < 0) {
 		// 如果已打开，则清理硬件上下文
 		if (hw_device_ctx) {
 			av_buffer_unref(&hw_device_ctx);
@@ -422,7 +453,14 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	}
 	video_width = width;
 	video_height = height;
-	// video_format = -1; // Removed legacy SWS format tracking
+	is_hw_decode_active = (opened_name.find("_mediacodec") != -1) || (hw_device_ctx != nullptr);
+#ifdef ANDROID_ENABLED
+	__android_log_print(ANDROID_LOG_ERROR, "MoonlightMC",
+		"Decoder: %s HW=%d w=%d h=%d",
+		opened_name.utf8().get_data(), is_hw_decode_active, width, height);
+#else
+	UtilityFunctions::print(LOG_PREFIX "Decoder: ", opened_name, " HW=", is_hw_decode_active, " ", width, "x", height);
+#endif
 	return DR_OK;
 }
 
@@ -471,6 +509,7 @@ int MoonlightStreamCore::_handle_dr_submit_decode_unit(PDECODE_UNIT decode_unit)
 		uint64_t now = Time::get_singleton()->get_ticks_msec();
 		if (now - last_log > 1000) {
 			UtilityFunctions::printerr(LOG_PREFIX "Dropping frame due to slow decoder (Queue > 512)");
+			frames_dropped++;
 			last_log = now;
 		}
 		av_packet_free(&pkt);
@@ -994,9 +1033,10 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 								_request_idr_frame("Decode Error " + String::num_int64(ret));
 								break;
 							}
-							// 优化：帧丢弃逻辑。
+							frames_decoded++;
 							bool is_keyframe = (v_frame->flags & AV_FRAME_FLAG_KEY);
 							if (queue_size > 12 && !is_keyframe) {
+								frames_dropped++;
 								av_frame_unref(v_frame);
 								continue;
 							}

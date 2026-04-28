@@ -244,6 +244,13 @@ public:
 	int send_hscroll_event(int scroll_clicks);
 	int send_high_res_hscroll_event(short scroll_amount);
 	uint32_t get_host_feature_flags();
+	String get_decoder_name();
+	int get_video_width();
+	int get_video_height();
+	int get_decode_queue_size();
+	int get_frames_decoded();
+	int get_frames_dropped();
+	bool is_hw_decode();
 
 protected:
 	static void _bind_methods();
@@ -373,6 +380,8 @@ private:
 	AVFrame *sw_frame = nullptr; // 用于硬件下载的中间帧
 	int video_width = 0;
 	int video_height = 0;
+	std::atomic<int> frames_decoded{0};
+	std::atomic<int> frames_dropped{0};
 	int video_format = 0;
 	// 硬件加速
 	AVBufferRef *hw_device_ctx = nullptr;

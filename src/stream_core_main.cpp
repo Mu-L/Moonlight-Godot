@@ -3,6 +3,37 @@
 #include "stream_core_struct.h"
 #include <Limelight.h>
 #include <algorithm>
+
+#ifdef __ANDROID__
+#include <jni.h>
+#include <android/log.h>
+extern "C" {
+#include <libavcodec/jni.h>
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_godot_game_GodotApp_initializeMoonlightJNI(JNIEnv *env, jclass clazz) {
+	JavaVM *vm = nullptr;
+	if (env->GetJavaVM(&vm) == 0) {
+		av_jni_set_java_vm(vm, nullptr);
+		__android_log_print(ANDROID_LOG_INFO, "MoonlightMC", "JNI: Set JavaVM to %p", vm);
+	}
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_godot_game_GodotApp_setAndroidContext(JNIEnv *env, jclass clazz, jobject context) {
+	if (context) {
+		jobject global_ref = env->NewGlobalRef(context);
+		if (global_ref) {
+			av_jni_set_android_app_ctx(global_ref, nullptr);
+			__android_log_print(ANDROID_LOG_INFO, "MoonlightMC", "JNI: Set Android app context to %p (global ref)", global_ref);
+		} else {
+			__android_log_print(ANDROID_LOG_ERROR, "MoonlightMC", "JNI: Failed to create global ref for app context");
+		}
+	} else {
+		__android_log_print(ANDROID_LOG_ERROR, "MoonlightMC", "JNI: Android app context is NULL!");
+	}
+}
+#endif
+
 using namespace godot;
 
 // Moonlight 流核心：对外接口与生命周期管理
@@ -480,6 +511,40 @@ Ref<AudioStream> MoonlightStreamCore::get_audio_stream() {
 	return audio_stream;
 }
 
+String MoonlightStreamCore::get_decoder_name() {
+	if (v_codec)
+		return String(v_codec->name);
+	return "none";
+}
+
+int MoonlightStreamCore::get_video_width() {
+	return video_width;
+}
+
+int MoonlightStreamCore::get_video_height() {
+	return video_height;
+}
+
+int MoonlightStreamCore::get_decode_queue_size() {
+	if (queue_mutex.is_valid()) {
+		std::lock_guard<godot::Mutex> lock(*(queue_mutex.ptr()));
+		return packet_queue.size();
+	}
+	return 0;
+}
+
+int MoonlightStreamCore::get_frames_decoded() {
+	return frames_decoded.load();
+}
+
+int MoonlightStreamCore::get_frames_dropped() {
+	return frames_dropped.load();
+}
+
+bool MoonlightStreamCore::is_hw_decode() {
+	return is_hw_decode_active;
+}
+
 // 返回一个包含每个声道单独 AudioStream 的数组（最多 AUDIO_CONFIGURATION_MAX_CHANNEL_COUNT 个）
 // 顺序按照 Limelight 约定：0=L,1=R,2=C,3=LFE,4=Ls,5=Rs,6=SideL,7=SideR
 Array MoonlightStreamCore::get_audio_streams() {
@@ -686,6 +751,13 @@ void MoonlightStreamCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("send_hscroll_event", "scroll_clicks"), &MoonlightStreamCore::send_hscroll_event);
 	ClassDB::bind_method(D_METHOD("send_high_res_hscroll_event", "scroll_amount"), &MoonlightStreamCore::send_high_res_hscroll_event);
 	ClassDB::bind_method(D_METHOD("get_host_feature_flags"), &MoonlightStreamCore::get_host_feature_flags);
+	ClassDB::bind_method(D_METHOD("get_decoder_name"), &MoonlightStreamCore::get_decoder_name);
+	ClassDB::bind_method(D_METHOD("get_video_width"), &MoonlightStreamCore::get_video_width);
+	ClassDB::bind_method(D_METHOD("get_video_height"), &MoonlightStreamCore::get_video_height);
+	ClassDB::bind_method(D_METHOD("get_decode_queue_size"), &MoonlightStreamCore::get_decode_queue_size);
+	ClassDB::bind_method(D_METHOD("get_frames_decoded"), &MoonlightStreamCore::get_frames_decoded);
+	ClassDB::bind_method(D_METHOD("get_frames_dropped"), &MoonlightStreamCore::get_frames_dropped);
+	ClassDB::bind_method(D_METHOD("is_hw_decode"), &MoonlightStreamCore::is_hw_decode);
 
 	// 绑定内部更新方法以进行延迟调用
 	ClassDB::bind_method(D_METHOD("_perform_gpu_update"), &MoonlightStreamCore::_perform_gpu_update);
