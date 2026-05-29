@@ -18,6 +18,9 @@ Moonlight Godot 的底层基于 Moonlight 的协议实现，利用了 FFmpeg、c
 - **MoonlightComputerManager**: 负责与远程 PC 进行通讯。使用该模块用于对 PC (Sunshine / Nvidia GFE) 发起握手、状态查询、以及复杂的验证挑战配对流程 (`start_pair()`)。
 - **MoonlightStreamCore**: 串流生命周期管理。在连接后与主机进行直接 RTSP 推拉流，将底层的视频解码数据推给 Godot 显示，音频转发至 `AudioStream` 或 `miniaudio`，并将本地键鼠/手柄输入反向传达到主机。
 
+# Deepwiki
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/html5syt/Moonlight-Godot/)
+
 # 使用方法
 
 > 建议同时参考插件提供的内置类参考文档及demo！
@@ -225,9 +228,19 @@ var apps = moonlight_config_manager.get_apps(host_id)
 
 主机列表的每一项包含主机的 IP 地址、名称、设备 ID 和配对密钥等信息。应用列表则包含每个可串流应用的 ID、名称和其他元数据。其索引顺序与串流核心接口中**使用的 host_id 保持一致**，确保你在调用串流接口时能够正确地引用到对应的主机和应用。
 
+# 长期 Roadmap
+
+> [!NOTE]
+> 开发者为一枚高中牲，平常维护时间不是很多，以下规划实现时间及可实现性不做保证~~这不是画大饼嘛~~
+
+- [ ] 使用虚拟化或动态加载多个moonlight-common-c库实例实现多实例并发串流
+- [ ] 性能进一步优化
+
 # 声明与许可
 **本插件以 "AS IS" (按原样) 方式提供，不提供任何明示或暗示的保证。** 
 因使用该扩展产生的任何数据丢失、设备损坏或安全连带问题，作者不承担任何责任。
+
+本插件部分使用 Github Copilot 编写。
 
 **作者**: Mr. Tim
 
