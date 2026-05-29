@@ -1,9 +1,11 @@
 #include "stream_core.h"
+#ifdef ANDROID_ENABLED
+#ifdef __ANDROID__
 extern "C" {
 #include <libavcodec/jni.h>
 JNIEnv *ff_jni_get_env(void *log_ctx);
 }
-#ifdef ANDROID_ENABLED
+#endif
 #include <android/log.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
@@ -335,11 +337,11 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 
 	int ret = avcodec_open2(ctx, codec, &opts);
 	{
-		void *check_vm_ptr = av_jni_get_java_vm(nullptr);
-		char vm_buf[32];
-		snprintf(vm_buf, sizeof(vm_buf), "%p", check_vm_ptr);
 		if (is_mediacodec) {
-#ifdef ANDROID_ENABLED
+#ifdef __ANDROID__
+			void *check_vm_ptr = av_jni_get_java_vm(nullptr);
+			char vm_buf[32];
+			snprintf(vm_buf, sizeof(vm_buf), "%p", check_vm_ptr);
 			void *app_ctx = av_jni_get_android_app_ctx();
 			char ctx_buf[32];
 			snprintf(ctx_buf, sizeof(ctx_buf), "%p", app_ctx);
@@ -349,10 +351,10 @@ int MoonlightStreamCore::_try_open_decoder(const String &codec_name, int width, 
 			snprintf(env_buf, sizeof(env_buf), "%p", test_env);
 
 			__android_log_print(ANDROID_LOG_ERROR, "MoonlightMC",
-				"MEDIACODEC ff_jni_get_env=%s avcodec_open2 => %d w=%d h=%d",
-				env_buf, ret, ctx->width, ctx->height);
+								"MEDIACODEC ff_jni_get_env=%s avcodec_open2 => %d w=%d h=%d",
+								env_buf, ret, ctx->width, ctx->height);
 #else
-			UtilityFunctions::print(LOG_PREFIX "MEDIACODEC avcodec_open2 => ", ret, " jvm=", vm_buf);
+			UtilityFunctions::print(LOG_PREFIX "MEDIACODEC avcodec_open2 => ", ret);
 #endif
 		}
 	}
@@ -456,8 +458,8 @@ int MoonlightStreamCore::_handle_dr_setup(int video_fmt, int width, int height) 
 	is_hw_decode_active = (opened_name.find("_mediacodec") != -1) || (hw_device_ctx != nullptr);
 #ifdef ANDROID_ENABLED
 	__android_log_print(ANDROID_LOG_ERROR, "MoonlightMC",
-		"Decoder: %s HW=%d w=%d h=%d",
-		opened_name.utf8().get_data(), is_hw_decode_active, width, height);
+						"Decoder: %s HW=%d w=%d h=%d",
+						opened_name.utf8().get_data(), is_hw_decode_active, width, height);
 #else
 	UtilityFunctions::print(LOG_PREFIX "Decoder: ", opened_name, " HW=", is_hw_decode_active, " ", width, "x", height);
 #endif
@@ -1066,7 +1068,7 @@ void MoonlightStreamCore::_thread_func_video_decode() {
 								// Attempt to setup shader if we haven't yet (lazy init for SW fallback)
 								if (video_width > 0 && video_height > 0) {
 									call_deferred("_setup_shader_integration", video_width, video_height, (AVPixelFormat)display_frame->format,
-											_resolve_frame_colorspace(display_frame), (AVColorRange)display_frame->color_range, 8);
+												  _resolve_frame_colorspace(display_frame), (AVColorRange)display_frame->color_range, 8);
 									// We lose this frame, but next one will catch up
 								}
 							}
@@ -1149,4 +1151,3 @@ int MoonlightStreamCore::_dr_submit_decode_unit(PDECODE_UNIT du) {
 	}
 	return DR_OK;
 }
-

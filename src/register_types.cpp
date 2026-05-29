@@ -10,9 +10,9 @@
 #include "moonlight_config_manager.h" // Include header
 #include "moonlight_godot.h"
 #include "moonlight_requester.h"
-#include "stream_core.h"
-#include "stream_core_input_enum.h"
-#include "stream_core_struct.h"
+#include "stream_core/stream_core.h"
+#include "stream_core/stream_core_input_enum.h"
+#include "stream_core/stream_core_struct.h"
 
 using namespace godot;
 
